@@ -1,0 +1,37 @@
+# .NET build outputs
+bin/
+obj/
+publish/
+*.dll
+*.pdb
+*.cache
+*.nupkg
+
+# IDE
+.vs/
+*.user
+*.suo
+*.userprefs
+
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Copilot instructions (local-only, never commit)
+.github/copilot-instructions.md
+
+# Logs
+*.log
+
+# NuGet
+packages/
+
+# InnoSetup output
+installer/Output/
+
+# Old Electron artifacts
+build/
+release/
+node_modules/
+

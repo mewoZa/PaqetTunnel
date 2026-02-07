@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    name: Build & Verify
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore src\PaqetManager\PaqetManager.csproj
+
+      - name: Build (Debug)
+        run: dotnet build src\PaqetManager\PaqetManager.csproj -c Debug --no-restore
+
+      - name: Publish (Release, single-file)
+        run: dotnet publish src\PaqetManager\PaqetManager.csproj -c Release -o publish --self-contained true -r win-x64
+
+      - name: Verify output
+        run: |
+          if (!(Test-Path "publish\PaqetManager.exe")) { throw "PaqetManager.exe not found" }
+          $size = (Get-Item "publish\PaqetManager.exe").Length / 1MB
+          Write-Host "✓ Build successful — PaqetManager.exe ($([math]::Round($size, 1)) MB)"
