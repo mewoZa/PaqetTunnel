@@ -361,7 +361,6 @@ public partial class MainViewModel : ObservableObject
             ? $"Debug ON — {Logger.LogPath}"
             : "Debug mode disabled (restart to stop logging).";
     }
-    }
 
     [RelayCommand]
     private async Task SaveConfigAsync()
