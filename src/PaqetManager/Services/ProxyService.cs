@@ -59,6 +59,31 @@ public sealed class ProxyService
             }
             catch (Exception ex) { Logger.Debug($"WinHTTP check: {ex.Message}"); }
 
+            // Clean stale portproxy rules that conflict with our SOCKS port
+            try
+            {
+                var portproxy = PaqetService.RunCommand("netsh", "interface portproxy show v4tov4");
+                if (portproxy.Contains($"{SOCKS_PORT}") || portproxy.Contains("1080"))
+                {
+                    Logger.Info("Startup: clearing stale portproxy rules");
+                    try { PaqetService.RunCommand("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SOCKS_PORT}"); } catch { }
+                    try { PaqetService.RunCommand("netsh", "interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=1080"); } catch { }
+                }
+            }
+            catch (Exception ex) { Logger.Debug($"Portproxy cleanup: {ex.Message}"); }
+
+            // Reserve SOCKS port to prevent ICS/SharedAccess from stealing it
+            try
+            {
+                PaqetService.RunCommand("netsh", $"int ipv4 add excludedportrange protocol=tcp startport={SOCKS_PORT} numberofports=1");
+            }
+            catch { } // May already be reserved or in use — that's OK
+            try
+            {
+                PaqetService.RunCommand("netsh", $"int ipv4 add excludedportrange protocol=udp startport={SOCKS_PORT} numberofports=1");
+            }
+            catch { }
+
             Logger.Info($"ProxyService.OnStartup: hadProxy={_hadProxyBefore}, saved={_savedProxyServer}");
         }
         catch (Exception ex)

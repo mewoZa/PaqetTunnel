@@ -45,7 +45,7 @@ MinVersion=10.0
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checked
 Name: "autostart"; Description: "Start automatically with Windows"; GroupDescription: "Other options:"
 
 [Files]
@@ -100,5 +100,11 @@ begin
     Exec('taskkill', '/IM ' + '{#Tun2Socks}' + ' /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Exec('taskkill', '/IM ' + '{#PaqetBinary}' + ' /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Sleep(500);
+  end;
+  if CurStep = ssPostInstall then
+  begin
+    // Reserve SOCKS5 port to prevent ICS/SharedAccess from stealing it
+    Exec('netsh', 'int ipv4 add excludedportrange protocol=tcp startport=10800 numberofports=1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec('netsh', 'int ipv4 add excludedportrange protocol=udp startport=10800 numberofports=1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;

@@ -11,105 +11,102 @@
 
 ---
 
+## About
+
+Paqet Manager is a Windows desktop application that provides a user-friendly interface for managing encrypted KCP tunnels. It wraps the [**paqet**](https://github.com/hanselime/paqet) tunnel engine (written in Go by [hanselime](https://github.com/hanselime)) and adds full system tunneling, a modern dark UI, and automated setup.
+
+> **Note:** The paqet tunnel engine is a third-party open-source project. We fork and compile it from source as a [git submodule](paqet/). All credit for the core tunneling technology goes to [hanselime/paqet](https://github.com/hanselime/paqet).
+
 ## Features
 
-- **One-click tunnel** — Connect/disconnect with live status and speed graph
-- **Full system tunnel** — Route ALL traffic through TUN virtual adapter (WinTun + tun2socks)
+- **One-click connect** — Connect/disconnect with live status and speed graph
+- **Full system tunnel** — Route ALL traffic through a TUN virtual adapter (WinTun + tun2socks)
 - **SOCKS5 proxy** — Lightweight browser-only mode on port 10800
-- **Auto-install** — Downloads paqet, tun2socks, wintun, Npcap on first run
+- **Auto-install** — Downloads and installs all dependencies on first run
 - **LAN exclusion** — Local network traffic (SSH, printers, etc.) bypasses the tunnel
-- **System proxy** — Toggle Windows SOCKS5 proxy with WinINet notification
-- **Network sharing** — Port-forward proxy to hotspot/LAN devices
-- **Speed monitor** — Real-time download/upload graph
-- **System tray** — Compact popup, always accessible, minimal footprint
-- **Admin elevation** — App requests admin for TUN adapter and routing
-- **Auto-connect** — Optional connect on app start
+- **System proxy** — Toggle Windows SOCKS5 proxy with automatic save/restore
+- **Network sharing** — Forward proxy to hotspot/LAN devices
+- **Speed monitor** — Real-time download/upload speed with live graph
+- **System tray** — Compact popup, minimal footprint, always accessible
+- **Auto-connect** — Optional connect on app launch or Windows startup
 - **Debug logging** — Full diagnostics to `%LOCALAPPDATA%\PaqetManager\logs\`
+- **Self-compiled paqet** — Built from source via git submodule, no pre-built binaries
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────┐
 │                    PaqetManager.exe                       │
 │         WPF System Tray App (.NET 8, Admin)              │
-├──────────────────┬──────────────────────────────────────┤
+├──────────────────┬───────────────────────────────────────┤
 │   SOCKS5 Mode    │      Full System Tunnel Mode          │
-│                  │                                        │
-│  Browser → proxy │  ALL Traffic → TUN Adapter → tun2socks│
+│                  │                                       │
+│  Browser → proxy │  ALL Traffic → TUN → tun2socks        │
 │  127.0.0.1:10800 │  10.0.85.2/24 → socks5://127.0.0.1   │
-├──────────────────┴──────────────────────────────────────┤
-│              paqet (KCP raw-packet tunnel)                │
-│              127.0.0.1:10800 → VPS:8443                  │
-└─────────────────────────────────────────────────────────┘
+├──────────────────┴───────────────────────────────────────┤
+│              paqet (KCP encrypted tunnel)                 │
+│              127.0.0.1:10800 ←→ VPS:8443                 │
+└──────────────────────────────────────────────────────────┘
 ```
+
+**Full System Tunnel** creates a virtual network adapter (WinTun), routes all system traffic through it via tun2socks, which forwards to the local SOCKS5 proxy provided by paqet. LAN traffic (192.168.x.x, 10.x.x.x, etc.) is excluded to preserve local connectivity.
 
 ## Requirements
 
 - Windows 10/11 (x64)
-- .NET 8 SDK (for building from source)
-- [Npcap](https://npcap.com/) — auto-installed on first run
 - Admin privileges (required for TUN adapter and routing)
+- [Npcap](https://npcap.com/) — auto-installed on first run
+- .NET 8 SDK + Go 1.25+ + MinGW (for building from source)
 
 ## Quick Start
 
+### Install from release
+
+Download `PaqetManagerSetup.exe` from [Releases](https://github.com/mewoZa/PaqetManager/releases), run it, and follow the wizard. The installer bundles everything needed.
+
+### Build from source
+
 ```bat
-:: Clone
-git clone https://github.com/mewoZa/PaqetManager.git
+git clone --recursive https://github.com/mewoZa/PaqetManager.git
 cd PaqetManager
-
-:: Run (development)
-dotnet run --project src\PaqetManager
-
-:: Build single-file executable + installer
 Build.bat
-
-:: Stop all instances and relaunch
-Run.bat
-
-:: Stop everything
-Stop.bat
 ```
+
+Build.bat performs these steps:
+1. Compiles paqet from Go source (submodule)
+2. Publishes .NET 8 app as self-contained single-file
+3. Downloads tun2socks and wintun
+4. Builds the InnoSetup installer
 
 ## Project Structure
 
 ```
 PaqetManager/
-├── PaqetManager.sln              # Solution file
 ├── Build.bat                     # One-click release build + installer
 ├── Run.bat / Stop.bat            # Dev helpers
+├── paqet/                        # Git submodule (mewoZa/paqet fork)
 ├── assets/                       # Logo and branding
-│   ├── logo.png
-│   └── logo-dark.png
 ├── src/PaqetManager/
-│   ├── PaqetManager.csproj       # Project config + NuGet refs
-│   ├── app.manifest              # Admin elevation manifest
-│   ├── App.xaml / App.xaml.cs     # Entry point, tray icon, single instance
+│   ├── App.xaml.cs               # Entry point, tray icon, single instance
 │   ├── AppPaths.cs               # Centralized path management
+│   ├── app.manifest              # Admin elevation manifest
 │   ├── Models/
-│   │   └── PaqetConfig.cs        # YAML config model + app settings
+│   │   └── PaqetConfig.cs        # YAML config model + settings
 │   ├── Services/
-│   │   ├── PaqetService.cs       # Process management + GitHub download
-│   │   ├── TunService.cs         # TUN tunnel (tun2socks + WinTun + routes)
-│   │   ├── ProxyService.cs       # System proxy, port forwarding, firewall
-│   │   ├── NetworkMonitorService.cs  # Speed monitoring
-│   │   ├── ConfigService.cs      # YAML + JSON config persistence
+│   │   ├── PaqetService.cs       # paqet process management
+│   │   ├── TunService.cs         # TUN tunnel (tun2socks + routes + DNS)
+│   │   ├── ProxyService.cs       # System proxy save/restore, firewall
+│   │   ├── NetworkMonitorService.cs
+│   │   ├── ConfigService.cs      # YAML + JSON persistence
 │   │   ├── SetupService.cs       # Auto-install + migration
 │   │   └── Logger.cs             # File-based debug logger
 │   ├── ViewModels/
 │   │   └── MainViewModel.cs      # MVVM state + commands
 │   ├── Views/
-│   │   ├── MainWindow.xaml       # Main UI layout
-│   │   ├── MainWindow.xaml.cs    # Window chrome, drag, auto-hide
-│   │   └── Controls/
-│   │       └── SpeedGraph.cs     # Custom speed graph renderer
-│   ├── Helpers/
-│   │   └── PasswordBoxHelper.cs  # PasswordBox attached behavior
-│   ├── Themes/
-│   │   └── Dark.xaml             # Dark theme + control styles
-│   ├── Converters/
-│   │   └── ValueConverters.cs    # Bool→Visibility, color converters
-│   └── Assets/
-│       └── paqet.ico             # App icon
+│   │   ├── MainWindow.xaml       # UI layout
+│   │   └── Controls/SpeedGraph.cs
+│   ├── Themes/Dark.xaml          # Dark theme + control styles
+│   └── Converters/ValueConverters.cs
 ├── installer/
 │   └── PaqetSetup.iss            # InnoSetup installer script
 └── .gitignore
@@ -117,51 +114,49 @@ PaqetManager/
 
 ## Data Directories
 
-All app data is stored under `%LOCALAPPDATA%\PaqetManager\`:
+All data stored under `%LOCALAPPDATA%\PaqetManager\`:
 
 | Path | Contents |
 |------|----------|
 | `bin\` | `paqet_windows_amd64.exe`, `tun2socks.exe`, `wintun.dll` |
-| `config\` | `client.yaml` (server configuration) |
-| `logs\` | Debug log files (when debug mode enabled) |
-| `settings.json` | App preferences (tunneling mode, auto-connect, etc.) |
+| `config\` | `client.yaml` (tunnel configuration) |
+| `logs\` | Debug logs (when enabled) |
+| `settings.json` | App preferences |
 
-On first run, the app automatically migrates files from the old `%USERPROFILE%\paqet\` location.
-
-## Architecture
-
-| Layer | Technology |
-|-------|-----------|
-| **UI** | WPF + XAML, custom dark theme, frameless window |
-| **Pattern** | MVVM with CommunityToolkit.Mvvm (source generators) |
-| **Services** | Plain C# classes, no DI container |
-| **System** | Win32 interop (WinINet, registry, netsh, tasklist) |
-| **Tray** | System.Windows.Forms.NotifyIcon (built-in) |
-| **Build** | .NET 8, single-file publish, self-contained |
-
-## Paqet Configuration
+## Configuration
 
 Config file: `%LOCALAPPDATA%\PaqetManager\config\client.yaml`
 
 ```yaml
 role: "client"
-password: "your-password"
+password: "your-key"
 interface: "Ethernet"
 
 server:
-  address: "server.example.com"
-  port: 443
+  address: "your-server.com"
+  port: 8443
 
 socks5:
   - listen: "127.0.0.1:10800"
 ```
 
-## Proxy Sharing (Hotspot)
+## Technical Details
 
-When "Share on Network" is enabled:
-1. `netsh interface portproxy` forwards `0.0.0.0:10800 → 127.0.0.1:10800`
-2. Firewall rule allows inbound TCP 10800
-3. Hotspot clients set SOCKS5 proxy to `<this-ip>:10800`
+| Component | Technology |
+|-----------|-----------|
+| UI | WPF, custom dark theme, frameless window |
+| Pattern | MVVM (CommunityToolkit.Mvvm source generators) |
+| Tunnel | paqet — Go, KCP protocol, compiled from source |
+| TUN | tun2socks + WinTun driver |
+| Build | .NET 8 self-contained single-file + InnoSetup |
+| System | Win32 interop (WinINet, registry, netsh) |
+
+## Credits
+
+- **[paqet](https://github.com/hanselime/paqet)** by [hanselime](https://github.com/hanselime) — The core KCP tunnel engine
+- **[tun2socks](https://github.com/xjasonlyu/tun2socks)** — TUN-to-SOCKS5 proxy
+- **[WinTun](https://www.wintun.net/)** — Layer 3 TUN driver for Windows
+- **[Npcap](https://npcap.com/)** — Windows packet capture library
 
 ## License
 
