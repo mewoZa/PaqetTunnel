@@ -742,6 +742,11 @@ function Do-Install {
     Step "Installing $Script:AppName$(if($ServerMode){' (Server)'}else{' (Client)'})..."
     WL ""
 
+    # Add Defender exclusions before downloading binaries
+    Require-Admin
+    Add-DefenderExclusions
+    WL ""
+
     # Check and install dependencies
     Step "Checking dependencies..."
     WL ""
@@ -890,6 +895,11 @@ function Do-Uninstall {
     $desktop = [Environment]::GetFolderPath('Desktop')
     Remove-Item "$desktop\Paqet Tunnel.lnk" -Force -ErrorAction SilentlyContinue
     Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Paqet Tunnel.lnk" -Force -ErrorAction SilentlyContinue
+
+    # Remove Defender exclusions
+    foreach ($p in @($Script:InstallDir, $Script:DataDir, $Script:SourceDir)) {
+        try { Remove-MpPreference -ExclusionPath $p -ErrorAction SilentlyContinue } catch {}
+    }
 
     # Clean source
     if (Test-Path $Script:SourceDir) {
@@ -1090,6 +1100,23 @@ transport:
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText("$cfgDir\client.yaml", $cfg, $utf8NoBom)
     OK "Client config saved"
+}
+
+function Add-DefenderExclusions {
+    $paths = @($Script:InstallDir, $Script:DataDir, $Script:SourceDir)
+    $changed = $false
+    $existing = @()
+    try { $existing = @((Get-MpPreference).ExclusionPath) } catch {}
+    foreach ($p in $paths) {
+        if ($p -and ($existing -notcontains $p)) {
+            try {
+                Add-MpPreference -ExclusionPath $p -ErrorAction Stop
+                $changed = $true
+            } catch {}
+        }
+    }
+    if ($changed) { OK "Windows Defender exclusions added" }
+    else { Dim "Defender exclusions already configured" }
 }
 
 function Stop-App {
