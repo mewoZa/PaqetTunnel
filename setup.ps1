@@ -783,6 +783,9 @@ function Do-Install {
         New-Item -Path $Script:InstallDir -ItemType Directory -Force | Out-Null
         Copy-Item "$Script:SourceDir\publish\*" $Script:InstallDir -Recurse -Force
         OK "Installed to $Script:InstallDir"
+
+        # Create shortcuts
+        Create-Shortcuts
     }
 
     # Save version
@@ -882,6 +885,11 @@ function Do-Uninstall {
     # Clean autostart
     $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
     Remove-ItemProperty -Path $regPath -Name 'PaqetTunnel' -ErrorAction SilentlyContinue
+
+    # Clean shortcuts
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    Remove-Item "$desktop\Paqet Tunnel.lnk" -Force -ErrorAction SilentlyContinue
+    Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Paqet Tunnel.lnk" -Force -ErrorAction SilentlyContinue
 
     # Clean source
     if (Test-Path $Script:SourceDir) {
@@ -1083,6 +1091,38 @@ function Stop-App {
         }
     }
     Start-Sleep 1
+}
+
+function Create-Shortcuts {
+    $exe = "$Script:InstallDir\$Script:ExeName"
+    if (-not (Test-Path $exe)) { return }
+    $ws = New-Object -ComObject WScript.Shell
+
+    # Desktop shortcut
+    try {
+        $desktop = [Environment]::GetFolderPath('Desktop')
+        $lnk = $ws.CreateShortcut("$desktop\Paqet Tunnel.lnk")
+        $lnk.TargetPath = $exe
+        $lnk.WorkingDirectory = $Script:InstallDir
+        $lnk.Description = 'Paqet Tunnel'
+        $iconPath = "$Script:InstallDir\$Script:ExeName"
+        if (Test-Path $iconPath) { $lnk.IconLocation = "$iconPath,0" }
+        $lnk.Save()
+        OK "Desktop shortcut created"
+    } catch { Warn "Desktop shortcut failed" }
+
+    # Start Menu shortcut
+    try {
+        $startMenu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+        $lnk = $ws.CreateShortcut("$startMenu\Paqet Tunnel.lnk")
+        $lnk.TargetPath = $exe
+        $lnk.WorkingDirectory = $Script:InstallDir
+        $lnk.Description = 'Paqet Tunnel'
+        $iconPath = "$Script:InstallDir\$Script:ExeName"
+        if (Test-Path $iconPath) { $lnk.IconLocation = "$iconPath,0" }
+        $lnk.Save()
+        OK "Start Menu shortcut created"
+    } catch { Warn "Start Menu shortcut failed" }
 }
 
 function Start-App {
