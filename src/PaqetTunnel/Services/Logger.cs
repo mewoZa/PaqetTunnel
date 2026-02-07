@@ -25,7 +25,7 @@ public static class Logger
         try
         {
             Directory.CreateDirectory(LogDir);
-            _logPath = Path.Combine(LogDir, $"paqetmanager_{DateTime.Now:yyyyMMdd_HHmmss}.log");
+            _logPath = Path.Combine(LogDir, $"paqettunnel_{DateTime.Now:yyyyMMdd_HHmmss}.log");
             Write("INFO", $"=== PaqetTunnel Debug Log Started ===");
             Write("INFO", $"Log file: {_logPath}");
             Write("INFO", $"DataDir: {AppPaths.DataDir}");
@@ -69,7 +69,7 @@ public static class Logger
         try
         {
             if (!Directory.Exists(LogDir)) return;
-            var files = new DirectoryInfo(LogDir).GetFiles("paqetmanager_*.log");
+            var files = new DirectoryInfo(LogDir).GetFiles("paqet*.log");
             if (files.Length <= 10) return;
 
             Array.Sort(files, (a, b) => b.CreationTime.CompareTo(a.CreationTime));
