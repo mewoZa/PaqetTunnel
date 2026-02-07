@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Paqet Tunnel — Universal Setup & Management Script
 .DESCRIPTION
