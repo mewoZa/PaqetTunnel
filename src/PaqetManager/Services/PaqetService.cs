@@ -67,11 +67,29 @@ public sealed class PaqetService
     /// <summary>Check if SOCKS5 port is accepting connections.</summary>
     public static bool IsPortListening(int port = SOCKS_PORT)
     {
+        try
+        {
+            // Check active TCP listeners via IPGlobalProperties — no connection needed, no socket exhaustion
+            var listeners = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties()
+                .GetActiveTcpListeners();
+            var listening = listeners.Any(ep => ep.Port == port);
+            Logger.Debug($"IsPortListening: port {port} {(listening ? "OPEN" : "not listening")} (via IPGlobalProperties, {listeners.Length} total listeners)");
+            return listening;
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug($"IsPortListening: IPGlobalProperties exception — {ex.Message}");
+            // Fallback: try socket connect
+            return IsPortListeningFallback(port);
+        }
+    }
+
+    private static bool IsPortListeningFallback(int port)
+    {
         Socket? socket = null;
         try
         {
             socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            // Linger with 0 timeout → sends RST on close, avoids TIME_WAIT buildup
             socket.LingerState = new LingerOption(true, 0);
             socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             var ep = new IPEndPoint(IPAddress.Loopback, port);
@@ -80,18 +98,11 @@ public sealed class PaqetService
             if (connected)
             {
                 socket.EndConnect(result);
-                var ok = socket.Connected;
-                Logger.Debug($"IsPortListening: port {port} {(ok ? "OPEN" : "connect failed")}");
-                return ok;
+                return socket.Connected;
             }
-            Logger.Debug($"IsPortListening: port {port} timeout (not listening)");
             return false;
         }
-        catch (Exception ex)
-        {
-            Logger.Debug($"IsPortListening: port {port} exception — {ex.Message}");
-            return false;
-        }
+        catch { return false; }
         finally
         {
             try { socket?.Close(); } catch { }
