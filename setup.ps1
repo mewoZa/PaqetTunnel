@@ -978,6 +978,9 @@ function Do-ServerInstall {
     Dim "Local IP:  $localIP"
     Dim "Router MAC: $routerMAC"
 
+    # Escape backslashes for YAML double-quoted strings
+    $yamlGuid = if ($guid) { $guid.Replace('\', '\\') } else { '' }
+
     # Create config
     $cfgDir = "$Script:DataDir\config"
     New-Item -Path $cfgDir -ItemType Directory -Force | Out-Null
@@ -989,7 +992,7 @@ listen:
   addr: ":$port"
 network:
   interface: "$ifaceName"
-  guid: "$guid"
+  guid: "$yamlGuid"
   ipv4:
     addr: "${localIP}:$port"
     router_mac: "$routerMAC"
@@ -999,7 +1002,8 @@ transport:
     mode: "fast"
     key: "$secret"
 "@
-    $serverCfg | Out-File "$cfgDir\server.yaml" -Encoding UTF8
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText("$cfgDir\server.yaml", $serverCfg, $utf8NoBom)
     OK "Server config created"
 
     # Install as service
@@ -1060,6 +1064,9 @@ function Do-Configure {
     Dim "Router MAC: $routerMAC"
     if ($guid) { Dim "GUID: $guid" }
 
+    # Escape backslashes for YAML double-quoted strings
+    $yamlGuid = if ($guid) { $guid.Replace('\', '\\') } else { '' }
+
     $cfg = @"
 role: "client"
 log:
@@ -1070,7 +1077,7 @@ server:
   addr: "$serverAddr"
 network:
   interface: "$ifaceName"
-  guid: "$guid"
+  guid: "$yamlGuid"
   ipv4:
     addr: "${localIP}:0"
     router_mac: "$routerMAC"
@@ -1080,7 +1087,8 @@ transport:
     mode: "fast"
     key: "$serverKey"
 "@
-    $cfg | Out-File "$cfgDir\client.yaml" -Encoding UTF8
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText("$cfgDir\client.yaml", $cfg, $utf8NoBom)
     OK "Client config saved"
 }
 
