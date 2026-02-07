@@ -1,0 +1,3 @@
+[submodule "paqet"]
+	path = paqet
+	url = https://github.com/mewoZa/paqet.git

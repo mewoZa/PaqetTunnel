@@ -10,7 +10,7 @@
 #define MyAppName "Paqet Manager"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "Paqet"
-#define MyAppURL "https://github.com/hanselime/paqet"
+#define MyAppURL "https://github.com/mewoZa/PaqetManager"
 #define MyAppExeName "PaqetManager.exe"
 #define PaqetBinary "paqet_windows_amd64.exe"
 #define Tun2Socks "tun2socks.exe"
