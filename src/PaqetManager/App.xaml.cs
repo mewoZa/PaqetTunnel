@@ -181,6 +181,7 @@ public partial class App : Application
     public void ShowWindow()
     {
         if (_mainWindow == null) return;
+        _mainWindow.SuppressAutoHide();
         PositionWindowNearTray();
         _mainWindow.Show();
         _mainWindow.Activate();

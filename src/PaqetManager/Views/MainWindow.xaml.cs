@@ -8,6 +8,8 @@ namespace PaqetManager.Views;
 
 public partial class MainWindow : Window
 {
+    private DateTime _suppressHideUntil = DateTime.MinValue;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -16,7 +18,6 @@ public partial class MainWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Register for the custom WM_PAQET_SHOW message (single instance communication)
         var source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
         source?.AddHook(WndProc);
     }
@@ -25,6 +26,7 @@ public partial class MainWindow : Window
     {
         if (msg == (int)NativeMethods.WM_PAQET_SHOW)
         {
+            _suppressHideUntil = DateTime.UtcNow.AddSeconds(2);
             Show();
             Activate();
             if (WindowState == WindowState.Minimized)
@@ -32,6 +34,12 @@ public partial class MainWindow : Window
             handled = true;
         }
         return IntPtr.Zero;
+    }
+
+    /// <summary>Suppress auto-hide for a short period (e.g. after tray click).</summary>
+    public void SuppressAutoHide(int seconds = 2)
+    {
+        _suppressHideUntil = DateTime.UtcNow.AddSeconds(seconds);
     }
 
     // ── Title bar drag ────────────────────────────────────────────
@@ -55,13 +63,14 @@ public partial class MainWindow : Window
     // ── Auto-hide when window loses focus ─────────────────────────
     private void Window_Deactivated(object sender, EventArgs e)
     {
-        // Small delay to allow button clicks / UAC dialogs
-        var timer = new System.Timers.Timer(300) { AutoReset = false };
+        if (DateTime.UtcNow < _suppressHideUntil) return;
+
+        var timer = new System.Timers.Timer(400) { AutoReset = false };
         timer.Elapsed += (s, ev) =>
         {
             Dispatcher.Invoke(() =>
             {
-                if (!IsActive && IsVisible)
+                if (!IsActive && IsVisible && DateTime.UtcNow >= _suppressHideUntil)
                     Hide();
             });
             timer.Dispose();
