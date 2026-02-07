@@ -721,25 +721,17 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void EnsureProxyDisabledForTun()
     {
-        Logger.Info("EnsureProxyDisabledForTun: disabling system proxy for TUN mode");
+        Logger.Info("EnsureProxyDisabledForTun: cleaning all proxy settings for TUN mode");
 
-        // Disable WinINet system proxy (browsers)
-        if (IsSystemProxyEnabled || _proxyService.IsSystemProxyEnabled())
-        {
-            _proxyService.SetSystemProxy(false);
-            Application.Current.Dispatcher.Invoke(() => IsSystemProxyEnabled = false);
-            Logger.Info("Disabled WinINet system proxy for TUN mode");
-        }
+        // Always force full proxy disable — clears ProxyEnable, ProxyServer, ProxyOverride
+        _proxyService.SetSystemProxy(false);
+        Application.Current.Dispatcher.Invoke(() => IsSystemProxyEnabled = false);
 
         // Reset WinHTTP proxy (Windows Update, system services)
         try
         {
-            var winhttp = PaqetService.RunCommand("netsh", "winhttp show proxy");
-            if (!winhttp.Contains("Direct access"))
-            {
-                PaqetService.RunCommand("netsh", "winhttp reset proxy");
-                Logger.Info("Reset WinHTTP proxy for TUN mode");
-            }
+            PaqetService.RunCommand("netsh", "winhttp reset proxy");
+            Logger.Info("Reset WinHTTP proxy for TUN mode");
         }
         catch (Exception ex) { Logger.Debug($"WinHTTP reset: {ex.Message}"); }
     }
