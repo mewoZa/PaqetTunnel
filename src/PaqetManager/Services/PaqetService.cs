@@ -112,7 +112,7 @@ public sealed class PaqetService
     /// <summary>Check if paqet is fully ready (process running + port listening).</summary>
     public bool IsReady() => IsRunning() && IsPortListening();
 
-    /// <summary>Start the paqet tunnel using the 'run' subcommand.</summary>
+    /// <summary>Start the paqet tunnel using the 'run' subcommand. Retries on port bind failure.</summary>
     public (bool Success, string Message) Start()
     {
         Logger.Info("Start() called");
@@ -148,10 +148,36 @@ public sealed class PaqetService
             Logger.Error("Failed to read config for logging", ex);
         }
 
+        // Retry up to 3 times on bind failure (ICS ephemeral port conflict)
+        for (int attempt = 1; attempt <= 3; attempt++)
+        {
+            var result = StartOnce(attempt);
+            if (result.Success)
+                return result;
+
+            // Check if it's a bind failure (port conflict with ICS/svchost)
+            if (result.Message.Contains("failed to listen", StringComparison.OrdinalIgnoreCase)
+                || result.Message.Contains("access a socket", StringComparison.OrdinalIgnoreCase)
+                || result.Message.Contains("address already in use", StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.Warn($"Bind failure on attempt {attempt}/3, retrying in 2s...");
+                Stop(); // kill the failed process
+                Thread.Sleep(2000);
+                continue;
+            }
+
+            return result; // non-retryable error
+        }
+
+        return (false, "Failed to bind SOCKS5 port after 3 attempts. ICS may be conflicting.");
+    }
+
+    private (bool Success, string Message) StartOnce(int attempt)
+    {
         try
         {
             var arguments = $"run --config \"{AppPaths.PaqetConfigPath}\"";
-            Logger.Info($"Starting: {AppPaths.BinaryPath} {arguments}");
+            Logger.Info($"Starting (attempt {attempt}): {AppPaths.BinaryPath} {arguments}");
             Logger.Info($"WorkingDir: {AppPaths.BinDir}");
 
             var psi = new ProcessStartInfo
@@ -214,6 +240,14 @@ public sealed class PaqetService
                         : !string.IsNullOrEmpty(stdout) ? stdout
                         : $"Exit code: {proc.ExitCode}";
                     return (false, $"Process exited: {exitMsg}");
+                }
+
+                // Check for bind failure in stdout (paqet logs bind errors to stdout)
+                var currentOutput = stdoutBuilder.ToString();
+                if (currentOutput.Contains("failed to listen", StringComparison.OrdinalIgnoreCase))
+                {
+                    Logger.Warn($"Bind failure detected in stdout: {currentOutput.Trim()}");
+                    return (false, currentOutput.Trim());
                 }
 
                 if (IsPortListening())
