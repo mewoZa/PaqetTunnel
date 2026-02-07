@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.NetworkInformation;
-using System.Net.Sockets;
 using System.Threading.Tasks;
 using System.Timers;
 using System.Windows;
@@ -720,16 +718,16 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
             {
-                if (ni.OperationalStatus == OperationalStatus.Up &&
-                    ni.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                if (ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                    ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback &&
                     !ni.Name.Contains("PaqetTun", StringComparison.OrdinalIgnoreCase) &&
                     ni.GetIPProperties().GatewayAddresses.Count > 0)
                 {
                     foreach (var addr in ni.GetIPProperties().UnicastAddresses)
                     {
-                        if (addr.Address.AddressFamily == AddressFamily.InterNetwork)
+                        if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
                             return addr.Address.ToString();
                     }
                 }
