@@ -18,7 +18,7 @@ public sealed class PaqetConfig
     public string DeviceGuid { get; set; } = "";          // network.guid
     public string Ipv4Addr { get; set; } = "";            // network.ipv4.addr
     public string RouterMac { get; set; } = "";           // network.ipv4.router_mac
-    public string SocksListen { get; set; } = "0.0.0.0:1080";
+    public string SocksListen { get; set; } = "127.0.0.1:10800";
     public string RawConfig { get; set; } = "";
 
     /// <summary>Get server host (without port) from ServerAddr.</summary>

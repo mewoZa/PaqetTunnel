@@ -62,6 +62,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private bool _debugMode;
     [ObservableProperty] private bool _isFullSystemTunnel;
+    [ObservableProperty] private bool _isAutoConnect;
     [ObservableProperty] private string _paqetVersion = "";
     [ObservableProperty] private string _interfaceList = "";
     [ObservableProperty] private string _pingResult = "";
@@ -100,6 +101,7 @@ public partial class MainViewModel : ObservableObject
         var appSettings = _configService.ReadAppSettings();
         DebugMode = appSettings.DebugMode;
         IsFullSystemTunnel = appSettings.FullSystemTunnel;
+        IsAutoConnect = appSettings.AutoConnectOnLaunch;
 
         // Check if paqet binary exists
         NeedsSetup = !_paqetService.BinaryExists();
@@ -167,6 +169,13 @@ public partial class MainViewModel : ObservableObject
         }
 
         Logger.Info("InitializeAsync complete");
+
+        // Auto-connect if enabled and not already connected
+        if (IsAutoConnect && !IsConnected && !NeedsSetup)
+        {
+            Logger.Info("Auto-connect enabled, starting connection...");
+            await ConnectAsync();
+        }
     }
 
     // ── Commands ──────────────────────────────────────────────────
@@ -441,6 +450,17 @@ public partial class MainViewModel : ObservableObject
         StatusBarText = DebugMode
             ? $"Debug ON — {Logger.LogPath}"
             : "Debug mode disabled (restart to stop logging).";
+    }
+
+    [RelayCommand]
+    private void ToggleAutoConnect()
+    {
+        IsAutoConnect = !IsAutoConnect;
+        var settings = _configService.ReadAppSettings();
+        settings.AutoConnectOnLaunch = IsAutoConnect;
+        _configService.WriteAppSettings(settings);
+        Logger.Info($"Auto-connect toggled: {IsAutoConnect}");
+        StatusBarText = IsAutoConnect ? "Auto-connect enabled" : "Auto-connect disabled";
     }
 
     [RelayCommand]

@@ -45,6 +45,9 @@ public partial class App : Application
         // ── Migrate from old %USERPROFILE%\paqet if present ────────
         SetupService.MigrateFromOldLocation();
 
+        // ── Migrate config port 1080→10800 (svchost conflict) ──────
+        configService.MigrateConfigPort();
+
         // ── Initialize services ────────────────────────────────────
         var paqetService = new PaqetService();
         var proxyService = new ProxyService();
@@ -70,8 +73,9 @@ public partial class App : Application
 
         Services.Logger.Info("InitializeAsync complete");
 
-        // ── Auto-connect if --connect flag passed ──────────────────
-        if (e.Args.Length > 0 && e.Args[0] == "--connect")
+        // ── Auto-connect if --connect flag passed or AutoConnect setting ──
+        var shouldAutoConnect = (e.Args.Length > 0 && e.Args[0] == "--connect");
+        if (shouldAutoConnect)
         {
             Services.Logger.Info("Auto-connect requested via --connect flag");
             if (!_viewModel.IsConnected && !_viewModel.NeedsSetup)

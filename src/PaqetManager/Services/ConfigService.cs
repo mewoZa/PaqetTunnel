@@ -33,6 +33,27 @@ public sealed class ConfigService
 
     public bool PaqetConfigExists() => File.Exists(AppPaths.PaqetConfigPath);
 
+    /// <summary>Migrate config from old port 1080 to 10800 (Windows svchost conflict).</summary>
+    public void MigrateConfigPort()
+    {
+        if (!PaqetConfigExists()) return;
+        try
+        {
+            var yaml = File.ReadAllText(AppPaths.PaqetConfigPath);
+            if (yaml.Contains(":1080") && !yaml.Contains(":10800"))
+            {
+                yaml = yaml.Replace("0.0.0.0:1080", "127.0.0.1:10800")
+                           .Replace("127.0.0.1:1080", "127.0.0.1:10800");
+                File.WriteAllText(AppPaths.PaqetConfigPath, yaml);
+                Logger.Info("Migrated config SOCKS5 port from 1080 to 10800");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Config migration failed", ex);
+        }
+    }
+
     // ── App Settings (JSON) ───────────────────────────────────────
 
     public AppSettings ReadAppSettings()

@@ -292,6 +292,22 @@
                                               IsChecked="{Binding IsFullSystemTunnel, Mode=OneWay}"
                                               Command="{Binding ToggleFullSystemTunnelCommand}" />
                             </Grid>
+
+                            <!-- Auto-Connect on Launch -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Auto-Connect" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Connect automatically on app start" 
+                                               FontSize="11" Foreground="{StaticResource TextDimBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding IsAutoConnect, Mode=OneWay}"
+                                              Command="{Binding ToggleAutoConnectCommand}" />
+                            </Grid>
                         </StackPanel>
                     </Border>
 

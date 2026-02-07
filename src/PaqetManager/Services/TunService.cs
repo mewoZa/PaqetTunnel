@@ -13,7 +13,7 @@ namespace PaqetManager.Services;
 
 /// <summary>
 /// Manages the WinTun TUN adapter via tun2socks.exe for full system traffic tunneling.
-/// Architecture: System Traffic → TUN Adapter → tun2socks → paqet SOCKS5 :1080 → VPS
+/// Architecture: System Traffic → TUN Adapter → tun2socks → paqet SOCKS5 :10800 → VPS
 /// Requires admin privileges for adapter creation and routing changes.
 /// </summary>
 public sealed class TunService
@@ -80,9 +80,9 @@ public sealed class TunService
             return (false, $"{missing} not found. Run setup first.");
         }
 
-        if (!PaqetService.IsPortListening(1080))
+        if (!PaqetService.IsPortListening(10800))
         {
-            Logger.Warn("TUN start: SOCKS5 port 1080 not listening");
+            Logger.Warn("TUN start: SOCKS5 port 10800 not listening");
             return (false, "Paqet SOCKS5 not running. Start paqet first.");
         }
 
@@ -297,7 +297,7 @@ public sealed class TunService
             var psi = new ProcessStartInfo
             {
                 FileName = AppPaths.Tun2SocksPath,
-                Arguments = $"-device wintun://{TUN_ADAPTER_NAME} -proxy socks5://127.0.0.1:1080",
+                Arguments = $"-device tun://{TUN_ADAPTER_NAME} -proxy socks5://127.0.0.1:10800",
                 WorkingDirectory = AppPaths.BinDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,
