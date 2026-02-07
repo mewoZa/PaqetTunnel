@@ -16,6 +16,7 @@ public partial class App : Application
     private Forms.NotifyIcon? _trayIcon;
     private MainWindow? _mainWindow;
     private MainViewModel? _viewModel;
+    private ProxyService? _proxyService;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -51,6 +52,8 @@ public partial class App : Application
         // ── Initialize services ────────────────────────────────────
         var paqetService = new PaqetService();
         var proxyService = new ProxyService();
+        _proxyService = proxyService;
+        proxyService.OnStartup(); // Save/clean proxy state
         var networkMonitor = new NetworkMonitorService();
         var tunService = new TunService();
         var setupService = new SetupService(paqetService, tunService);
@@ -201,6 +204,7 @@ public partial class App : Application
             _trayIcon = null;
         }
         _viewModel?.Cleanup();
+        _proxyService?.OnShutdown();
         _mutex?.ReleaseMutex();
         _mutex?.Dispose();
         Shutdown(0);
