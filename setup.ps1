@@ -19,6 +19,7 @@ param(
     [string]$Key,
     [Alias('i')][string]$Iface,
     [int]$SocksPort = 10800,
+    [switch]$Build,
     [switch]$Force,
     [Alias('y')][switch]$Yes
 )
@@ -28,9 +29,11 @@ $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $Script:AppVersion = '1.0.0'
 $Script:Repo = 'mewoZa/PaqetTunnel'
+$Script:UpstreamRepo = 'hanselime/paqet'
 $Script:RepoUrl = "https://github.com/$($Script:Repo).git"
 $Script:RawUrl = "https://raw.githubusercontent.com/$($Script:Repo)/master"
 $Script:ApiUrl = "https://api.github.com/repos/$($Script:Repo)"
+$Script:UpstreamApiUrl = "https://api.github.com/repos/$($Script:UpstreamRepo)"
 $Script:AppName = 'Paqet Tunnel'
 $Script:ExeName = 'PaqetTunnel.exe'
 $Script:InstallDir = "$env:ProgramFiles\Paqet Tunnel"
@@ -66,14 +69,15 @@ function Confirm($prompt) {
 }
 
 function Download-File($url, $outFile) {
-    # Use curl.exe (built into Windows 10+) as primary — it handles GitHub/TLS reliably
-    # Falls back to Invoke-WebRequest if curl.exe is unavailable
+    # Use curl.exe (built into Windows 10+) — handles GitHub/TLS reliably
     $curlExe = "$env:SystemRoot\System32\curl.exe"
     if (Test-Path $curlExe) {
         $dir = Split-Path $outFile -Parent
         if ($dir -and -not (Test-Path $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
-        & $curlExe -fsSL --retry 3 --retry-delay 2 -o $outFile $url 2>&1
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $outFile)) { return $true }
+        $oldEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        & $curlExe -fSL --retry 3 --retry-delay 2 -o $outFile $url 2>$null
+        $ec = $LASTEXITCODE; $ErrorActionPreference = $oldEAP
+        if ($ec -eq 0 -and (Test-Path $outFile)) { return $true }
     }
     try {
         Invoke-WebRequest -Uri $url -OutFile $outFile -UseBasicParsing -ErrorAction Stop
@@ -87,8 +91,16 @@ function Download-File($url, $outFile) {
 function Download-String($url) {
     $curlExe = "$env:SystemRoot\System32\curl.exe"
     if (Test-Path $curlExe) {
-        $result = & $curlExe -fsSL --retry 3 --retry-delay 2 $url 2>&1
-        if ($LASTEXITCODE -eq 0) { return ($result -join "`n") }
+        $tmpFile = "$env:TEMP\dl-$([guid]::NewGuid().ToString('N').Substring(0,8)).tmp"
+        $oldEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        & $curlExe -fSL --retry 3 --retry-delay 2 -o $tmpFile $url 2>$null
+        $ec = $LASTEXITCODE; $ErrorActionPreference = $oldEAP
+        if ($ec -eq 0 -and (Test-Path $tmpFile)) {
+            $content = Get-Content $tmpFile -Raw
+            Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue
+            return $content
+        }
+        Remove-Item $tmpFile -Force -ErrorAction SilentlyContinue
     }
     try {
         return (Invoke-WebRequest -Uri $url -UseBasicParsing -ErrorAction Stop).Content
@@ -176,6 +188,45 @@ function Require-Admin {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# Network Detection
+# ═══════════════════════════════════════════════════════════════════
+
+function Detect-Network {
+    $result = @{Interface=''; IP=''; RouterMAC=''; GUID=''; Gateway=''}
+
+    try {
+        # Get default route interface
+        $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($route) {
+            $idx = $route.InterfaceIndex
+            $result.Gateway = $route.NextHop
+
+            $adapter = Get-NetAdapter -InterfaceIndex $idx -ErrorAction SilentlyContinue
+            if ($adapter) {
+                $result.Interface = $adapter.Name
+                $guidRaw = $adapter.InterfaceGuid
+                if ($guidRaw) { $result.GUID = "\Device\NPF_$guidRaw" }
+            }
+
+            $ipAddr = Get-NetIPAddress -InterfaceIndex $idx -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($ipAddr) { $result.IP = $ipAddr.IPAddress }
+
+            # Get gateway MAC from ARP table
+            if ($result.Gateway) {
+                # Ping gateway to ensure ARP entry exists
+                ping -n 1 -w 500 $result.Gateway 2>$null | Out-Null
+                $neighbor = Get-NetNeighbor -IPAddress $result.Gateway -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($neighbor -and $neighbor.LinkLayerAddress) {
+                    $result.RouterMAC = ($neighbor.LinkLayerAddress -replace '-',':').ToLower()
+                }
+            }
+        }
+    } catch {}
+
+    return $result
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # Dependency Installation
 # ═══════════════════════════════════════════════════════════════════
 
@@ -226,9 +277,62 @@ function Install-Dep($name, $testCmd, $wingetId, $fallbackUrl, $fallbackArgs) {
 }
 
 function Ensure-Git {
-    Install-Dep 'Git' 'git' 'Git.Git' `
-        'https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe' `
-        '/VERYSILENT /NORESTART'
+    if (Has-Command 'git') { OK "Git already installed"; return $true }
+    # Check common paths
+    foreach ($p in @("$env:ProgramFiles\Git\cmd", "${env:ProgramFiles(x86)}\Git\cmd", "$env:ProgramFiles\Git\mingw64\bin")) {
+        if (Test-Path "$p\git.exe") {
+            if ($env:PATH -notlike "*$p*") { $env:PATH = "$p;$env:PATH" }
+            if (Has-Command 'git') { OK "Git found at $p"; return $true }
+        }
+    }
+
+    Step "Installing Git..."
+
+    # Try winget first
+    if (Has-Command 'winget') {
+        try {
+            & winget install --id Git.Git --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
+            $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+                        [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+            if (Has-Command 'git') { OK "Git installed via winget"; return $true }
+        } catch {}
+    }
+
+    # Fallback: use MinGit (portable, no installer needed — fast and reliable)
+    Step "Downloading MinGit..."
+    $arch = if ((Get-Arch) -eq 'arm64') { 'arm64' } else { '64-bit' }
+    $minGitUrl = $null
+    try {
+        $json = Download-String 'https://api.github.com/repos/git-for-windows/git/releases/latest'
+        if ($json) {
+            $rel = $json | ConvertFrom-Json
+            $asset = $rel.assets | Where-Object { $_.name -match "MinGit-.*-$arch\.zip$" -and $_.name -notmatch 'busybox' } | Select-Object -First 1
+            if ($asset) { $minGitUrl = $asset.browser_download_url }
+        }
+    } catch {}
+    if (-not $minGitUrl) { $minGitUrl = "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/MinGit-2.47.1-64-bit.zip" }
+
+    $dl = "$env:TEMP\mingit.zip"
+    if (-not (Download-File $minGitUrl $dl)) { Err "Git download failed"; return $false }
+
+    $gitDir = "$env:ProgramFiles\Git"
+    Step "Extracting Git..."
+    Expand-Archive $dl -DestinationPath $gitDir -Force
+    Remove-Item $dl -Force -ErrorAction SilentlyContinue
+
+    # Add to PATH (current session + persistent)
+    $cmdDir = "$gitDir\cmd"
+    if (-not (Test-Path $cmdDir)) { $cmdDir = "$gitDir\mingw64\bin" }
+    if (Test-Path $cmdDir) {
+        $env:PATH = "$cmdDir;$env:PATH"
+        $machinePath = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine')
+        if ($machinePath -notlike "*$cmdDir*") {
+            [System.Environment]::SetEnvironmentVariable('PATH', "$cmdDir;$machinePath", 'Machine')
+        }
+    }
+    if (Has-Command 'git') { OK "Git installed (MinGit)"; return $true }
+    Err "Git installation failed"
+    return $false
 }
 
 function Ensure-Dotnet {
@@ -298,7 +402,7 @@ function Ensure-Go {
         } catch {}
     }
 
-    # Fallback: detect latest Go version from go.dev and download MSI
+    # Fallback: detect latest Go version from go.dev and download zip (works in more regions than MSI)
     Step "Installing Go..."
     $latest = 'go1.25.0'
     try {
@@ -309,15 +413,46 @@ function Ensure-Go {
             if ($ver) { $latest = $ver }
         }
     } catch {}
+
+    # Try MSI first, then zip as fallback
     $goUrl = "https://go.dev/dl/$latest.windows-$goArch.msi"
     Dim "Downloading $latest..."
     $dl = "$env:TEMP\go-setup.msi"
-    if (-not (Download-File $goUrl $dl)) { Err "Go download failed"; return $false }
-    Start-Process msiexec -ArgumentList "/i `"$dl`" /qn /norestart" -Wait
-    Remove-Item $dl -Force -ErrorAction SilentlyContinue
-    $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
-                [System.Environment]::GetEnvironmentVariable('PATH', 'User')
-    if (Has-Command 'go') {
+    $installed = $false
+
+    if (Download-File $goUrl $dl) {
+        Start-Process msiexec -ArgumentList "/i `"$dl`" /qn /norestart" -Wait
+        Remove-Item $dl -Force -ErrorAction SilentlyContinue
+        $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+                    [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+        if (Has-Command 'go') { $installed = $true }
+    }
+
+    # Fallback: use zip archive (bypasses dl.google.com issues)
+    if (-not $installed) {
+        Dim "MSI failed, trying zip archive..."
+        $goZipUrl = "https://go.dev/dl/$latest.windows-$goArch.zip"
+        $zipDl = "$env:TEMP\go.zip"
+        if (Download-File $goZipUrl $zipDl) {
+            $goRoot = "$env:SystemDrive\Go"
+            if (Test-Path $goRoot) { Remove-Item $goRoot -Recurse -Force -ErrorAction SilentlyContinue }
+            Step "Extracting Go..."
+            Expand-Archive $zipDl -DestinationPath "$env:SystemDrive\" -Force
+            Remove-Item $zipDl -Force -ErrorAction SilentlyContinue
+            $goBin = "$goRoot\bin"
+            if (Test-Path "$goBin\go.exe") {
+                $env:PATH = "$goBin;$env:PATH"
+                $machinePath = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine')
+                if ($machinePath -notlike "*$goBin*") {
+                    [System.Environment]::SetEnvironmentVariable('PATH', "$goBin;$machinePath", 'Machine')
+                }
+                $installed = $true
+            }
+        }
+        Remove-Item $zipDl -Force -ErrorAction SilentlyContinue
+    }
+
+    if ($installed -and (Has-Command 'go')) {
         $v = (& go version 2>$null) -replace 'go version go','' -replace ' .*',''
         OK "Go ($v)"
         return $true
@@ -346,9 +481,134 @@ function Ensure-InnoSetup {
     return $null
 }
 
+function Ensure-Npcap {
+    # Check if Npcap is installed
+    $npcapDll = "$env:SystemRoot\System32\Npcap\wpcap.dll"
+    if (Test-Path $npcapDll) { OK "Npcap already installed"; return $true }
+    # Also check WinPcap compatibility path
+    if (Test-Path "$env:SystemRoot\System32\wpcap.dll") { OK "WinPcap/Npcap found"; return $true }
+
+    Step "Installing Npcap (required for packet capture)..."
+    if (Has-Command 'winget') {
+        try {
+            & winget install --id Insecure.Npcap --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
+            if (Test-Path $npcapDll) { OK "Npcap installed via winget"; return $true }
+        } catch {}
+    }
+
+    # Fallback: download and install
+    $npcapUrl = 'https://npcap.com/dist/npcap-1.80.exe'
+    $dl = "$env:TEMP\npcap-setup.exe"
+    if (-not (Download-File $npcapUrl $dl)) { Err "Npcap download failed"; return $false }
+    Start-Process $dl -ArgumentList '/S /winpcap_mode=yes' -Wait
+    Remove-Item $dl -Force -ErrorAction SilentlyContinue
+    if (Test-Path $npcapDll) { OK "Npcap installed"; return $true }
+    # Check again with refreshed view
+    if (Test-Path "$env:SystemRoot\System32\wpcap.dll") { OK "Npcap installed"; return $true }
+    Warn "Npcap may need manual install from https://npcap.com"
+    return $true
+}
+
+function Ensure-MinGW {
+    if (Has-Command 'gcc') { OK "GCC (MinGW) found"; return $true }
+    # Check common MinGW paths
+    foreach ($p in @("$env:ProgramFiles\mingw64\bin", "C:\mingw64\bin", "C:\msys64\mingw64\bin")) {
+        if (Test-Path "$p\gcc.exe") {
+            $env:PATH = "$p;$env:PATH"
+            OK "GCC found at $p"
+            return $true
+        }
+    }
+
+    Step "Installing MinGW (GCC for CGO)..."
+    if (Has-Command 'winget') {
+        try {
+            & winget install --id MartinStorsjo.LLVM-MinGW --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
+            $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+                        [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+            if (Has-Command 'gcc') { OK "MinGW installed via winget"; return $true }
+        } catch {}
+    }
+
+    # Fallback: download MinGW-w64
+    Step "Downloading MinGW-w64..."
+    $mingwUrl = 'https://github.com/niXman/mingw-builds-binaries/releases/download/14.2.0-rt_v12-rev1/x86_64-14.2.0-release-posix-seh-ucrt-rt_v12-rev1.7z'
+    # Try simpler zip approach
+    $mingwZipUrl = 'https://github.com/brechtsanders/winlibs_mingw/releases/download/14.2.0posix-19.1.7-12.0.0-ucrt-r3/winlibs-x86_64-posix-seh-gcc-14.2.0-mingw-w64ucrt-12.0.0-r3.zip'
+    $dl = "$env:TEMP\mingw.zip"
+    if (-not (Download-File $mingwZipUrl $dl)) {
+        Warn "MinGW download failed. Install GCC manually."
+        return $false
+    }
+    Step "Extracting MinGW (this may take a few minutes)..."
+    Expand-Archive $dl -DestinationPath "C:\" -Force
+    Remove-Item $dl -Force -ErrorAction SilentlyContinue
+    # Find gcc.exe
+    $gccPath = Get-ChildItem "C:\mingw64\bin\gcc.exe" -ErrorAction SilentlyContinue
+    if (-not $gccPath) { $gccPath = Get-ChildItem "C:\mingw*\bin\gcc.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    if ($gccPath) {
+        $binDir = Split-Path $gccPath.FullName -Parent
+        $env:PATH = "$binDir;$env:PATH"
+        $machinePath = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine')
+        if ($machinePath -notlike "*$binDir*") {
+            [System.Environment]::SetEnvironmentVariable('PATH', "$binDir;$machinePath", 'Machine')
+        }
+        OK "MinGW installed"
+        return $true
+    }
+    Warn "MinGW extraction issue. Install GCC manually."
+    return $false
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # Build
 # ═══════════════════════════════════════════════════════════════════
+
+function Download-PaqetRelease {
+    Step "Fetching latest paqet release..."
+    $archName = if ((Get-Arch) -eq 'arm64') { 'arm64' } else { 'amd64' }
+    $releaseUrl = "$Script:UpstreamApiUrl/releases/latest"
+    $assetUrl = $null
+    $tag = ''
+    try {
+        $json = Download-String $releaseUrl
+        if ($json) {
+            $rel = $json | ConvertFrom-Json
+            $tag = $rel.tag_name
+            $asset = $rel.assets | Where-Object { $_.name -match "paqet-windows-$archName" -and $_.name -match '\.zip$' } | Select-Object -First 1
+            if ($asset) { $assetUrl = $asset.browser_download_url }
+        }
+    } catch {}
+
+    if (-not $assetUrl) {
+        Warn "Could not find paqet release for windows-$archName"
+        return $null
+    }
+    Dim "Release: $tag"
+
+    $pubDir = "$Script:SourceDir\publish"
+    New-Item -Path $pubDir -ItemType Directory -Force | Out-Null
+
+    $zipFile = "$env:TEMP\paqet-release.zip"
+    Step "Downloading paqet ($archName)..."
+    if (-not (Download-File $assetUrl $zipFile)) {
+        Warn "Download failed"
+        return $null
+    }
+    $extractDir = "$env:TEMP\paqet-rel"
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    Expand-Archive $zipFile -DestinationPath $extractDir -Force
+    $bin = Get-ChildItem $extractDir -Filter 'paqet_windows*' -Recurse | Select-Object -First 1
+    if ($bin) {
+        Copy-Item $bin.FullName "$pubDir\$Script:PaqetBin"
+        OK "paqet downloaded ($tag, $([math]::Round($bin.Length/1MB, 1)) MB)"
+    } else {
+        Warn "Binary not found in release archive"
+    }
+    Remove-Item $zipFile -Force -ErrorAction SilentlyContinue
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    return $(if ($bin) { "$pubDir\$Script:PaqetBin" } else { $null })
+}
 
 function Build-FromSource {
     $src = $Script:SourceDir
@@ -357,26 +617,55 @@ function Build-FromSource {
     if (Test-Path "$src\.git") {
         Step "Updating source..."
         Push-Location $src
-        & git pull --quiet 2>&1 | Out-Null
-        & git submodule update --init --recursive --quiet 2>&1 | Out-Null
+        $oldEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        & git pull --quiet 2>$null
+        & git submodule update --init --recursive --quiet 2>$null
+        $ErrorActionPreference = $oldEAP
         Pop-Location
     } else {
         Step "Cloning repository..."
-        & git clone --recursive $Script:RepoUrl $src 2>&1 | Out-Null
+        $oldEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        & git clone --recursive $Script:RepoUrl $src 2>$null
+        $ErrorActionPreference = $oldEAP
     }
     OK "Source ready"
 
-    # Build paqet (Go)
-    Step "Building paqet..."
-    Push-Location "$src\paqet"
-    $env:CGO_ENABLED = '0'
-    $env:GOOS = 'windows'
-    $goArch = if ((Get-Arch) -eq 'arm64') { 'arm64' } else { 'amd64' }
-    $env:GOARCH = $goArch
-    & go build -trimpath -ldflags='-s -w' -o "$src\publish\$Script:PaqetBin" ./cmd/paqet 2>&1
-    if ($LASTEXITCODE -ne 0) { Pop-Location; Err "paqet build failed"; return $false }
-    Pop-Location
-    OK "paqet built"
+    # Get paqet binary — build or download
+    $pubDir = "$src\publish"
+    New-Item -Path $pubDir -ItemType Directory -Force | Out-Null
+    $paqetBuilt = $false
+
+    if ($Build -and (Has-Command 'go')) {
+        Step "Building paqet from source..."
+        Push-Location "$src\paqet"
+        $env:CGO_ENABLED = '1'
+        $env:GOOS = 'windows'
+        $goArch = if ((Get-Arch) -eq 'arm64') { 'arm64' } else { 'amd64' }
+        $env:GOARCH = $goArch
+        $oldEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        & go build -trimpath -ldflags='-s -w' -o "$pubDir\$Script:PaqetBin" ./cmd/main.go 2>&1
+        $buildResult = $LASTEXITCODE
+        $ErrorActionPreference = $oldEAP
+        Pop-Location
+        if ($buildResult -eq 0 -and (Test-Path "$pubDir\$Script:PaqetBin")) {
+            OK "paqet built from source"
+            $paqetBuilt = $true
+        } else {
+            Warn "paqet local build failed (CGO/pcap issue), falling back to download"
+        }
+    }
+
+    if (-not $paqetBuilt) {
+        $result = Download-PaqetRelease
+        if ($result -and (Test-Path "$pubDir\$Script:PaqetBin")) {
+            $paqetBuilt = $true
+        }
+    }
+
+    if (-not $paqetBuilt) {
+        Err "paqet binary could not be built or downloaded"
+        return $false
+    }
 
     # Build PaqetTunnel (.NET)
     Step "Building PaqetTunnel..."
@@ -453,12 +742,17 @@ function Do-Install {
     Step "Installing $Script:AppName$(if($ServerMode){' (Server)'}else{' (Client)'})..."
     WL ""
 
-    # Check and install dependencies (doesn't need admin)
+    # Check and install dependencies
     Step "Checking dependencies..."
     WL ""
     if (-not (Ensure-Git))    { Err "Git is required"; return }
     if (-not (Ensure-Dotnet)) { Err ".NET 8 SDK is required"; return }
-    if (-not (Ensure-Go))     { Err "Go is required"; return }
+    # Go + MinGW + Npcap are optional (paqet can be downloaded pre-built)
+    $hasGo = Ensure-Go
+    if ($hasGo) {
+        Ensure-MinGW | Out-Null
+        Ensure-Npcap | Out-Null
+    }
     WL ""
 
     # Build from source (doesn't need admin)
@@ -659,6 +953,22 @@ function Do-ServerInstall {
         $r = Read-Host
         if ($r) { $r } else { "0.0.0.0:8443" }
     }
+    $port = ($serverAddr -split ':')[-1]
+
+    # Auto-detect network
+    $net = Detect-Network
+    $ifaceName = if ($Iface) { $Iface } else { $net.Interface }
+    $localIP = $net.IP
+    $routerMAC = $net.RouterMAC
+    $guid = $net.GUID
+
+    if (-not $ifaceName) { $ifaceName = "Ethernet" }
+    if (-not $localIP) { $localIP = "0.0.0.0" }
+    if (-not $routerMAC) { $routerMAC = "00:00:00:00:00:00" }
+
+    Dim "Interface: $ifaceName"
+    Dim "Local IP:  $localIP"
+    Dim "Router MAC: $routerMAC"
 
     # Create config
     $cfgDir = "$Script:DataDir\config"
@@ -667,9 +977,19 @@ function Do-ServerInstall {
 role: "server"
 log:
   level: "info"
-server:
-  addr: "$serverAddr"
-  key: "$secret"
+listen:
+  addr: ":$port"
+network:
+  interface: "$ifaceName"
+  guid: "$guid"
+  ipv4:
+    addr: "${localIP}:$port"
+    router_mac: "$routerMAC"
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    key: "$secret"
 "@
     $serverCfg | Out-File "$cfgDir\server.yaml" -Encoding UTF8
     OK "Server config created"
@@ -693,10 +1013,10 @@ server:
     OK "Server service started"
 
     # Firewall
-    $port = ($serverAddr -split ':')[-1]
     & netsh advfirewall firewall delete rule name="Paqet Server" 2>&1 | Out-Null
     & netsh advfirewall firewall add rule name="Paqet Server" dir=in action=allow protocol=udp localport=$port 2>&1 | Out-Null
-    OK "Firewall rule added (UDP $port)"
+    & netsh advfirewall firewall add rule name="Paqet Server TCP" dir=in action=allow protocol=tcp localport=$port 2>&1 | Out-Null
+    OK "Firewall rules added (TCP+UDP $port)"
 
     WL ""
     Line
@@ -713,9 +1033,24 @@ function Do-Configure {
     New-Item -Path $cfgDir -ItemType Directory -Force | Out-Null
 
     $serverAddr = if ($Addr) { $Addr } else { "your-server-ip:8443" }
-    $serverKey = if ($Key) { $Key } else { "" }
-    $iface = if ($Iface) { $Iface } else { "Ethernet" }
+    $serverKey = if ($Key) { $Key } else { "your-key-here" }
     $socks = "127.0.0.1:$SocksPort"
+
+    # Auto-detect network
+    $net = Detect-Network
+    $ifaceName = if ($Iface) { $Iface } else { $net.Interface }
+    $localIP = $net.IP
+    $routerMAC = $net.RouterMAC
+    $guid = $net.GUID
+
+    if (-not $ifaceName) { $ifaceName = "Ethernet" }
+    if (-not $localIP) { $localIP = "0.0.0.0" }
+    if (-not $routerMAC) { $routerMAC = "00:00:00:00:00:00" }
+
+    Dim "Interface: $ifaceName"
+    Dim "Local IP:  $localIP"
+    Dim "Router MAC: $routerMAC"
+    if ($guid) { Dim "GUID: $guid" }
 
     $cfg = @"
 role: "client"
@@ -723,11 +1058,19 @@ log:
   level: "info"
 socks5:
   - listen: "$socks"
-network:
-  interface: "$iface"
 server:
   addr: "$serverAddr"
-  key: "$serverKey"
+network:
+  interface: "$ifaceName"
+  guid: "$guid"
+  ipv4:
+    addr: "${localIP}:0"
+    router_mac: "$routerMAC"
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    key: "$serverKey"
 "@
     $cfg | Out-File "$cfgDir\client.yaml" -Encoding UTF8
     OK "Client config saved"
@@ -771,6 +1114,7 @@ function Show-Help {
     WL "    -Key <secret>       Server key" DarkGray
     WL "    -Iface <name>       Network interface" DarkGray
     WL "    -SocksPort <port>   SOCKS5 port (default: 10800)" DarkGray
+    WL "    -Build              Build from source (default: download release)" DarkGray
     WL "    -Server             Server mode" DarkGray
     WL "    -Force              Force operation" DarkGray
     WL "    -y                  Skip confirmations" DarkGray
@@ -833,7 +1177,7 @@ function Show-Interactive {
 # Entry Point
 # ═══════════════════════════════════════════════════════════════════
 
-switch ($Command.ToLower()) {
+switch ($(if ($Command) { $Command.ToLower() } else { '' })) {
     'install'   { if ($Server) { Do-Install -ServerMode } else { Do-Install } }
     'update'    { Do-Update }
     'uninstall' { Do-Uninstall }

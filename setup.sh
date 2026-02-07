@@ -7,6 +7,8 @@
 # Options:
 #   --addr <ip:port>   Bind address (default: 0.0.0.0:8443)
 #   --key <secret>     Pre-shared key (auto-generated if omitted)
+#   --iface <name>     Network interface (auto-detected if omitted)
+#   --build            Build from source instead of downloading release
 #   --yes              Skip confirmations
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -14,6 +16,7 @@ set -euo pipefail
 VERSION="1.0.0"
 REPO="mewoZa/PaqetTunnel"
 REPO_URL="https://github.com/$REPO.git"
+UPSTREAM_REPO="hanselime/paqet"
 INSTALL_DIR="/opt/paqet"
 CONFIG_DIR="/etc/paqet"
 SERVICE_NAME="paqet"
@@ -78,20 +81,20 @@ ensure_packages() {
         ubuntu|debian|pop)
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
-            apt-get install -y -qq git curl wget >/dev/null 2>&1
+            apt-get install -y -qq git curl wget build-essential libpcap-dev >/dev/null 2>&1
             ;;
         centos|rhel|rocky|alma|fedora)
             if has_cmd dnf; then
-                dnf install -y -q git curl wget >/dev/null 2>&1
+                dnf install -y -q git curl wget gcc make libpcap-devel >/dev/null 2>&1
             else
-                yum install -y -q git curl wget >/dev/null 2>&1
+                yum install -y -q git curl wget gcc make libpcap-devel >/dev/null 2>&1
             fi
             ;;
         arch|manjaro)
-            pacman -Sy --noconfirm git curl wget >/dev/null 2>&1
+            pacman -Sy --noconfirm git curl wget base-devel libpcap >/dev/null 2>&1
             ;;
         *)
-            warn "Unknown distro ($os). Ensure git, curl, wget are installed."
+            warn "Unknown distro ($os). Ensure git, curl, wget, gcc, libpcap-dev are installed."
             ;;
     esac
     ok "System packages ready"
@@ -100,7 +103,7 @@ ensure_packages() {
 ensure_go() {
     if has_cmd go; then
         local ver
-        ver=$(go version 2>/dev/null | grep -oP 'go\K[0-9.]+')
+        ver=$(go version 2>/dev/null | sed 's/.*go\([0-9.]*\).*/\1/')
         ok "Go $ver"
         return
     fi
@@ -108,7 +111,15 @@ ensure_go() {
     step "Installing Go..."
     local arch
     arch=$(detect_arch)
+
+    # Detect latest stable Go version
     local go_ver="1.25.0"
+    local latest
+    latest=$(curl -fsSL 'https://go.dev/dl/?mode=json' 2>/dev/null | sed -n 's/.*"version":"\(go[^"]*\)".*/\1/p' | head -1)
+    if [[ -n "$latest" ]]; then
+        go_ver="${latest#go}"
+    fi
+
     local url="https://go.dev/dl/go${go_ver}.linux-${arch}.tar.gz"
 
     curl -fsSL "$url" -o /tmp/go.tar.gz
@@ -120,7 +131,7 @@ ensure_go() {
     echo 'export PATH=/usr/local/go/bin:$PATH' > /etc/profile.d/go.sh
 
     if has_cmd go; then
-        ok "Go $(go version | grep -oP 'go\K[0-9.]+') installed"
+        ok "Go $(go version | sed 's/.*go\([0-9.]*\).*/\1/') installed"
     else
         err "Go installation failed"
         exit 1
@@ -128,6 +139,54 @@ ensure_go() {
 }
 
 # ── Build ──────────────────────────────────────────────────────
+
+download_paqet() {
+    step "Fetching latest release info..."
+    local arch
+    arch=$(detect_arch)
+    local api_url="https://api.github.com/repos/$UPSTREAM_REPO/releases/latest"
+    local tag="" dl_url=""
+
+    # Get latest release tag and asset URL
+    local json
+    json=$(curl -fsSL "$api_url" 2>/dev/null || true)
+    if [[ -n "$json" ]]; then
+        tag=$(echo "$json" | sed -n 's/.*"tag_name":\s*"\([^"]*\)".*/\1/p' | head -1)
+        dl_url=$(echo "$json" | sed -n "s|.*\"browser_download_url\":\s*\"\([^\"]*paqet-linux-${arch}[^\"]*\.tar\.gz\)\".*|\1|p" | head -1)
+    fi
+
+    if [[ -z "$dl_url" ]]; then
+        warn "Could not find release for linux-$arch"
+        return 1
+    fi
+
+    dim "Release: $tag"
+    step "Downloading paqet ($arch)..."
+    local tmp="/tmp/paqet-release.tar.gz"
+    curl -fsSL "$dl_url" -o "$tmp"
+    if [[ ! -f "$tmp" ]]; then
+        err "Download failed"
+        return 1
+    fi
+
+    # Extract binary
+    local tmpdir="/tmp/paqet-extract"
+    rm -rf "$tmpdir"
+    mkdir -p "$tmpdir"
+    tar -xzf "$tmp" -C "$tmpdir"
+    rm -f "$tmp"
+
+    local bin
+    bin=$(find "$tmpdir" -name "paqet_linux_*" -type f | head -1)
+    if [[ -z "$bin" ]]; then
+        err "Binary not found in release archive"
+        rm -rf "$tmpdir"
+        return 1
+    fi
+
+    BUILT_BIN="$bin"
+    ok "paqet downloaded ($tag, $(du -h "$bin" | cut -f1))"
+}
 
 build_paqet() {
     local src="/tmp/paqet-build"
@@ -141,12 +200,12 @@ build_paqet() {
         git clone --recursive "$REPO_URL" "$src" 2>/dev/null
     fi
 
-    step "Building paqet..."
+    step "Building paqet (this may take a minute)..."
     cd "$src/paqet"
     local arch
     arch=$(detect_arch)
-    CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
-        go build -trimpath -ldflags='-s -w' -o "$src/paqet-bin" ./cmd/paqet 2>&1
+    CGO_ENABLED=1 GOOS=linux GOARCH="$arch" \
+        go build -trimpath -ldflags='-s -w' -o "$src/paqet-bin" ./cmd/main.go 2>&1
 
     if [[ ! -f "$src/paqet-bin" ]]; then
         err "Build failed"
@@ -156,6 +215,85 @@ build_paqet() {
     BUILT_BIN="$src/paqet-bin"
 }
 
+get_paqet() {
+    BUILT_BIN=""
+    if [[ "${BUILD:-0}" == "1" ]]; then
+        step "Mode: build from source"
+        ensure_go
+        echo ""
+        build_paqet
+    else
+        step "Mode: download pre-built release"
+        if ! download_paqet; then
+            warn "Download failed, falling back to build from source..."
+            ensure_go
+            echo ""
+            build_paqet
+        fi
+    fi
+}
+
+# ── Network Detection ──────────────────────────────────────────
+
+detect_interface() {
+    # Auto-detect default network interface
+    local iface
+    iface=$(ip -o -4 route show default 2>/dev/null | awk '{print $5}' | head -1)
+    if [[ -z "$iface" ]]; then
+        iface=$(ip link show 2>/dev/null | awk -F: '/^[0-9]+:/{if($2!~"lo") print $2}' | tr -d ' ' | head -1)
+    fi
+    echo "$iface"
+}
+
+detect_local_ip() {
+    local iface="$1"
+    ip -4 addr show "$iface" 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -1
+}
+
+detect_public_ip() {
+    curl -fsSL --connect-timeout 5 https://ifconfig.me 2>/dev/null || \
+    curl -fsSL --connect-timeout 5 https://api.ipify.org 2>/dev/null || \
+    detect_local_ip "$1"
+}
+
+detect_gateway_ip() {
+    ip -o -4 route show default 2>/dev/null | awk '{print $3}' | head -1
+}
+
+detect_router_mac() {
+    local gw_ip
+    gw_ip=$(detect_gateway_ip)
+    if [[ -n "$gw_ip" ]]; then
+        # Ping gateway to ensure ARP entry exists
+        ping -c 1 -W 1 "$gw_ip" >/dev/null 2>&1 || true
+        ip neigh show "$gw_ip" 2>/dev/null | awk '{print $5}' | head -1
+    fi
+}
+
+setup_iptables() {
+    local port="$1"
+    step "Configuring iptables for raw packet handling (port $port)..."
+
+    # Remove existing rules first (ignore errors)
+    iptables -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
+    iptables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
+    iptables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
+
+    # Add rules
+    iptables -t raw -A PREROUTING -p tcp --dport "$port" -j NOTRACK
+    iptables -t raw -A OUTPUT -p tcp --sport "$port" -j NOTRACK
+    iptables -t mangle -A OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP
+
+    ok "iptables rules configured"
+
+    # Persist iptables rules if possible
+    if has_cmd netfilter-persistent; then
+        netfilter-persistent save >/dev/null 2>&1 || true
+    elif has_cmd iptables-save; then
+        iptables-save > /etc/iptables.rules 2>/dev/null || true
+    fi
+}
+
 # ── Commands ───────────────────────────────────────────────────
 
 do_install() {
@@ -163,11 +301,10 @@ do_install() {
     [[ $EUID -ne 0 ]] && { err "Run as root: sudo $0 install"; exit 1; }
 
     ensure_packages
-    ensure_go
     echo ""
 
     BUILT_BIN=""
-    build_paqet
+    get_paqet
     echo ""
 
     # Install binary
@@ -189,18 +326,63 @@ do_install() {
 
     # Server address
     local addr="${ADDR:-0.0.0.0:8443}"
+    local port="${addr##*:}"
+
+    # Auto-detect network
+    local iface="${IFACE:-}"
+    if [[ -z "$iface" ]]; then
+        iface=$(detect_interface)
+    fi
+    if [[ -z "$iface" ]]; then
+        err "Could not detect network interface. Use --iface <name>"
+        exit 1
+    fi
+
+    local local_ip
+    local_ip=$(detect_local_ip "$iface")
+    if [[ -z "$local_ip" ]]; then
+        err "Could not detect IP for interface $iface"
+        exit 1
+    fi
+
+    local public_ip
+    public_ip=$(detect_public_ip "$iface")
+
+    local router_mac
+    router_mac=$(detect_router_mac)
+    if [[ -z "$router_mac" ]]; then
+        err "Could not detect router MAC address. Check your network."
+        exit 1
+    fi
+
+    dim "Interface: $iface"
+    dim "Local IP:  $local_ip"
+    dim "Public IP: $public_ip"
+    dim "Router MAC: $router_mac"
 
     # Write config
     cat > "$CONFIG_DIR/server.yaml" <<EOF
 role: "server"
 log:
   level: "info"
-server:
-  addr: "$addr"
-  key: "$secret"
+listen:
+  addr: ":$port"
+network:
+  interface: "$iface"
+  ipv4:
+    addr: "$local_ip:$port"
+    router_mac: "$router_mac"
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    key: "$secret"
 EOF
     chmod 600 "$CONFIG_DIR/server.yaml"
     ok "Config created"
+
+    # iptables rules for raw packet handling
+    setup_iptables "$port"
 
     # Systemd service
     step "Creating systemd service..."
@@ -227,15 +409,16 @@ EOF
     ok "Service started"
 
     # Firewall
-    local port="${addr##*:}"
     step "Configuring firewall (UDP $port)..."
     if has_cmd ufw; then
-        ufw allow "$port/udp" >/dev/null 2>&1 && ok "UFW rule added"
+        ufw allow "$port/udp" >/dev/null 2>&1 && ok "UFW rule added (UDP $port)"
+        ufw allow "$port/tcp" >/dev/null 2>&1 && ok "UFW rule added (TCP $port)"
     elif has_cmd firewall-cmd; then
         firewall-cmd --permanent --add-port="$port/udp" >/dev/null 2>&1
-        firewall-cmd --reload >/dev/null 2>&1 && ok "firewalld rule added"
+        firewall-cmd --permanent --add-port="$port/tcp" >/dev/null 2>&1
+        firewall-cmd --reload >/dev/null 2>&1 && ok "firewalld rules added"
     else
-        warn "No firewall detected. Ensure UDP $port is open."
+        warn "No firewall detected. Ensure TCP+UDP $port is open."
     fi
 
     # Save version
@@ -245,12 +428,17 @@ EOF
     line
     ok "Server running!"
     echo ""
-    echo -e "  ${B}Client configuration:${W}"
-    dim "Server:  $addr"
-    dim "Key:     $secret"
+    echo -e "  ${B}Server details:${W}"
+    dim "Interface: $iface"
+    dim "Listen:    :$port"
+    dim "Public IP: $public_ip"
+    dim "Key:       $secret"
     echo ""
     dim "Service: systemctl status paqet"
     dim "Logs:    journalctl -u paqet -f"
+    echo ""
+    echo -e "  ${B}Windows client one-liner:${W}"
+    echo -e "  ${C}irm https://raw.githubusercontent.com/$REPO/master/setup.ps1 -o \$env:TEMP\\pt.ps1; & \$env:TEMP\\pt.ps1 install -Addr ${public_ip}:${port} -Key \"${secret}\" -y${W}"
     echo ""
 }
 
@@ -258,11 +446,8 @@ do_update() {
     banner
     [[ $EUID -ne 0 ]] && { err "Run as root: sudo $0 update"; exit 1; }
 
-    ensure_go
-    echo ""
-
     BUILT_BIN=""
-    build_paqet
+    get_paqet
     echo ""
 
     step "Updating..."
@@ -282,6 +467,13 @@ do_uninstall() {
 
     confirm "Uninstall paqet server?" || exit 0
 
+    # Get port from config before removing
+    local port=""
+    if [[ -f "$CONFIG_DIR/server.yaml" ]]; then
+        port=$(sed -n 's/.*addr:.*:\([0-9]*\)".*/\1/p' "$CONFIG_DIR/server.yaml" | head -1)
+        [[ -z "$port" ]] && port=$(sed -n 's/.*addr:.*:\([0-9]*\)/\1/p' "$CONFIG_DIR/server.yaml" | head -1)
+    fi
+
     step "Stopping service..."
     systemctl stop paqet 2>/dev/null || true
     systemctl disable paqet 2>/dev/null || true
@@ -290,6 +482,15 @@ do_uninstall() {
 
     step "Removing files..."
     rm -rf "$INSTALL_DIR" /usr/local/bin/paqet /tmp/paqet-build
+
+    # Clean iptables rules
+    if [[ -n "$port" ]]; then
+        step "Removing iptables rules..."
+        iptables -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
+        iptables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
+        iptables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
+        ok "iptables rules removed"
+    fi
 
     if confirm "Remove configuration ($CONFIG_DIR)?"; then
         rm -rf "$CONFIG_DIR"
@@ -320,9 +521,13 @@ do_status() {
     fi
 
     if [[ -f "$CONFIG_DIR/server.yaml" ]]; then
-        local addr
-        addr=$(grep -oP 'addr:\s*"\K[^"]+' "$CONFIG_DIR/server.yaml" 2>/dev/null || echo "—")
-        echo -e "  Listen    $addr"
+        local listen_addr key iface
+        listen_addr=$(sed -n '/^listen:/,/^[^ ]/{ s/.*addr:.*"\(.*\)".*/\1/p; }' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+        key=$(sed -n '/kcp:/,/^[^ ]/{ s/.*key:.*"\(.*\)".*/\1/p; }' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+        iface=$(sed -n 's/.*interface:.*"\(.*\)".*/\1/p' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+        [[ -n "$listen_addr" ]] && echo -e "  Listen    $listen_addr"
+        [[ -n "$iface" ]] && echo -e "  Interface $iface"
+        [[ -n "$key" ]] && echo -e "  Key       ${D}${key:0:8}...${W}"
     fi
     echo ""
 }
@@ -342,6 +547,8 @@ show_help() {
     echo -e "  ${B}Options:${W}"
     dim "--addr <ip:port>   Bind address (default: 0.0.0.0:8443)"
     dim "--key <secret>     Pre-shared key (auto-generated)"
+    dim "--iface <name>     Network interface (auto-detected)"
+    dim "--build            Build from source (default: download release)"
     dim "--yes              Skip confirmations"
     echo ""
     echo -e "  ${B}One-liner:${W}"
@@ -406,13 +613,15 @@ show_menu() {
 # ── Parse Args ─────────────────────────────────────────────────
 
 COMMAND="${1:-}"
-ADDR="" KEY="" YES=0
+ADDR="" KEY="" IFACE="" YES=0 BUILD=0
 shift 2>/dev/null || true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --addr) ADDR="$2"; shift 2 ;;
         --key)  KEY="$2"; shift 2 ;;
+        --iface) IFACE="$2"; shift 2 ;;
+        --build) BUILD=1; shift ;;
         --yes|-y) YES=1; shift ;;
         *) shift ;;
     esac
