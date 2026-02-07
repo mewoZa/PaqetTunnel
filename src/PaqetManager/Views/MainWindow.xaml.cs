@@ -8,7 +8,7 @@ namespace PaqetManager.Views;
 
 public partial class MainWindow : Window
 {
-    private DateTime _suppressHideUntil = DateTime.MinValue;
+    private bool _autoHideEnabled;
 
     public MainWindow()
     {
@@ -26,8 +26,6 @@ public partial class MainWindow : Window
     {
         if (msg == (int)NativeMethods.WM_PAQET_SHOW)
         {
-            _suppressHideUntil = DateTime.UtcNow.AddSeconds(2);
-            // Use App.ShowWindow() which handles positioning near tray
             if (Application.Current is App app)
                 app.ShowWindow();
             handled = true;
@@ -35,10 +33,14 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    /// <summary>Suppress auto-hide for a short period (e.g. after tray click).</summary>
-    public void SuppressAutoHide(int seconds = 2)
+    /// <summary>
+    /// When true, window auto-hides on deactivation (tray popup mode).
+    /// When false, window stays visible like a normal window.
+    /// </summary>
+    public bool AutoHideEnabled
     {
-        _suppressHideUntil = DateTime.UtcNow.AddSeconds(seconds);
+        get => _autoHideEnabled;
+        set => _autoHideEnabled = value;
     }
 
     // ── Title bar drag ────────────────────────────────────────────
@@ -51,25 +53,25 @@ public partial class MainWindow : Window
     // ── Window chrome buttons ─────────────────────────────────────
     private void Minimize_Click(object sender, RoutedEventArgs e)
     {
-        Hide(); // Minimize to tray, not taskbar
+        Hide();
     }
 
     private void Close_Click(object sender, RoutedEventArgs e)
     {
-        Hide(); // Close to tray
+        Hide();
     }
 
-    // ── Auto-hide when window loses focus ─────────────────────────
+    // ── Auto-hide when window loses focus (only in tray popup mode) ──
     private void Window_Deactivated(object sender, EventArgs e)
     {
-        if (DateTime.UtcNow < _suppressHideUntil) return;
+        if (!_autoHideEnabled) return;
 
         var timer = new System.Timers.Timer(400) { AutoReset = false };
         timer.Elapsed += (s, ev) =>
         {
             Dispatcher.Invoke(() =>
             {
-                if (!IsActive && IsVisible && DateTime.UtcNow >= _suppressHideUntil)
+                if (!IsActive && IsVisible)
                     Hide();
             });
             timer.Dispose();

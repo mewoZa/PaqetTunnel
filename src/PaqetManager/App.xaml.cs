@@ -108,7 +108,7 @@ public partial class App : Application
         };
 
         var contextMenu = new Forms.ContextMenuStrip();
-        contextMenu.Items.Add("Show", null, (s, e) => ShowWindow());
+        contextMenu.Items.Add("Show", null, (s, e) => ShowWindowAsTrayPopup());
         contextMenu.Items.Add(new Forms.ToolStripSeparator());
         contextMenu.Items.Add("Quit", null, (s, e) => QuitApp());
         _trayIcon.ContextMenuStrip = contextMenu;
@@ -177,15 +177,25 @@ public partial class App : Application
         }
         else
         {
-            ShowWindow();
+            ShowWindowAsTrayPopup();
         }
     }
 
     public void ShowWindow()
     {
         if (_mainWindow == null) return;
-        _mainWindow.SuppressAutoHide();
+        _mainWindow.AutoHideEnabled = false;
         PositionWindowNearTray();
+        _mainWindow.Show();
+        _mainWindow.Activate();
+    }
+
+    /// <summary>Show as tray popup (auto-hides on deactivate).</summary>
+    private void ShowWindowAsTrayPopup()
+    {
+        if (_mainWindow == null) return;
+        PositionWindowNearTray();
+        _mainWindow.AutoHideEnabled = true;
         _mainWindow.Show();
         _mainWindow.Activate();
     }
