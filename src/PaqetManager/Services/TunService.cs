@@ -224,8 +224,13 @@ public sealed class TunService
                 var zipPath = Path.Combine(AppPaths.BinDir, "tun2socks_latest.zip");
                 await File.WriteAllBytesAsync(zipPath, bytes);
 
-                System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, AppPaths.BinDir, overwriteFiles: true);
+                ZipFile.ExtractToDirectory(zipPath, AppPaths.BinDir, overwriteFiles: true);
                 File.Delete(zipPath);
+
+                // Zip contains tun2socks-windows-amd64.exe — rename to tun2socks.exe
+                var extractedName = Path.Combine(AppPaths.BinDir, "tun2socks-windows-amd64.exe");
+                if (File.Exists(extractedName) && !Tun2SocksExists())
+                    File.Move(extractedName, AppPaths.Tun2SocksPath);
 
                 if (!Tun2SocksExists())
                     return (false, "tun2socks binary not found after extraction.");

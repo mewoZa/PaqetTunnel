@@ -25,6 +25,8 @@ if not exist "publish\tun2socks.exe" (
     ) else (
         powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path 'publish\tun2socks.zip' -DestinationPath 'publish' -Force"
         del "publish\tun2socks.zip" 2>nul
+        REM The zip contains tun2socks-windows-amd64.exe — rename it
+        if exist "publish\tun2socks-windows-amd64.exe" ren "publish\tun2socks-windows-amd64.exe" tun2socks.exe
         if exist "publish\tun2socks.exe" (
             echo       OK: tun2socks.exe
         ) else (
