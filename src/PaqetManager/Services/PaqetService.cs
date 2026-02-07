@@ -67,16 +67,22 @@ public sealed class PaqetService
     /// <summary>Check if SOCKS5 port is accepting connections.</summary>
     public static bool IsPortListening(int port = SOCKS_PORT)
     {
+        Socket? socket = null;
         try
         {
-            using var client = new TcpClient();
-            var result = client.BeginConnect(IPAddress.Loopback, port, null, null);
-            var connected = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(500));
+            socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            // Linger with 0 timeout → sends RST on close, avoids TIME_WAIT buildup
+            socket.LingerState = new LingerOption(true, 0);
+            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            var ep = new IPEndPoint(IPAddress.Loopback, port);
+            var result = socket.BeginConnect(ep, null, null);
+            var connected = result.AsyncWaitHandle.WaitOne(500);
             if (connected)
             {
-                client.EndConnect(result);
-                Logger.Debug($"IsPortListening: port {port} OPEN");
-                return true;
+                socket.EndConnect(result);
+                var ok = socket.Connected;
+                Logger.Debug($"IsPortListening: port {port} {(ok ? "OPEN" : "connect failed")}");
+                return ok;
             }
             Logger.Debug($"IsPortListening: port {port} timeout (not listening)");
             return false;
@@ -85,6 +91,10 @@ public sealed class PaqetService
         {
             Logger.Debug($"IsPortListening: port {port} exception — {ex.Message}");
             return false;
+        }
+        finally
+        {
+            try { socket?.Close(); } catch { }
         }
     }
 
@@ -241,8 +251,38 @@ public sealed class PaqetService
 
         try
         {
-            Logger.Info($"Killing {AppPaths.BINARY_NAME}");
-            RunCommand("taskkill", $"/IM {AppPaths.BINARY_NAME} /F");
+            // Kill using Process API for reliability (taskkill can fail across sessions)
+            var binaryNameNoExt = Path.GetFileNameWithoutExtension(AppPaths.BINARY_NAME);
+            Logger.Info($"Killing processes named: {binaryNameNoExt}");
+            var processes = Process.GetProcessesByName(binaryNameNoExt);
+            Logger.Info($"Found {processes.Length} matching processes");
+
+            foreach (var proc in processes)
+            {
+                try
+                {
+                    Logger.Debug($"Killing PID {proc.Id}");
+                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(3000);
+                    Logger.Debug($"PID {proc.Id} killed: {proc.HasExited}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"Failed to kill PID {proc.Id}", ex);
+                }
+                finally
+                {
+                    proc.Dispose();
+                }
+            }
+
+            // Fallback: try taskkill if Process.Kill didn't work
+            if (IsRunning())
+            {
+                Logger.Warn("Process.Kill didn't work, trying taskkill...");
+                RunCommand("taskkill", $"/IM {AppPaths.BINARY_NAME} /F");
+            }
+
             for (int i = 0; i < 10; i++)
             {
                 Thread.Sleep(200);
