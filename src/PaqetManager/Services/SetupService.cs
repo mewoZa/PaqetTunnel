@@ -12,10 +12,12 @@ namespace PaqetManager.Services;
 public sealed class SetupService
 {
     private readonly PaqetService _paqetService;
+    private readonly TunService _tunService;
 
-    public SetupService(PaqetService paqetService)
+    public SetupService(PaqetService paqetService, TunService tunService)
     {
         _paqetService = paqetService;
+        _tunService = tunService;
     }
 
     /// <summary>Check if Npcap is installed (required for paqet raw packets).</summary>
@@ -128,6 +130,18 @@ public sealed class SetupService
         else
         {
             messages.AppendLine("Npcap: OK");
+        }
+
+        // Step 4: Download TUN binaries (tun2socks + wintun)
+        if (!_tunService.AllBinariesExist())
+        {
+            progress?.Report("Downloading TUN binaries...");
+            var (ok, msg) = await _tunService.DownloadBinariesAsync(progress);
+            messages.AppendLine(msg);
+        }
+        else
+        {
+            messages.AppendLine("TUN binaries: OK");
         }
 
         progress?.Report("Setup complete.");

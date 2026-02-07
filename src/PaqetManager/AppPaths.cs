@@ -15,6 +15,8 @@ namespace PaqetManager;
 public static class AppPaths
 {
     public const string BINARY_NAME = "paqet_windows_amd64.exe";
+    public const string TUN2SOCKS_NAME = "tun2socks.exe";
+    public const string WINTUN_DLL_NAME = "wintun.dll";
 
     /// <summary>Root data folder: %LOCALAPPDATA%\PaqetManager</summary>
     public static readonly string DataDir = Path.Combine(
@@ -26,8 +28,17 @@ public static class AppPaths
     /// <summary>Config folder for paqet YAML.</summary>
     public static readonly string ConfigDir = Path.Combine(DataDir, "config");
 
+    /// <summary>Logs folder for debug logs.</summary>
+    public static readonly string LogDir = Path.Combine(DataDir, "logs");
+
     /// <summary>Full path to the paqet binary.</summary>
     public static readonly string BinaryPath = Path.Combine(BinDir, BINARY_NAME);
+
+    /// <summary>Full path to tun2socks binary.</summary>
+    public static readonly string Tun2SocksPath = Path.Combine(BinDir, TUN2SOCKS_NAME);
+
+    /// <summary>Full path to wintun.dll.</summary>
+    public static readonly string WintunDllPath = Path.Combine(BinDir, WINTUN_DLL_NAME);
 
     /// <summary>Full path to the paqet client config.</summary>
     public static readonly string PaqetConfigPath = Path.Combine(ConfigDir, "client.yaml");

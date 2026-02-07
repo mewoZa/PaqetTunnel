@@ -3,8 +3,8 @@
 ; Builds: PaqetManagerSetup.exe
 ;
 ; Installs PaqetManager.exe to {autopf}\Paqet Manager
-; Creates data dirs at %LOCALAPPDATA%\PaqetManager\{bin,config}
-; Bundles paqet binary if present in publish\ folder
+; Creates data dirs at %LOCALAPPDATA%\PaqetManager\{bin,config,logs}
+; Bundles paqet binary, tun2socks, wintun if present in publish\ folder
 ; ──────────────────────────────────────────────────────────────
 
 #define MyAppName "Paqet Manager"
@@ -13,6 +13,8 @@
 #define MyAppURL "https://github.com/hanselime/paqet"
 #define MyAppExeName "PaqetManager.exe"
 #define PaqetBinary "paqet_windows_amd64.exe"
+#define Tun2Socks "tun2socks.exe"
+#define WintunDll "wintun.dll"
 
 [Setup]
 AppId={{B8F2A3C7-4D5E-6F7A-8B9C-0D1E2F3A4B5C}
@@ -35,7 +37,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
 UninstallDisplayIcon={app}\{#MyAppExeName}
 MinVersion=10.0
 
@@ -51,12 +53,16 @@ Name: "autostart"; Description: "Start automatically with Windows"; GroupDescrip
 Source: "..\publish\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 ; Bundle paqet binary if present (optional — app will auto-download if missing)
 Source: "..\publish\{#PaqetBinary}"; DestDir: "{localappdata}\PaqetManager\bin"; Flags: ignoreversion skipifsourcedoesntexist
+; TUN binaries (optional — app will auto-download if missing)
+Source: "..\publish\{#Tun2Socks}"; DestDir: "{localappdata}\PaqetManager\bin"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\publish\{#WintunDll}"; DestDir: "{localappdata}\PaqetManager\bin"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Dirs]
 ; Create data directories under %LOCALAPPDATA%\PaqetManager
 Name: "{localappdata}\PaqetManager"
 Name: "{localappdata}\PaqetManager\bin"
 Name: "{localappdata}\PaqetManager\config"
+Name: "{localappdata}\PaqetManager\logs"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -70,6 +76,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+; Kill tun2socks before uninstall (restore routes)
+Filename: "taskkill"; Parameters: "/IM {#Tun2Socks} /F"; Flags: runhidden; RunOnceId: "KillTun2Socks"
 ; Kill paqet tunnel process before uninstall
 Filename: "taskkill"; Parameters: "/IM {#PaqetBinary} /F"; Flags: runhidden; RunOnceId: "KillPaqet"
 ; Kill the manager app before uninstall
@@ -89,6 +97,7 @@ begin
   if CurStep = ssInstall then
   begin
     Exec('taskkill', '/IM ' + '{#MyAppExeName}' + ' /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec('taskkill', '/IM ' + '{#Tun2Socks}' + ' /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Exec('taskkill', '/IM ' + '{#PaqetBinary}' + ' /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Sleep(500);
   end;

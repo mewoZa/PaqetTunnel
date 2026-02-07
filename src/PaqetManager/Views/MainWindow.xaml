@@ -276,6 +276,22 @@
                                               IsChecked="{Binding DebugMode, Mode=OneWay}"
                                               Command="{Binding ToggleDebugModeCommand}" />
                             </Grid>
+
+                            <!-- Full System Tunnel -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Full System Tunnel" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Route all traffic through TUN adapter" 
+                                               FontSize="11" Foreground="{StaticResource TextDimBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding IsFullSystemTunnel, Mode=OneWay}"
+                                              Command="{Binding ToggleFullSystemTunnelCommand}" />
+                            </Grid>
                         </StackPanel>
                     </Border>
 

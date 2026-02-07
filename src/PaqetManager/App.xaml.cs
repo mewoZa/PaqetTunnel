@@ -49,12 +49,13 @@ public partial class App : Application
         var paqetService = new PaqetService();
         var proxyService = new ProxyService();
         var networkMonitor = new NetworkMonitorService();
-        var setupService = new SetupService(paqetService);
+        var tunService = new TunService();
+        var setupService = new SetupService(paqetService, tunService);
 
         Services.Logger.Info("Services initialized");
 
         // ── Create ViewModel ───────────────────────────────────────
-        _viewModel = new MainViewModel(paqetService, proxyService, networkMonitor, configService, setupService);
+        _viewModel = new MainViewModel(paqetService, proxyService, networkMonitor, configService, setupService, tunService);
 
         // ── Create main window ─────────────────────────────────────
         _mainWindow = new MainWindow { DataContext = _viewModel };

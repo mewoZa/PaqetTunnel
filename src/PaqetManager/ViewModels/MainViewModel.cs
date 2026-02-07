@@ -17,6 +17,7 @@ public partial class MainViewModel : ObservableObject
     private readonly NetworkMonitorService _networkMonitor;
     private readonly ConfigService _configService;
     private readonly SetupService _setupService;
+    private readonly TunService _tunService;
     private readonly Timer _statusTimer;
 
     // ── Connection State ──────────────────────────────────────────
@@ -60,6 +61,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _showTools;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private bool _debugMode;
+    [ObservableProperty] private bool _isFullSystemTunnel;
     [ObservableProperty] private string _paqetVersion = "";
     [ObservableProperty] private string _interfaceList = "";
     [ObservableProperty] private string _pingResult = "";
@@ -70,13 +72,15 @@ public partial class MainViewModel : ObservableObject
         ProxyService proxyService,
         NetworkMonitorService networkMonitor,
         ConfigService configService,
-        SetupService setupService)
+        SetupService setupService,
+        TunService tunService)
     {
         _paqetService = paqetService;
         _proxyService = proxyService;
         _networkMonitor = networkMonitor;
         _configService = configService;
         _setupService = setupService;
+        _tunService = tunService;
 
         // Speed updates from monitor
         _networkMonitor.SpeedUpdated += OnSpeedUpdated;
@@ -95,6 +99,7 @@ public partial class MainViewModel : ObservableObject
         // Load debug mode state
         var appSettings = _configService.ReadAppSettings();
         DebugMode = appSettings.DebugMode;
+        IsFullSystemTunnel = appSettings.FullSystemTunnel;
 
         // Check if paqet binary exists
         NeedsSetup = !_paqetService.BinaryExists();
@@ -175,9 +180,9 @@ public partial class MainViewModel : ObservableObject
         IsConnecting = true;
         ConnectionStatus = "Connecting...";
         StatusBarText = "Connecting...";
-        Logger.Info("ConnectAsync started");
+        Logger.Info($"ConnectAsync started (FullSystemTunnel={IsFullSystemTunnel})");
 
-        await Task.Run(() =>
+        await Task.Run(async () =>
         {
             // Ensure binary exists
             if (!_paqetService.BinaryExists())
@@ -192,39 +197,72 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
 
+            // Step 1: Start paqet SOCKS5
             Logger.Info("Calling PaqetService.Start()...");
+            Application.Current.Dispatcher.Invoke(() => ConnectionStatus = "Starting paqet...");
             var (success, message) = _paqetService.Start();
             Logger.Info($"Start() returned: success={success}, message={message}");
 
-            Application.Current.Dispatcher.Invoke(() =>
+            if (!success)
             {
-                if (success)
-                {
-                    // Verify port is actually listening before claiming connected
-                    var portReady = PaqetService.IsPortListening();
-                    Logger.Info($"Post-start port check: {portReady}");
-
-                    if (portReady)
-                    {
-                        IsConnected = true;
-                        _connectedSince = DateTime.Now;
-                        ConnectionStatus = "Connected";
-                        StatusBarText = "Connected";
-                        _networkMonitor.Start();
-                    }
-                    else
-                    {
-                        IsConnected = false;
-                        ConnectionStatus = message;
-                        StatusBarText = message;
-                    }
-                }
-                else
+                Application.Current.Dispatcher.Invoke(() =>
                 {
                     ConnectionStatus = message;
                     StatusBarText = message;
-                    Logger.Warn($"ConnectAsync failed: {message}");
+                    IsConnecting = false;
+                });
+                return;
+            }
+
+            // Verify port is actually listening
+            var portReady = PaqetService.IsPortListening();
+            Logger.Info($"Post-start port check: {portReady}");
+
+            if (!portReady)
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    IsConnected = false;
+                    ConnectionStatus = message;
+                    StatusBarText = message;
+                    IsConnecting = false;
+                });
+                return;
+            }
+
+            // Step 2: If TUN mode, start tun2socks
+            if (IsFullSystemTunnel)
+            {
+                Application.Current.Dispatcher.Invoke(() => ConnectionStatus = "Starting TUN tunnel...");
+                Logger.Info("Starting TUN tunnel...");
+                var config = _configService.ReadPaqetConfig();
+                var serverIp = config.ServerHost;
+                var tunResult = await _tunService.StartAsync(serverIp);
+                Logger.Info($"TUN start: success={tunResult.Success}, message={tunResult.Message}");
+
+                if (!tunResult.Success)
+                {
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        // SOCKS5 is still running, show partial success
+                        IsConnected = true;
+                        _connectedSince = DateTime.Now;
+                        ConnectionStatus = $"SOCKS5 only — TUN: {tunResult.Message}";
+                        StatusBarText = tunResult.Message;
+                        _networkMonitor.Start();
+                        IsConnecting = false;
+                    });
+                    return;
                 }
+            }
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                IsConnected = true;
+                _connectedSince = DateTime.Now;
+                ConnectionStatus = IsFullSystemTunnel ? "Connected (Full System)" : "Connected";
+                StatusBarText = IsFullSystemTunnel ? "Full system tunnel active" : "Connected";
+                _networkMonitor.Start();
                 IsConnecting = false;
             });
         });
@@ -234,11 +272,21 @@ public partial class MainViewModel : ObservableObject
     {
         IsConnecting = true;
         ConnectionStatus = "Disconnecting...";
+        Logger.Info("DisconnectAsync started");
 
-        await Task.Run(() =>
+        await Task.Run(async () =>
         {
             _networkMonitor.Stop();
+
+            // Stop TUN first (restore routes before killing paqet)
+            if (_tunService.IsRunning())
+            {
+                Logger.Info("Stopping TUN tunnel...");
+                await _tunService.StopAsync();
+            }
+
             var (success, message) = _paqetService.Stop();
+            Logger.Info($"Stop() returned: success={success}, message={message}");
 
             Application.Current.Dispatcher.Invoke(() =>
             {
@@ -360,6 +408,35 @@ public partial class MainViewModel : ObservableObject
         StatusBarText = DebugMode
             ? $"Debug ON — {Logger.LogPath}"
             : "Debug mode disabled (restart to stop logging).";
+    }
+
+    [RelayCommand]
+    private async Task ToggleFullSystemTunnel()
+    {
+        IsFullSystemTunnel = !IsFullSystemTunnel;
+        Logger.Info($"Full system tunnel toggled to: {IsFullSystemTunnel}");
+        var settings = _configService.ReadAppSettings();
+        settings.FullSystemTunnel = IsFullSystemTunnel;
+        _configService.WriteAppSettings(settings);
+
+        // If currently connected, start/stop TUN on the fly
+        if (IsConnected)
+        {
+            if (IsFullSystemTunnel)
+            {
+                ConnectionStatus = "Starting TUN tunnel...";
+                var config = _configService.ReadPaqetConfig();
+                var serverIp = config.ServerHost;
+                var result = await _tunService.StartAsync(serverIp);
+                ConnectionStatus = result.Success ? "Connected (Full System)" : $"SOCKS5 only — TUN: {result.Message}";
+            }
+            else
+            {
+                ConnectionStatus = "Stopping TUN tunnel...";
+                await _tunService.StopAsync();
+                ConnectionStatus = "Connected";
+            }
+        }
     }
 
     [RelayCommand]
@@ -488,7 +565,10 @@ public partial class MainViewModel : ObservableObject
                 if (portReady != IsConnected)
                 {
                     IsConnected = portReady;
-                    ConnectionStatus = portReady ? "Connected" : running ? "Port not ready" : "Disconnected";
+                    var tunActive = _tunService.IsRunning();
+                    ConnectionStatus = portReady
+                        ? (tunActive ? "Connected (Full System)" : "Connected")
+                        : running ? "Port not ready" : "Disconnected";
                     Logger.Info($"OnStatusTick: ConnectionStatus={ConnectionStatus}");
                     if (portReady)
                     {
@@ -547,5 +627,12 @@ public partial class MainViewModel : ObservableObject
         _statusTimer.Dispose();
         _networkMonitor.Stop();
         _networkMonitor.Dispose();
+
+        // Stop TUN if running
+        if (_tunService.IsRunning())
+        {
+            Logger.Info("Cleanup: stopping TUN tunnel");
+            _tunService.StopAsync().GetAwaiter().GetResult();
+        }
     }
 }
