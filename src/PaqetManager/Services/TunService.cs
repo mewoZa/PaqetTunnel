@@ -398,6 +398,13 @@ public sealed class TunService
             {
                 RunRoute($"add {serverIp} mask 255.255.255.255 {_originalGateway} metric 5");
                 Logger.Info($"Added server route: {serverIp} via {_originalGateway}");
+
+                // Exclude local/LAN networks from TUN (keep SSH, local services, etc.)
+                RunRoute($"add 10.0.0.0 mask 255.0.0.0 {_originalGateway} metric 5");
+                RunRoute($"add 172.16.0.0 mask 255.240.0.0 {_originalGateway} metric 5");
+                RunRoute($"add 192.168.0.0 mask 255.255.0.0 {_originalGateway} metric 5");
+                RunRoute($"add 169.254.0.0 mask 255.255.0.0 {_originalGateway} metric 5");
+                Logger.Info("Added LAN exclusion routes (10/8, 172.16/12, 192.168/16, 169.254/16)");
             }
 
             // Get TUN interface index
@@ -433,6 +440,14 @@ public sealed class TunService
             RunRoute($"delete 0.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
             RunRoute($"delete 128.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
             RunRoute($"delete {serverIp} mask 255.255.255.255");
+            // Remove LAN exclusion routes
+            if (!string.IsNullOrEmpty(_originalGateway))
+            {
+                RunRoute($"delete 10.0.0.0 mask 255.0.0.0 {_originalGateway}");
+                RunRoute($"delete 172.16.0.0 mask 255.240.0.0 {_originalGateway}");
+                RunRoute($"delete 192.168.0.0 mask 255.255.0.0 {_originalGateway}");
+                RunRoute($"delete 169.254.0.0 mask 255.255.0.0 {_originalGateway}");
+            }
             Logger.Info("Routes removed");
             return (true, "Routes removed.");
         }

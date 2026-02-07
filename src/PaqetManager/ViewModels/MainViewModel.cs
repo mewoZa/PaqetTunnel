@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using System.Timers;
 using System.Windows;
@@ -68,6 +71,13 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _pingResult = "";
     [ObservableProperty] private string _fullVersionInfo = "";
 
+    // ── Connection Info ───────────────────────────────────────────
+
+    [ObservableProperty] private string _localIp = "";
+    [ObservableProperty] private string _serverIpDisplay = "";
+    [ObservableProperty] private string _tunnelMode = "SOCKS5";
+    [ObservableProperty] private string _socksPort = "10800";
+
     public MainViewModel(
         PaqetService paqetService,
         ProxyService proxyService,
@@ -114,7 +124,11 @@ public partial class MainViewModel : ObservableObject
         ServerPort = config.ServerPort;
         Key = config.Key;
         NetworkInterface = config.Interface;
+        ServerIpDisplay = config.ServerHost;
         Logger.Info($"Config loaded: server={config.ServerAddr}, interface={config.Interface}, socks={config.SocksListen}");
+
+        // Get local IP
+        LocalIp = GetLocalIp();
 
         // Load toggle states
         IsSystemProxyEnabled = _proxyService.IsSystemProxyEnabled();
@@ -302,6 +316,7 @@ public partial class MainViewModel : ObservableObject
             {
                 IsConnected = true;
                 _connectedSince = DateTime.Now;
+                TunnelMode = IsFullSystemTunnel ? "Full System (TUN)" : "SOCKS5 Proxy";
                 ConnectionStatus = IsFullSystemTunnel ? "Connected (Full System)" : "Connected";
                 StatusBarText = IsFullSystemTunnel ? "Full system tunnel active" : "Connected";
                 _networkMonitor.Start();
@@ -699,5 +714,28 @@ public partial class MainViewModel : ObservableObject
             Logger.Info("Cleanup: stopping TUN tunnel");
             _tunService.StopAsync().GetAwaiter().GetResult();
         }
+    }
+
+    private static string GetLocalIp()
+    {
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus == OperationalStatus.Up &&
+                    ni.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                    !ni.Name.Contains("PaqetTun", StringComparison.OrdinalIgnoreCase) &&
+                    ni.GetIPProperties().GatewayAddresses.Count > 0)
+                {
+                    foreach (var addr in ni.GetIPProperties().UnicastAddresses)
+                    {
+                        if (addr.Address.AddressFamily == AddressFamily.InterNetwork)
+                            return addr.Address.ToString();
+                    }
+                }
+            }
+        }
+        catch { }
+        return "Unknown";
     }
 }

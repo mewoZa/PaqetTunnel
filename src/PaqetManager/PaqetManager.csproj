@@ -10,6 +10,7 @@
     <RootNamespace>PaqetManager</RootNamespace>
     <AssemblyName>PaqetManager</AssemblyName>
     <ApplicationIcon>Assets\paqet.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <Version>1.0.0</Version>
     <Authors>Paqet</Authors>
     <Description>Paqet Manager — Modern proxy tunnel manager for Windows</Description>

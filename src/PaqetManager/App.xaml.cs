@@ -131,19 +131,30 @@ public partial class App : Application
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.Clear(Color.Transparent);
 
-        // Outer circle
-        var circleColor = connected ? Color.FromArgb(63, 185, 80) : Color.FromArgb(139, 148, 158);
-        using var brush = new SolidBrush(circleColor);
-        g.FillEllipse(brush, 2, 2, size - 4, size - 4);
+        var accentColor = connected ? Color.FromArgb(63, 185, 80) : Color.FromArgb(88, 166, 255);
+        var dimColor = connected ? Color.FromArgb(63, 185, 80) : Color.FromArgb(139, 148, 158);
 
-        // Inner dark circle
-        using var innerBrush = new SolidBrush(Color.FromArgb(13, 17, 23));
-        g.FillEllipse(innerBrush, 6, 6, size - 12, size - 12);
+        // Double chevron (>>) — data packet in motion
+        using var pen = new Pen(accentColor, 2.5f)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round,
+            LineJoin = System.Drawing.Drawing2D.LineJoin.Round
+        };
 
-        // Power icon (vertical line + arc)
-        using var pen = new Pen(circleColor, 2.5f) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
-        g.DrawLine(pen, size / 2, 9, size / 2, 16);
-        g.DrawArc(pen, 9, 9, size - 18, size - 18, -60, 300);
+        // First chevron
+        g.DrawLines(pen, new PointF[] {
+            new(8f, 7f), new(17f, 16f), new(8f, 25f)
+        });
+
+        // Second chevron
+        g.DrawLines(pen, new PointF[] {
+            new(16f, 7f), new(25f, 16f), new(16f, 25f)
+        });
+
+        // Motion dots
+        using var dotBrush = new SolidBrush(Color.FromArgb(140, dimColor));
+        g.FillEllipse(dotBrush, 2f, 14.5f, 3f, 3f);
 
         var hIcon = bmp.GetHicon();
         var icon = (Icon)Icon.FromHandle(hIcon).Clone();
