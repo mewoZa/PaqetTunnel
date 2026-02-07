@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Modern Windows tunnel manager for bypassing internet censorship</strong><br>
+  <strong>Modern Windows tunnel manager with encrypted KCP transport</strong><br>
   <em>Built with WPF on .NET 8 — native performance, dark UI, zero external runtimes</em>
 </p>
 
