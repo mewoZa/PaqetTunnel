@@ -523,8 +523,9 @@ function Do-Status {
         WL ""
         Step "Configuration:"
         $content = Get-Content $cfg -Raw
-        if ($content -match 'addr:\s*"([^"]+)"') { Dim "Server: $($Matches[1])" }
+        if ($content -match 'server:\s*\r?\n\s*addr:\s*"([^"]+)"') { Dim "Server: $($Matches[1])" }
         if ($content -match 'listen:\s*"([^"]+)"') { Dim "SOCKS5: $($Matches[1])" }
+        if ($content -match 'protocol:\s*"([^"]+)"') { Dim "Transport: $($Matches[1])" }
     }
     WL ""
 }
