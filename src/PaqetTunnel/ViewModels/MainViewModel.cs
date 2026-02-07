@@ -430,6 +430,9 @@ public partial class MainViewModel : ObservableObject
                 if (result.Success)
                 {
                     IsProxySharingEnabled = newState;
+                    var settings = _configService.ReadAppSettings();
+                    settings.ProxySharingEnabled = newState;
+                    _configService.WriteAppSettings(settings);
                     StatusBarText = result.Message;
                 }
                 else
@@ -454,6 +457,9 @@ public partial class MainViewModel : ObservableObject
                 if (result.Success)
                 {
                     IsAutoStartEnabled = newState;
+                    var settings = _configService.ReadAppSettings();
+                    settings.AutoStart = newState;
+                    _configService.WriteAppSettings(settings);
                     StatusBarText = result.Message;
                 }
                 else

@@ -53,7 +53,7 @@ public partial class App : Application
         var paqetService = new PaqetService();
         var proxyService = new ProxyService();
         _proxyService = proxyService;
-        proxyService.OnStartup(); // Save/clean proxy state
+        proxyService.OnStartup(appSettings.ProxySharingEnabled); // Preserve portproxy if sharing was enabled
         var networkMonitor = new NetworkMonitorService();
         var tunService = new TunService();
         var setupService = new SetupService(paqetService, tunService);

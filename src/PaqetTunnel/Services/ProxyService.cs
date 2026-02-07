@@ -26,8 +26,9 @@ public sealed class ProxyService
     /// <summary>
     /// Call on app startup. Saves current proxy state and cleans up stale settings
     /// from previous crashes or old versions (port 1080).
+    /// Pass saved settings so we preserve intentional portproxy rules.
     /// </summary>
-    public void OnStartup()
+    public void OnStartup(bool proxySharingWasEnabled = false)
     {
         try
         {
@@ -59,15 +60,25 @@ public sealed class ProxyService
             }
             catch (Exception ex) { Logger.Debug($"WinHTTP check: {ex.Message}"); }
 
-            // Clean stale portproxy rules that conflict with our SOCKS port
+            // Clean stale portproxy rules — but preserve them if user had sharing enabled
             try
             {
                 var portproxy = PaqetService.RunCommand("netsh", "interface portproxy show v4tov4");
-                if (portproxy.Contains($"{SOCKS_PORT}") || portproxy.Contains("1080"))
+                // Always clean old port 1080 rules
+                if (portproxy.Contains("1080") && !portproxy.Contains("10800"))
                 {
-                    Logger.Info("Startup: clearing stale portproxy rules");
-                    try { PaqetService.RunCommand("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SOCKS_PORT}"); } catch { }
+                    Logger.Info("Startup: clearing stale port 1080 portproxy rules");
                     try { PaqetService.RunCommand("netsh", "interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=1080"); } catch { }
+                }
+                // Only clean current port rules if sharing was NOT intentionally enabled
+                if (!proxySharingWasEnabled && portproxy.Contains($"{SOCKS_PORT}"))
+                {
+                    Logger.Info("Startup: clearing stale portproxy rules (sharing was not enabled)");
+                    try { PaqetService.RunCommand("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SOCKS_PORT}"); } catch { }
+                }
+                else if (proxySharingWasEnabled)
+                {
+                    Logger.Info("Startup: preserving portproxy rules (sharing was enabled in settings)");
                 }
             }
             catch (Exception ex) { Logger.Debug($"Portproxy cleanup: {ex.Message}"); }
