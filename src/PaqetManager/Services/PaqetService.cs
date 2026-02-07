@@ -18,7 +18,7 @@ namespace PaqetManager.Services;
 public sealed class PaqetService
 {
     private const string GITHUB_API = "https://api.github.com/repos/hanselime/paqet/releases/latest";
-    private const int SOCKS_PORT = 10800;
+    public const int SOCKS_PORT = 10800;
 
     public string BinaryPath => AppPaths.BinaryPath;
     public string ConfigPath => AppPaths.PaqetConfigPath;
