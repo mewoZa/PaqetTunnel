@@ -122,6 +122,17 @@ public sealed class NetworkMonitorService : IDisposable
         };
     }
 
+    public static string FormatBytes(double bytes)
+    {
+        return bytes switch
+        {
+            < 1024 => $"{bytes:F0} B",
+            < 1024 * 1024 => $"{bytes / 1024:F1} KB",
+            < 1024 * 1024 * 1024 => $"{bytes / (1024 * 1024):F1} MB",
+            _ => $"{bytes / (1024 * 1024 * 1024):F2} GB"
+        };
+    }
+
     public void Dispose()
     {
         _timer.Stop();

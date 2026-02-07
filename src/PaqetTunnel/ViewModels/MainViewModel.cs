@@ -34,6 +34,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _downloadSpeed = "0 B/s";
     [ObservableProperty] private string _uploadSpeed = "0 B/s";
     [ObservableProperty] private List<double> _speedHistory = new();
+    [ObservableProperty] private List<double> _downloadHistory = new();
+    [ObservableProperty] private List<double> _uploadHistory = new();
+    [ObservableProperty] private double _peakSpeed;
+    [ObservableProperty] private string _totalTransferred = "0 B";
 
     // ── Toggles ───────────────────────────────────────────────────
 
@@ -75,6 +79,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _serverIpDisplay = "";
     [ObservableProperty] private string _tunnelMode = "SOCKS5";
     [ObservableProperty] private string _socksPort = "10800";
+    [ObservableProperty] private bool _showInfoPanel;
+    [ObservableProperty] private string _publicIp = "—";
 
     public MainViewModel(
         PaqetService paqetService,
@@ -323,6 +329,7 @@ public partial class MainViewModel : ObservableObject
                 _networkMonitor.Start();
                 IsConnecting = false;
             });
+            _ = FetchPublicIpAsync();
         });
     }
 
@@ -356,6 +363,11 @@ public partial class MainViewModel : ObservableObject
                     DownloadSpeed = "0 B/s";
                     UploadSpeed = "0 B/s";
                     SpeedHistory = new List<double>();
+                    DownloadHistory = new List<double>();
+                    UploadHistory = new List<double>();
+                    PeakSpeed = 0;
+                    TotalTransferred = "0 B";
+                    PublicIp = "—";
                     StatusBarText = "Disconnected";
                 }
                 else
@@ -458,6 +470,24 @@ public partial class MainViewModel : ObservableObject
     private void ToggleTools()
     {
         ShowTools = !ShowTools;
+    }
+
+    [RelayCommand]
+    private void ToggleInfoPanel()
+    {
+        ShowInfoPanel = !ShowInfoPanel;
+        if (ShowInfoPanel && IsConnected && PublicIp == "—")
+            _ = FetchPublicIpAsync();
+    }
+
+    private async Task FetchPublicIpAsync()
+    {
+        try
+        {
+            var ip = await Task.Run(() => PaqetService.RunCommand("curl", "-s --max-time 5 https://api.ipify.org"));
+            Application.Current.Dispatcher.Invoke(() => PublicIp = ip?.Trim() ?? "—");
+        }
+        catch { Application.Current.Dispatcher.Invoke(() => PublicIp = "unavailable"); }
     }
 
     [RelayCommand]
@@ -703,11 +733,19 @@ public partial class MainViewModel : ObservableObject
                 DownloadSpeed = NetworkMonitorService.FormatSpeed(latest.DownloadSpeed);
                 UploadSpeed = NetworkMonitorService.FormatSpeed(latest.UploadSpeed);
 
-                // Update history for graph
                 lock (_networkMonitor)
                 {
-                    SpeedHistory = new List<double>(_networkMonitor.History
-                        .ConvertAll(s => s.DownloadSpeed + s.UploadSpeed));
+                    var hist = _networkMonitor.History;
+                    DownloadHistory = new List<double>(hist.ConvertAll(s => s.DownloadSpeed));
+                    UploadHistory = new List<double>(hist.ConvertAll(s => s.UploadSpeed));
+                    SpeedHistory = new List<double>(hist.ConvertAll(s => s.DownloadSpeed + s.UploadSpeed));
+
+                    var peak = hist.Count > 0 ? hist.Max(s => s.DownloadSpeed + s.UploadSpeed) : 0;
+                    PeakSpeed = peak;
+
+                    double totalDl = hist.Sum(s => s.DownloadSpeed);
+                    double totalUl = hist.Sum(s => s.UploadSpeed);
+                    TotalTransferred = NetworkMonitorService.FormatBytes(totalDl + totalUl);
                 }
             });
         }

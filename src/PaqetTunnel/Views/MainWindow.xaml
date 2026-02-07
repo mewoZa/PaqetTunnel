@@ -5,8 +5,8 @@
         xmlns:ctrl="clr-namespace:PaqetTunnel.Views.Controls"
         xmlns:h="clr-namespace:PaqetTunnel.Helpers"
         Title="Paqet Tunnel"
-        Width="380" Height="600"
-        MinWidth="340" MinHeight="460"
+        Width="380" Height="620"
+        MinWidth="340" MinHeight="480"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -25,9 +25,9 @@
         
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="42" />  <!-- Title bar -->
+                <RowDefinition Height="40" />  <!-- Title bar -->
                 <RowDefinition Height="*" />   <!-- Content -->
-                <RowDefinition Height="32" />  <!-- Status bar -->
+                <RowDefinition Height="30" />  <!-- Status bar -->
             </Grid.RowDefinitions>
 
             <!-- ═══ TITLE BAR ══════════════════════════════════════ -->
@@ -35,7 +35,7 @@
                     CornerRadius="12,12,0,0" MouseLeftButtonDown="TitleBar_MouseDown">
                 <Grid Margin="16,0,6,0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="»" FontSize="20" FontWeight="Bold" Margin="0,0,7,1"
+                        <TextBlock Text="»" FontSize="18" FontWeight="Bold" Margin="0,0,6,1"
                                    VerticalAlignment="Center">
                             <TextBlock.Foreground>
                                 <SolidColorBrush Color="{Binding IsConnected, 
@@ -43,9 +43,9 @@
                                     FallbackValue=#58a6ff}" />
                             </TextBlock.Foreground>
                         </TextBlock>
-                        <TextBlock Text="Paqet" FontSize="13.5" FontWeight="SemiBold" 
+                        <TextBlock Text="Paqet Tunnel" FontSize="12.5" FontWeight="SemiBold" 
                                    Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                   FontFamily="{StaticResource MainFont}" />
+                                   FontFamily="{StaticResource MainFont}" Opacity="0.9" />
                     </StackPanel>
                     
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -56,288 +56,389 @@
             </Border>
 
             <!-- ═══ MAIN CONTENT ═══════════════════════════════════ -->
-            <Grid Grid.Row="1" Margin="20,4,20,8">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" /> <!-- Setup banner -->
-                    <RowDefinition Height="Auto" /> <!-- Connect button -->
-                    <RowDefinition Height="Auto" /> <!-- Status -->
-                    <RowDefinition Height="Auto" /> <!-- Info + Speed -->
-                    <RowDefinition Height="*" />    <!-- Settings (fills) -->
-                </Grid.RowDefinitions>
-
-                <!-- ── Setup Banner ────────────────────────── -->
-                <Border Grid.Row="0" Style="{StaticResource Card}"
-                        Visibility="{Binding NeedsSetup, Converter={StaticResource BoolToVis}}"
-                        BorderBrush="#d29922" Padding="12,10" Margin="0,0,0,8">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="⚠" FontSize="20" VerticalAlignment="Top" Margin="0,0,10,0"
-                                   Foreground="#d29922" />
-                        <StackPanel Grid.Column="1">
-                            <TextBlock Text="SETUP REQUIRED" FontSize="10" FontWeight="Bold"
-                                       Foreground="#d29922" Margin="0,0,0,3"
-                                       FontFamily="{StaticResource MainFont}" />
-                            <TextBlock Text="{Binding SetupStatus}" Foreground="{StaticResource TextDimBrush}"
-                                       TextWrapping="Wrap" FontSize="11.5" Margin="0,0,0,6" />
-                            <Button Content="Install" Style="{StaticResource PrimaryButton}"
-                                    Command="{Binding RunSetupCommand}"
-                                    IsEnabled="{Binding IsSettingUp, Converter={StaticResource InvBoolConv}}"
-                                    HorizontalAlignment="Left" Padding="16,6" FontSize="12" />
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- ── Connect Button ──────────────────────── -->
-                <Grid Grid.Row="1" Margin="0,6,0,4" HorizontalAlignment="Center">
-                    <Button Command="{Binding ToggleConnectionCommand}" Cursor="Hand"
-                            IsEnabled="{Binding IsConnecting, Converter={StaticResource InvBoolConv}}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Grid Width="100" Height="100">
-                                    <!-- Glow -->
-                                    <Ellipse Width="100" Height="100">
-                                        <Ellipse.Fill>
-                                            <RadialGradientBrush>
-                                                <GradientStop Color="{Binding IsConnected, Converter={StaticResource ConnGlowConv}}" Offset="0.35" />
-                                                <GradientStop Color="Transparent" Offset="1" />
-                                            </RadialGradientBrush>
-                                        </Ellipse.Fill>
-                                    </Ellipse>
-                                    <!-- Ring -->
-                                    <Ellipse Width="82" Height="82" StrokeThickness="2.5"
-                                             Stroke="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
-                                    <!-- Fill -->
-                                    <Ellipse Width="76" Height="76" Fill="{StaticResource SurfaceBrush}" />
-                                    <!-- Icon -->
-                                    <TextBlock Text="»" FontSize="34" FontWeight="Bold"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                               Margin="2,0,0,2"
-                                               Foreground="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
-                                    <!-- Spinner -->
-                                    <Ellipse x:Name="SpinnerRing" Width="88" Height="88"
-                                             StrokeThickness="1.5" StrokeDashArray="3,6"
-                                             Stroke="{StaticResource AccentBrush}"
-                                             Visibility="{Binding IsConnecting, Converter={StaticResource BoolToVis}}"
-                                             RenderTransformOrigin="0.5,0.5">
-                                        <Ellipse.RenderTransform>
-                                            <RotateTransform x:Name="SpinnerRotation" />
-                                        </Ellipse.RenderTransform>
-                                        <Ellipse.Triggers>
-                                            <EventTrigger RoutedEvent="Loaded">
-                                                <BeginStoryboard>
-                                                    <Storyboard RepeatBehavior="Forever">
-                                                        <DoubleAnimation Storyboard.TargetName="SpinnerRotation"
-                                                                         Storyboard.TargetProperty="Angle"
-                                                                         From="0" To="360" Duration="0:0:1.8" />
-                                                    </Storyboard>
-                                                </BeginStoryboard>
-                                            </EventTrigger>
-                                        </Ellipse.Triggers>
-                                    </Ellipse>
-                                </Grid>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                </Grid>
-
-                <!-- ── Status ──────────────────────────────── -->
-                <StackPanel Grid.Row="2" HorizontalAlignment="Center" Margin="0,2,0,8">
-                    <TextBlock Text="{Binding ConnectionStatus}" 
-                               FontSize="14" FontWeight="SemiBold"
-                               HorizontalAlignment="Center"
-                               Foreground="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
-                    <TextBlock Text="{Binding ConnectionTime}" 
-                               FontSize="11.5" 
-                               FontFamily="{StaticResource MonoFont}"
-                               HorizontalAlignment="Center"
-                               Foreground="{StaticResource TextDimBrush}"
-                               Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}" />
-                </StackPanel>
-
-                <!-- ── Info + Speed (compact) ──────────────── -->
-                <StackPanel Grid.Row="3">
-                    <!-- Connection Info -->
-                    <Border Style="{StaticResource Card}" Padding="12,8"
-                            Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" Padding="0">
+                <StackPanel Margin="16,4,16,8">
+                
+                    <!-- ── Setup Banner ────────────────────────── -->
+                    <Border Style="{StaticResource Card}"
+                            Visibility="{Binding NeedsSetup, Converter={StaticResource BoolToVis}}"
+                            BorderBrush="#d29922" Padding="12,10" Margin="0,0,0,6">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition />
                             </Grid.ColumnDefinitions>
-                            
-                            <!-- Speed Down -->
-                            <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                                <TextBlock Text="↓" FontSize="11" HorizontalAlignment="Center" 
-                                           Foreground="{StaticResource TextDimBrush}" />
-                                <TextBlock Text="{Binding DownloadSpeed}" FontSize="13" FontWeight="SemiBold"
-                                           FontFamily="{StaticResource MonoFont}"
-                                           HorizontalAlignment="Center"
-                                           Foreground="{StaticResource AccentBrush}" />
-                            </StackPanel>
-                            
-                            <!-- Divider + Mode -->
-                            <StackPanel Grid.Column="1" Margin="12,0">
-                                <TextBlock Text="{Binding TunnelMode}" FontSize="9"
-                                           HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextDimBrush}"
+                            <TextBlock Text="⚠" FontSize="18" VerticalAlignment="Top" Margin="0,0,10,0"
+                                       Foreground="#d29922" />
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="SETUP REQUIRED" FontSize="9.5" FontWeight="Bold"
+                                           Foreground="#d29922" Margin="0,0,0,3"
                                            FontFamily="{StaticResource MainFont}" />
-                                <TextBlock Text="{Binding ServerIpDisplay}" FontSize="9"
-                                           HorizontalAlignment="Center" Margin="0,1,0,0"
-                                           Foreground="{StaticResource TextDimBrush}"
-                                           FontFamily="{StaticResource MonoFont}" />
-                            </StackPanel>
-                            
-                            <!-- Speed Up -->
-                            <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                                <TextBlock Text="↑" FontSize="11" HorizontalAlignment="Center" 
-                                           Foreground="{StaticResource TextDimBrush}" />
-                                <TextBlock Text="{Binding UploadSpeed}" FontSize="13" FontWeight="SemiBold"
-                                           FontFamily="{StaticResource MonoFont}"
-                                           HorizontalAlignment="Center"
-                                           Foreground="{StaticResource SuccessBrush}" />
+                                <TextBlock Text="{Binding SetupStatus}" Foreground="{StaticResource TextDimBrush}"
+                                           TextWrapping="Wrap" FontSize="11" Margin="0,0,0,6" />
+                                <Button Content="Install" Style="{StaticResource PrimaryButton}"
+                                        Command="{Binding RunSetupCommand}"
+                                        IsEnabled="{Binding IsSettingUp, Converter={StaticResource InvBoolConv}}"
+                                        HorizontalAlignment="Left" Padding="16,5" FontSize="11.5" />
                             </StackPanel>
                         </Grid>
                     </Border>
 
-                    <!-- Speed Graph -->
-                    <Border Style="{StaticResource Card}" Padding="0" Height="40"
+                    <!-- ══════════════════════════════════════════════ -->
+                    <!-- ── HERO: Connect Button + Status ─────────── -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <Grid HorizontalAlignment="Center" Margin="0,8,0,2">
+                        <Button Command="{Binding ToggleConnectionCommand}" Cursor="Hand"
+                                IsEnabled="{Binding IsConnecting, Converter={StaticResource InvBoolConv}}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Grid Width="96" Height="96">
+                                        <!-- Outer glow -->
+                                        <Ellipse Width="96" Height="96">
+                                            <Ellipse.Fill>
+                                                <RadialGradientBrush>
+                                                    <GradientStop Color="{Binding IsConnected, Converter={StaticResource ConnGlowConv}}" Offset="0.3" />
+                                                    <GradientStop Color="Transparent" Offset="1" />
+                                                </RadialGradientBrush>
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                        <!-- Ring -->
+                                        <Ellipse Width="78" Height="78" StrokeThickness="2"
+                                                 Stroke="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
+                                        <!-- Fill -->
+                                        <Ellipse Width="72" Height="72" Fill="{StaticResource SurfaceBrush}" />
+                                        <!-- Icon -->
+                                        <TextBlock Text="»" FontSize="32" FontWeight="Bold"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Margin="2,0,0,2"
+                                                   Foreground="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
+                                        <!-- Spinner -->
+                                        <Ellipse x:Name="SpinnerRing" Width="86" Height="86"
+                                                 StrokeThickness="1.5" StrokeDashArray="3,6"
+                                                 Stroke="{StaticResource AccentBrush}"
+                                                 Visibility="{Binding IsConnecting, Converter={StaticResource BoolToVis}}"
+                                                 RenderTransformOrigin="0.5,0.5">
+                                            <Ellipse.RenderTransform>
+                                                <RotateTransform x:Name="SpinnerRotation" />
+                                            </Ellipse.RenderTransform>
+                                            <Ellipse.Triggers>
+                                                <EventTrigger RoutedEvent="Loaded">
+                                                    <BeginStoryboard>
+                                                        <Storyboard RepeatBehavior="Forever">
+                                                            <DoubleAnimation Storyboard.TargetName="SpinnerRotation"
+                                                                             Storyboard.TargetProperty="Angle"
+                                                                             From="0" To="360" Duration="0:0:1.8" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </EventTrigger>
+                                            </Ellipse.Triggers>
+                                        </Ellipse>
+                                    </Grid>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+
+                    <!-- Status text -->
+                    <StackPanel HorizontalAlignment="Center" Margin="0,4,0,6">
+                        <TextBlock Text="{Binding ConnectionStatus}" 
+                                   FontSize="13.5" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
+                        <TextBlock Text="{Binding ConnectionTime}" 
+                                   FontSize="10.5" 
+                                   FontFamily="{StaticResource MonoFont}"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource TextDimBrush}"
+                                   Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+
+                    <!-- ══════════════════════════════════════════════ -->
+                    <!-- ── LIVE STATS PANEL ──────────────────────── -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,4"
                             Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
-                        <ctrl:SpeedGraph Data="{Binding SpeedHistory}" ClipToBounds="True" />
+                        <StackPanel>
+                            <!-- Speed row -->
+                            <Grid Margin="14,10,14,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                
+                                <!-- Download -->
+                                <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                                    <TextBlock Text="↓ DOWN" FontSize="9" FontWeight="SemiBold" 
+                                               HorizontalAlignment="Center" 
+                                               Foreground="{StaticResource TextDimBrush}"
+                                               FontFamily="{StaticResource MainFont}" />
+                                    <TextBlock Text="{Binding DownloadSpeed}" FontSize="15" FontWeight="Bold"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               HorizontalAlignment="Center" Margin="0,2,0,0"
+                                               Foreground="{StaticResource AccentBrush}" />
+                                </StackPanel>
+                                
+                                <!-- Center divider + mode badge -->
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0">
+                                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4" Padding="6,2">
+                                        <TextBlock Text="{Binding TunnelMode}" FontSize="8.5" FontWeight="SemiBold"
+                                                   HorizontalAlignment="Center"
+                                                   Foreground="{StaticResource TextDimBrush}"
+                                                   FontFamily="{StaticResource MainFont}" />
+                                    </Border>
+                                </StackPanel>
+                                
+                                <!-- Upload -->
+                                <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                                    <TextBlock Text="↑ UP" FontSize="9" FontWeight="SemiBold" 
+                                               HorizontalAlignment="Center" 
+                                               Foreground="{StaticResource TextDimBrush}"
+                                               FontFamily="{StaticResource MainFont}" />
+                                    <TextBlock Text="{Binding UploadSpeed}" FontSize="15" FontWeight="Bold"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               HorizontalAlignment="Center" Margin="0,2,0,0"
+                                               Foreground="{StaticResource SuccessBrush}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Speed graph (dual line) -->
+                            <ctrl:SpeedGraph Height="64" ClipToBounds="True" Margin="1,0,1,1"
+                                             Data="{Binding SpeedHistory}"
+                                             DownloadData="{Binding DownloadHistory}"
+                                             UploadData="{Binding UploadHistory}" />
+                        </StackPanel>
                     </Border>
-                </StackPanel>
 
-                <!-- ── Settings Area (scrollable only here) ── -->
-                <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Hidden" Margin="0,2,0,0">
-                    <StackPanel>
-                        <!-- Quick Toggles -->
-                        <Border Style="{StaticResource Card}" Padding="12,8">
-                            <StackPanel>
-                                <!-- Full System Tunnel -->
-                                <Grid Margin="0,2,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Text="Full System Tunnel" FontSize="12.5" FontWeight="Medium" />
-                                        <TextBlock Text="Route all traffic via TUN" FontSize="10.5"
-                                                   Foreground="{StaticResource TextDimBrush}" Margin="0,1,0,0" />
-                                    </StackPanel>
-                                    <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                                  IsChecked="{Binding IsFullSystemTunnel, Mode=OneWay}"
-                                                  Command="{Binding ToggleFullSystemTunnelCommand}"
-                                                  VerticalAlignment="Center" />
-                                </Grid>
-
-                                <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,0,0,8" Opacity="0.5" />
-
-                                <!-- Auto-Connect -->
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Auto-Connect" FontSize="12.5" FontWeight="Medium"
-                                               VerticalAlignment="Center" />
-                                    <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                                  IsChecked="{Binding IsAutoConnect, Mode=OneWay}"
-                                                  Command="{Binding ToggleAutoConnectCommand}"
-                                                  VerticalAlignment="Center" />
-                                </Grid>
-
-                                <!-- Auto Start -->
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Start with Windows" FontSize="12.5" FontWeight="Medium"
-                                               VerticalAlignment="Center" />
-                                    <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                                  IsChecked="{Binding IsAutoStartEnabled, Mode=OneWay}"
-                                                  Command="{Binding ToggleAutoStartCommand}"
-                                                  IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
-                                                  VerticalAlignment="Center" />
-                                </Grid>
-
-                                <!-- System Proxy -->
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="System Proxy" FontSize="12.5" FontWeight="Medium"
-                                               VerticalAlignment="Center" />
-                                    <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                                  IsChecked="{Binding IsSystemProxyEnabled, Mode=OneWay}"
-                                                  Command="{Binding ToggleSystemProxyCommand}"
-                                                  IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
-                                                  VerticalAlignment="Center" />
-                                </Grid>
-
-                                <!-- Share on Network -->
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Share on Network" FontSize="12.5" FontWeight="Medium"
-                                               VerticalAlignment="Center" />
-                                    <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                                  IsChecked="{Binding IsProxySharingEnabled, Mode=OneWay}"
-                                                  Command="{Binding ToggleProxySharingCommand}"
-                                                  IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
-                                                  VerticalAlignment="Center" />
-                                </Grid>
-
-                                <!-- Debug Mode -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <!-- ── INFO PANEL (toggle) ──────────────────── -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,4"
+                            Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <!-- Toggle header -->
+                            <Button Style="{StaticResource GhostButton}" 
+                                    Command="{Binding ToggleInfoPanelCommand}"
+                                    HorizontalAlignment="Stretch" Padding="12,7"
+                                    HorizontalContentAlignment="Stretch">
                                 <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Debug Logging" FontSize="12.5" FontWeight="Medium"
-                                               VerticalAlignment="Center" />
-                                    <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
-                                                  IsChecked="{Binding DebugMode, Mode=OneWay}"
-                                                  Command="{Binding ToggleDebugModeCommand}"
-                                                  VerticalAlignment="Center" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="ℹ" FontSize="11" Margin="0,0,6,0" 
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{StaticResource AccentBrush}" />
+                                        <TextBlock Text="Connection Details" FontSize="11" FontWeight="Medium"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{StaticResource TextDimBrush}" />
+                                    </StackPanel>
+                                    <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextDimBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                <Setter Property="Text" Value="▸" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ShowInfoPanel}" Value="True">
+                                                        <Setter Property="Text" Value="▾" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Button>
+
+                            <!-- Info details -->
+                            <StackPanel Margin="14,0,14,10"
+                                        Visibility="{Binding ShowInfoPanel, Converter={StaticResource BoolToVis}}">
+                                <!-- Public IP -->
+                                <Grid Margin="0,2,0,5">
+                                    <TextBlock Text="Public IP" FontSize="10.5" 
+                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding PublicIp}" FontSize="11" FontWeight="Medium"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextBrush}" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
+
+                                <!-- Server -->
+                                <Grid Margin="0,0,0,5">
+                                    <TextBlock Text="Server" FontSize="10.5" 
+                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding ServerIpDisplay}" FontSize="11" FontWeight="Medium"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextBrush}" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
+
+                                <!-- SOCKS Port -->
+                                <Grid Margin="0,0,0,5">
+                                    <TextBlock Text="SOCKS5 Port" FontSize="10.5" 
+                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding SocksPort}" FontSize="11" FontWeight="Medium"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextBrush}" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
+
+                                <!-- Data transferred -->
+                                <Grid Margin="0,0,0,0">
+                                    <TextBlock Text="Transferred" FontSize="10.5" 
+                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding TotalTransferred}" FontSize="11" FontWeight="Medium"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextBrush}" />
                                 </Grid>
                             </StackPanel>
-                        </Border>
+                        </StackPanel>
+                    </Border>
 
-                        <!-- Server Config (collapsible) -->
-                        <Button Style="{StaticResource GhostButton}" 
-                                Command="{Binding ToggleSettingsCommand}"
-                                HorizontalAlignment="Stretch" Margin="0,2,0,2"
-                                HorizontalContentAlignment="Stretch" Padding="8,6">
-                            <Grid>
-                                <TextBlock Text="Server Configuration" FontSize="11.5" FontWeight="Medium"
-                                           VerticalAlignment="Center" HorizontalAlignment="Left"
-                                           Foreground="{StaticResource TextDimBrush}" />
-                                <TextBlock FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                           Foreground="{StaticResource TextDimBrush}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                                            <Setter Property="Text" Value="▸" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding ShowSettings}" Value="True">
-                                                    <Setter Property="Text" Value="▾" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                    <!-- ══════════════════════════════════════════════ -->
+                    <!-- ── QUICK TOGGLES ─────────────────────────── -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <Border Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,4">
+                        <StackPanel>
+                            <!-- Full System Tunnel -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Full System Tunnel" FontSize="12" FontWeight="Medium" />
+                                    <TextBlock Text="Route all traffic via TUN adapter" FontSize="10"
+                                               Foreground="{StaticResource TextDimBrush}" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding IsFullSystemTunnel, Mode=OneWay}"
+                                              Command="{Binding ToggleFullSystemTunnelCommand}"
+                                              VerticalAlignment="Center" />
                             </Grid>
-                        </Button>
 
-                        <Border Style="{StaticResource Card}" Padding="12,10"
-                                Visibility="{Binding ShowSettings, Converter={StaticResource BoolToVis}}">
-                            <StackPanel>
+                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+
+                            <!-- Auto-Connect -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Auto-Connect" FontSize="12" FontWeight="Medium" />
+                                    <TextBlock Text="Connect on app launch" FontSize="10"
+                                               Foreground="{StaticResource TextDimBrush}" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding IsAutoConnect, Mode=OneWay}"
+                                              Command="{Binding ToggleAutoConnectCommand}"
+                                              VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+
+                            <!-- Start with Windows -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Start with Windows" FontSize="12" FontWeight="Medium"
+                                           VerticalAlignment="Center" />
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding IsAutoStartEnabled, Mode=OneWay}"
+                                              Command="{Binding ToggleAutoStartCommand}"
+                                              IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
+                                              VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+
+                            <!-- System Proxy -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="System Proxy" FontSize="12" FontWeight="Medium" />
+                                    <TextBlock Text="Set browser SOCKS5 proxy" FontSize="10"
+                                               Foreground="{StaticResource TextDimBrush}" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding IsSystemProxyEnabled, Mode=OneWay}"
+                                              Command="{Binding ToggleSystemProxyCommand}"
+                                              IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
+                                              VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+
+                            <!-- Share on Network -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Share on Network" FontSize="12" FontWeight="Medium"
+                                           VerticalAlignment="Center" />
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding IsProxySharingEnabled, Mode=OneWay}"
+                                              Command="{Binding ToggleProxySharingCommand}"
+                                              IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
+                                              VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+
+                            <!-- Debug Logging -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Debug Logging" FontSize="12" FontWeight="Medium"
+                                           VerticalAlignment="Center" />
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding DebugMode, Mode=OneWay}"
+                                              Command="{Binding ToggleDebugModeCommand}"
+                                              VerticalAlignment="Center" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ══════════════════════════════════════════════ -->
+                    <!-- ── SERVER CONFIG (collapsible) ────────────── -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,4">
+                        <StackPanel>
+                            <Button Style="{StaticResource GhostButton}" 
+                                    Command="{Binding ToggleSettingsCommand}"
+                                    HorizontalAlignment="Stretch" Padding="12,8"
+                                    HorizontalContentAlignment="Stretch">
+                                <Grid>
+                                    <TextBlock Text="Server Configuration" FontSize="11" FontWeight="Medium"
+                                               VerticalAlignment="Center" HorizontalAlignment="Left"
+                                               Foreground="{StaticResource TextDimBrush}" />
+                                    <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextDimBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                <Setter Property="Text" Value="▸" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ShowSettings}" Value="True">
+                                                        <Setter Property="Text" Value="▾" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Button>
+
+                            <StackPanel Margin="14,0,14,12"
+                                        Visibility="{Binding ShowSettings, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="SERVER ADDRESS" Style="{StaticResource FieldLabel}" />
                                 <TextBox Text="{Binding ServerAddress, UpdateSourceTrigger=PropertyChanged}" 
                                          Margin="0,0,0,8" />
@@ -360,94 +461,98 @@
                                 <PasswordBox h:PasswordBoxHelper.BindPassword="True"
                                              h:PasswordBoxHelper.BoundPassword="{Binding Key, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
                                              Margin="0,0,0,10" />
-                                <Button Content="Save" Style="{StaticResource PrimaryButton}"
+                                <Button Content="Save Configuration" Style="{StaticResource PrimaryButton}"
                                         Command="{Binding SaveConfigCommand}"
-                                        HorizontalAlignment="Stretch" Padding="12,7" FontSize="12" />
+                                        HorizontalAlignment="Stretch" Padding="12,7" FontSize="11.5" />
                             </StackPanel>
-                        </Border>
+                        </StackPanel>
+                    </Border>
 
-                        <!-- Tools (collapsible) -->
-                        <Button Style="{StaticResource GhostButton}" 
-                                Command="{Binding ToggleToolsCommand}"
-                                HorizontalAlignment="Stretch" Margin="0,0,0,2"
-                                HorizontalContentAlignment="Stretch" Padding="8,6">
-                            <Grid>
-                                <TextBlock Text="Tools" FontSize="11.5" FontWeight="Medium"
-                                           VerticalAlignment="Center" HorizontalAlignment="Left"
-                                           Foreground="{StaticResource TextDimBrush}" />
-                                <TextBlock FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                           Foreground="{StaticResource TextDimBrush}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                                            <Setter Property="Text" Value="▸" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding ShowTools}" Value="True">
-                                                    <Setter Property="Text" Value="▾" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
-                        </Button>
+                    <!-- ══════════════════════════════════════════════ -->
+                    <!-- ── TOOLS (collapsible) ───────────────────── -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,4">
+                        <StackPanel>
+                            <Button Style="{StaticResource GhostButton}" 
+                                    Command="{Binding ToggleToolsCommand}"
+                                    HorizontalAlignment="Stretch" Padding="12,8"
+                                    HorizontalContentAlignment="Stretch">
+                                <Grid>
+                                    <TextBlock Text="Diagnostics" FontSize="11" FontWeight="Medium"
+                                               VerticalAlignment="Center" HorizontalAlignment="Left"
+                                               Foreground="{StaticResource TextDimBrush}" />
+                                    <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextDimBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                <Setter Property="Text" Value="▸" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ShowTools}" Value="True">
+                                                        <Setter Property="Text" Value="▾" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Button>
 
-                        <Border Style="{StaticResource Card}" Padding="12,10"
-                                Visibility="{Binding ShowTools, Converter={StaticResource BoolToVis}}">
-                            <StackPanel>
-                                <Button Content="List Interfaces" Style="{StaticResource PrimaryButton}"
+                            <StackPanel Margin="14,0,14,12"
+                                        Visibility="{Binding ShowTools, Converter={StaticResource BoolToVis}}">
+                                <Button Content="List Interfaces" Style="{StaticResource SecondaryButton}"
                                         Command="{Binding ListInterfacesCommand}"
                                         IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
-                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="12" />
+                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
                                 <TextBox Text="{Binding InterfaceList, Mode=OneWay}" IsReadOnly="True"
-                                         FontFamily="{StaticResource MonoFont}" FontSize="10"
-                                         TextWrapping="Wrap" MaxHeight="80"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                         TextWrapping="Wrap" MaxHeight="70"
                                          Visibility="{Binding InterfaceList, Converter={StaticResource StringToVis}}"
                                          Margin="0,0,0,6" />
 
-                                <Button Content="Generate Secret" Style="{StaticResource PrimaryButton}"
-                                        Command="{Binding GenerateSecretCommand}"
-                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
-                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="12" />
-
-                                <Button Content="Ping Server" Style="{StaticResource PrimaryButton}"
+                                <Button Content="Ping Server" Style="{StaticResource SecondaryButton}"
                                         Command="{Binding PingServerCommand}"
                                         IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
-                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="12" />
+                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
                                 <TextBox Text="{Binding PingResult, Mode=OneWay}" IsReadOnly="True"
-                                         FontFamily="{StaticResource MonoFont}" FontSize="10"
-                                         TextWrapping="Wrap" MaxHeight="60"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                         TextWrapping="Wrap" MaxHeight="50"
                                          Visibility="{Binding PingResult, Converter={StaticResource StringToVis}}"
                                          Margin="0,0,0,6" />
 
-                                <Button Content="Version Info" Style="{StaticResource PrimaryButton}"
+                                <Button Content="Generate Secret" Style="{StaticResource SecondaryButton}"
+                                        Command="{Binding GenerateSecretCommand}"
+                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
+                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
+
+                                <Button Content="Version Info" Style="{StaticResource SecondaryButton}"
                                         Command="{Binding ShowVersionInfoCommand}"
-                                        HorizontalAlignment="Stretch" Padding="10,6" FontSize="12" />
+                                        HorizontalAlignment="Stretch" Padding="10,6" FontSize="11.5" />
                                 <TextBox Text="{Binding FullVersionInfo, Mode=OneWay}" IsReadOnly="True"
-                                         FontFamily="{StaticResource MonoFont}" FontSize="10"
-                                         TextWrapping="Wrap" MaxHeight="80"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                         TextWrapping="Wrap" MaxHeight="70"
                                          Visibility="{Binding FullVersionInfo, Converter={StaticResource StringToVis}}"
                                          Margin="0,4,0,0" />
                             </StackPanel>
-                        </Border>
+                        </StackPanel>
+                    </Border>
 
-                        <Border Height="4" />
-                    </StackPanel>
-                </ScrollViewer>
-            </Grid>
+                    <Border Height="4" />
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- ═══ STATUS BAR ═════════════════════════════════════ -->
             <Border Grid.Row="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                     CornerRadius="0,0,12,12" Background="{StaticResource SurfaceBrush}">
                 <Grid Margin="16,0">
                     <TextBlock Text="{Binding StatusBarText}" 
-                               FontSize="10.5" VerticalAlignment="Center"
+                               FontSize="10" VerticalAlignment="Center"
                                Foreground="{StaticResource TextDimBrush}" 
                                TextTrimming="CharacterEllipsis" />
                     <TextBlock Text="{Binding PaqetVersion}" 
-                               FontSize="10" VerticalAlignment="Center"
+                               FontSize="9.5" VerticalAlignment="Center"
                                HorizontalAlignment="Right"
                                Foreground="{StaticResource TextDimBrush}" 
-                               FontFamily="{StaticResource MonoFont}" Opacity="0.6" />
+                               FontFamily="{StaticResource MonoFont}" Opacity="0.5" />
                 </Grid>
             </Border>
         </Grid>
