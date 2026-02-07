@@ -53,13 +53,13 @@ function Line(){ WL "  ───────────────────
 function Banner {
     Write-Host ""
     W "  » " Cyan; WL "Paqet Tunnel" White
-    W "    " DarkGray; WL "Setup & Management v$($Script:AppVersion)" DarkGray
+    W "    " DarkGray; WL "Setup and Management v$($Script:AppVersion)" DarkGray
     Line
 }
 
 function Confirm($prompt) {
     if ($Yes) { return $true }
-    W "  ? " Yellow; W "$prompt " White; W "[Y/n] " DarkGray
+    W "  ? " Yellow; W "$prompt " White; W '[Y/n] ' DarkGray
     $r = Read-Host
     return ($r -eq '' -or $r -match '^[Yy]')
 }
@@ -203,7 +203,7 @@ function Ensure-Dotnet {
         $script = "$env:TEMP\dotnet-install.ps1"
         Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $script -UseBasicParsing
         & $script -Channel 8.0
-        $env:PATH = "$env:LOCALAPPDATA\Microsoft\dotnet;$env:PATH"
+        $env:PATH = $env:LOCALAPPDATA + '\Microsoft\dotnet;' + $env:PATH
     }
     return (Has-Command 'dotnet')
 }
@@ -211,7 +211,7 @@ function Ensure-Dotnet {
 function Ensure-Go {
     if (Has-Command 'go') {
         $ver = (& go version 2>$null) -replace 'go version go','' -replace ' .*',''
-        OK "Go ($ver)"
+        OK ('Go (' + $ver + ')')
         return $true
     }
     $arch = Get-Arch
@@ -395,7 +395,7 @@ function Do-Install {
     Line
     OK "Installation complete!"
     Dim "Run from Start Menu or Desktop shortcut"
-    Dim "Or: & '$Script:InstallDir\$Script:ExeName'"
+    Dim ('Or: ' + $Script:InstallDir + '\' + $Script:ExeName)
     WL ""
 }
 
@@ -543,7 +543,7 @@ function Do-ServerInstall {
 
     # Determine server address
     $serverAddr = if ($Addr) { $Addr } else {
-        W "  ? " Yellow; W "Server bind address " White; W "[0.0.0.0:8443] " DarkGray
+        W "  ? " Yellow; W "Server bind address " White; W '(0.0.0.0:8443) ' DarkGray
         $r = Read-Host
         if ($r) { $r } else { "0.0.0.0:8443" }
     }
@@ -644,7 +644,7 @@ function Start-App {
 function Show-Help {
     Banner
     WL "  Usage:" White
-    WL "    setup.ps1 [command] [options]" Cyan
+    WL '    setup.ps1 <command> <options>' Cyan
     WL ""
     WL "  Commands:" White
     WL "    install        Install PaqetTunnel client" DarkGray
@@ -664,7 +664,7 @@ function Show-Help {
     WL "    -y                  Skip confirmations" DarkGray
     WL ""
     WL "  One-liner install:" White
-    WL "    irm $($Script:RawUrl)/setup.ps1 -o `$env:TEMP\pt.ps1; & `$env:TEMP\pt.ps1" Cyan
+    WL ('    irm ' + $Script:RawUrl + '/setup.ps1 -o $env:TEMP\pt.ps1; & $env:TEMP\pt.ps1') Cyan
     WL ""
 }
 
@@ -721,7 +721,16 @@ function Show-Interactive {
 # Entry Point
 # ═══════════════════════════════════════════════════════════════════
 
-$Script:OriginalArgs = $args
+# Build arg string for re-elevation
+$Script:OriginalArgs = @()
+if ($Command) { $Script:OriginalArgs += $Command }
+if ($Server) { $Script:OriginalArgs += '-Server' }
+if ($Addr) { $Script:OriginalArgs += "-Addr `"$Addr`"" }
+if ($Key) { $Script:OriginalArgs += "-Key `"$Key`"" }
+if ($Iface) { $Script:OriginalArgs += "-Iface `"$Iface`"" }
+if ($SocksPort -ne 10800) { $Script:OriginalArgs += "-SocksPort $SocksPort" }
+if ($Force) { $Script:OriginalArgs += '-Force' }
+if ($Yes) { $Script:OriginalArgs += '-y' }
 
 switch ($Command.ToLower()) {
     'install'   { if ($Server) { Do-Install -ServerMode } else { Do-Install } }
