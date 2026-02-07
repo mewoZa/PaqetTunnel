@@ -170,6 +170,7 @@ public sealed class AppSettings
     public bool SystemProxyEnabled { get; set; }
     public bool ProxySharingEnabled { get; set; }
     public bool AutoConnectOnLaunch { get; set; }
+    public bool DebugMode { get; set; }
     public string PaqetBinaryPath { get; set; } = "";
     public string PaqetConfigPath { get; set; } = "";
 }

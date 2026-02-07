@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace PaqetManager.Services;
@@ -23,7 +25,12 @@ public sealed class PaqetService
     public string PaqetDirectory => AppPaths.BinDir;
 
     /// <summary>Check if the paqet binary exists on disk.</summary>
-    public bool BinaryExists() => File.Exists(AppPaths.BinaryPath);
+    public bool BinaryExists()
+    {
+        var exists = File.Exists(AppPaths.BinaryPath);
+        Logger.Debug($"BinaryExists: {exists} — {AppPaths.BinaryPath}");
+        return exists;
+    }
 
     /// <summary>Check if paqet process is currently running via tasklist.</summary>
     public bool IsRunning()
@@ -39,13 +46,20 @@ public sealed class PaqetService
                 WindowStyle = ProcessWindowStyle.Hidden
             };
             using var proc = Process.Start(psi);
-            if (proc == null) return false;
+            if (proc == null)
+            {
+                Logger.Warn("IsRunning: tasklist process failed to start");
+                return false;
+            }
             var output = proc.StandardOutput.ReadToEnd();
             proc.WaitForExit(3000);
-            return output.Contains(AppPaths.BINARY_NAME, StringComparison.OrdinalIgnoreCase);
+            var found = output.Contains(AppPaths.BINARY_NAME, StringComparison.OrdinalIgnoreCase);
+            Logger.Debug($"IsRunning: {found} — tasklist output: {output.Trim().Replace("\r\n", " | ")}");
+            return found;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Error("IsRunning: exception", ex);
             return false;
         }
     }
@@ -61,12 +75,15 @@ public sealed class PaqetService
             if (connected)
             {
                 client.EndConnect(result);
+                Logger.Debug($"IsPortListening: port {port} OPEN");
                 return true;
             }
+            Logger.Debug($"IsPortListening: port {port} timeout (not listening)");
             return false;
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Debug($"IsPortListening: port {port} exception — {ex.Message}");
             return false;
         }
     }
@@ -77,52 +94,136 @@ public sealed class PaqetService
     /// <summary>Start the paqet tunnel using the 'run' subcommand.</summary>
     public (bool Success, string Message) Start()
     {
+        Logger.Info("Start() called");
+
         if (!BinaryExists())
+        {
+            Logger.Warn("Start: binary not found");
             return (false, "Paqet binary not found. Run setup first.");
+        }
 
         if (IsRunning())
-            return (true, IsPortListening() ? "Already connected." : "Process running, waiting for port...");
+        {
+            var portUp = IsPortListening();
+            Logger.Info($"Start: already running, port listening: {portUp}");
+            return (true, portUp ? "Already connected." : "Process running, waiting for port...");
+        }
+
+        // Read config to log it
+        try
+        {
+            if (File.Exists(AppPaths.PaqetConfigPath))
+            {
+                var configContent = File.ReadAllText(AppPaths.PaqetConfigPath);
+                Logger.Debug($"Config content:\n{configContent}");
+            }
+            else
+            {
+                Logger.Warn($"Config file NOT FOUND: {AppPaths.PaqetConfigPath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Failed to read config for logging", ex);
+        }
 
         try
         {
+            var arguments = $"run --config \"{AppPaths.PaqetConfigPath}\"";
+            Logger.Info($"Starting: {AppPaths.BinaryPath} {arguments}");
+            Logger.Info($"WorkingDir: {AppPaths.BinDir}");
+
             var psi = new ProcessStartInfo
             {
                 FileName = AppPaths.BinaryPath,
-                Arguments = $"run --config \"{AppPaths.PaqetConfigPath}\"",
+                Arguments = arguments,
                 WorkingDirectory = AppPaths.BinDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+
             var proc = Process.Start(psi);
-            if (proc == null) return (false, "Failed to start process.");
+            if (proc == null)
+            {
+                Logger.Error("Start: Process.Start returned null");
+                return (false, "Failed to start process.");
+            }
 
             var pid = proc.Id;
+            Logger.Info($"Process started with PID {pid}");
 
-            // Wait up to 10s for process to bind to SOCKS5 port
-            for (int i = 0; i < 20; i++)
+            // Read stdout/stderr asynchronously to prevent buffer deadlock
+            var stdoutBuilder = new StringBuilder();
+            var stderrBuilder = new StringBuilder();
+            proc.OutputDataReceived += (s, e) =>
             {
-                System.Threading.Thread.Sleep(500);
+                if (e.Data != null)
+                {
+                    stdoutBuilder.AppendLine(e.Data);
+                    Logger.Debug($"[paqet stdout] {e.Data}");
+                }
+            };
+            proc.ErrorDataReceived += (s, e) =>
+            {
+                if (e.Data != null)
+                {
+                    stderrBuilder.AppendLine(e.Data);
+                    Logger.Debug($"[paqet stderr] {e.Data}");
+                }
+            };
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
+
+            // Wait up to 15s for process to bind to SOCKS5 port
+            for (int i = 0; i < 30; i++)
+            {
+                Thread.Sleep(500);
 
                 if (proc.HasExited)
                 {
-                    var stderr = proc.StandardError.ReadToEnd().Trim();
-                    var exitMsg = string.IsNullOrEmpty(stderr) ? $"Exit code: {proc.ExitCode}" : stderr;
+                    var stderr = stderrBuilder.ToString().Trim();
+                    var stdout = stdoutBuilder.ToString().Trim();
+                    Logger.Error($"Process exited prematurely! ExitCode={proc.ExitCode}");
+                    Logger.Error($"  stdout: {stdout}");
+                    Logger.Error($"  stderr: {stderr}");
+                    var exitMsg = !string.IsNullOrEmpty(stderr) ? stderr
+                        : !string.IsNullOrEmpty(stdout) ? stdout
+                        : $"Exit code: {proc.ExitCode}";
                     return (false, $"Process exited: {exitMsg}");
                 }
 
                 if (IsPortListening())
+                {
+                    Logger.Info($"Port {SOCKS_PORT} is now listening! Connected in {(i + 1) * 500}ms");
                     return (true, $"Connected (PID {pid}).");
+                }
+
+                if (i % 4 == 3)
+                    Logger.Debug($"Waiting for port... attempt {i + 1}/30, process alive: {!proc.HasExited}");
             }
 
-            if (IsRunning())
-                return (true, $"Started (PID {pid}), port binding pending.");
+            // Process is alive but port not ready after 15s
+            var running = IsRunning();
+            var stderrFinal = stderrBuilder.ToString().Trim();
+            var stdoutFinal = stdoutBuilder.ToString().Trim();
+            Logger.Warn($"Port not ready after 15s. Process alive: {running}");
+            Logger.Warn($"  stdout so far: {stdoutFinal}");
+            Logger.Warn($"  stderr so far: {stderrFinal}");
 
-            return (false, "Process failed to start.");
+            if (running)
+            {
+                var detail = !string.IsNullOrEmpty(stderrFinal) ? $" ({stderrFinal})" : "";
+                return (true, $"Started (PID {pid}), port binding pending.{detail}");
+            }
+
+            return (false, $"Process failed to start. stderr: {stderrFinal}");
         }
         catch (Exception ex)
         {
+            Logger.Error("Start: exception", ex);
             return (false, $"Start failed: {ex.Message}");
         }
     }
@@ -130,21 +231,34 @@ public sealed class PaqetService
     /// <summary>Stop the paqet process forcefully.</summary>
     public (bool Success, string Message) Stop()
     {
+        Logger.Info("Stop() called");
+
         if (!IsRunning())
+        {
+            Logger.Info("Stop: not running");
             return (true, "Not running.");
+        }
 
         try
         {
+            Logger.Info($"Killing {AppPaths.BINARY_NAME}");
             RunCommand("taskkill", $"/IM {AppPaths.BINARY_NAME} /F");
             for (int i = 0; i < 10; i++)
             {
-                System.Threading.Thread.Sleep(200);
-                if (!IsRunning()) return (true, "Stopped.");
+                Thread.Sleep(200);
+                if (!IsRunning())
+                {
+                    Logger.Info("Stop: process terminated");
+                    return (true, "Stopped.");
+                }
             }
-            return (IsRunning() ? false : true, IsRunning() ? "Failed to stop." : "Stopped.");
+            var stillRunning = IsRunning();
+            Logger.Warn($"Stop: after 2s, still running: {stillRunning}");
+            return (stillRunning ? false : true, stillRunning ? "Failed to stop." : "Stopped.");
         }
         catch (Exception ex)
         {
+            Logger.Error("Stop: exception", ex);
             return (false, $"Stop failed: {ex.Message}");
         }
     }

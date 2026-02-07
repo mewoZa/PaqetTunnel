@@ -245,7 +245,7 @@
                             </Grid>
 
                             <!-- Auto Start -->
-                            <Grid>
+                            <Grid Margin="0,0,0,12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition />
                                     <ColumnDefinition Width="Auto" />
@@ -259,6 +259,22 @@
                                               IsChecked="{Binding IsAutoStartEnabled, Mode=OneWay}"
                                               Command="{Binding ToggleAutoStartCommand}"
                                               IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}" />
+                            </Grid>
+
+                            <!-- Debug Mode -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Debug Mode" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Log diagnostics to file" 
+                                               FontSize="11" Foreground="{StaticResource TextDimBrush}" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding DebugMode, Mode=OneWay}"
+                                              Command="{Binding ToggleDebugModeCommand}" />
                             </Grid>
                         </StackPanel>
                     </Border>

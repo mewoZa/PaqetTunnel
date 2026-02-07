@@ -59,6 +59,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _showSettings;
     [ObservableProperty] private bool _showTools;
     [ObservableProperty] private bool _isBusy;
+    [ObservableProperty] private bool _debugMode;
     [ObservableProperty] private string _paqetVersion = "";
     [ObservableProperty] private string _interfaceList = "";
     [ObservableProperty] private string _pingResult = "";
@@ -89,9 +90,16 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Initialize the app — check setup, load config, start polling.</summary>
     public async Task InitializeAsync()
     {
+        Logger.Info("InitializeAsync started");
+
+        // Load debug mode state
+        var appSettings = _configService.ReadAppSettings();
+        DebugMode = appSettings.DebugMode;
+
         // Check if paqet binary exists
         NeedsSetup = !_paqetService.BinaryExists();
         IsNpcapInstalled = SetupService.IsNpcapInstalled();
+        Logger.Info($"NeedsSetup={NeedsSetup}, NpcapInstalled={IsNpcapInstalled}");
 
         // Load config
         var config = _configService.ReadPaqetConfig();
@@ -99,6 +107,7 @@ public partial class MainViewModel : ObservableObject
         ServerPort = config.ServerPort;
         Key = config.Key;
         NetworkInterface = config.Interface;
+        Logger.Info($"Config loaded: server={config.ServerAddr}, interface={config.Interface}, socks={config.SocksListen}");
 
         // Load toggle states
         IsSystemProxyEnabled = _proxyService.IsSystemProxyEnabled();
@@ -108,6 +117,7 @@ public partial class MainViewModel : ObservableObject
         // ── Check running state (use IsReady for port-verified status)
         var running = _paqetService.IsRunning();
         var ready = running && PaqetService.IsPortListening();
+        Logger.Info($"Initial state: running={running}, portReady={ready}");
         IsConnected = ready;
         if (IsConnected)
         {
@@ -122,6 +132,7 @@ public partial class MainViewModel : ObservableObject
 
         // Get version
         PaqetVersion = _paqetService.GetVersion() ?? "";
+        Logger.Info($"PaqetVersion={PaqetVersion}");
 
         // Start polling
         _statusTimer.Start();
@@ -130,11 +141,16 @@ public partial class MainViewModel : ObservableObject
             ? "Setup required — click Install"
             : IsConnected ? "Connected" : "Ready";
 
+        Logger.Info($"StatusBarText={StatusBarText}");
+
         // Auto-setup if needed
         if (NeedsSetup)
         {
+            Logger.Info("Running auto-setup...");
             await RunSetupAsync();
         }
+
+        Logger.Info("InitializeAsync complete");
     }
 
     // ── Commands ──────────────────────────────────────────────────
@@ -159,12 +175,14 @@ public partial class MainViewModel : ObservableObject
         IsConnecting = true;
         ConnectionStatus = "Connecting...";
         StatusBarText = "Connecting...";
+        Logger.Info("ConnectAsync started");
 
         await Task.Run(() =>
         {
             // Ensure binary exists
             if (!_paqetService.BinaryExists())
             {
+                Logger.Warn("ConnectAsync: binary not found");
                 Application.Current.Dispatcher.Invoke(() =>
                 {
                     ConnectionStatus = "Binary not found";
@@ -174,22 +192,38 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
 
+            Logger.Info("Calling PaqetService.Start()...");
             var (success, message) = _paqetService.Start();
+            Logger.Info($"Start() returned: success={success}, message={message}");
 
             Application.Current.Dispatcher.Invoke(() =>
             {
                 if (success)
                 {
-                    IsConnected = true;
-                    _connectedSince = DateTime.Now;
-                    ConnectionStatus = "Connected";
-                    StatusBarText = "Connected";
-                    _networkMonitor.Start();
+                    // Verify port is actually listening before claiming connected
+                    var portReady = PaqetService.IsPortListening();
+                    Logger.Info($"Post-start port check: {portReady}");
+
+                    if (portReady)
+                    {
+                        IsConnected = true;
+                        _connectedSince = DateTime.Now;
+                        ConnectionStatus = "Connected";
+                        StatusBarText = "Connected";
+                        _networkMonitor.Start();
+                    }
+                    else
+                    {
+                        IsConnected = false;
+                        ConnectionStatus = message;
+                        StatusBarText = message;
+                    }
                 }
                 else
                 {
                     ConnectionStatus = message;
                     StatusBarText = message;
+                    Logger.Warn($"ConnectAsync failed: {message}");
                 }
                 IsConnecting = false;
             });
@@ -312,6 +346,24 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void ToggleDebugMode()
+    {
+        DebugMode = !DebugMode;
+        var settings = _configService.ReadAppSettings();
+        settings.DebugMode = DebugMode;
+        _configService.WriteAppSettings(settings);
+
+        if (DebugMode && !Logger.IsEnabled)
+            Logger.Initialize(true);
+
+        Logger.Info($"Debug mode toggled: {DebugMode}");
+        StatusBarText = DebugMode
+            ? $"Debug ON — {Logger.LogPath}"
+            : "Debug mode disabled (restart to stop logging).";
+    }
+    }
+
+    [RelayCommand]
     private async Task SaveConfigAsync()
     {
         IsBusy = true;
@@ -427,12 +479,18 @@ public partial class MainViewModel : ObservableObject
         {
             var running = _paqetService.IsRunning();
             var portReady = running && PaqetService.IsPortListening();
+
+            // Only log when state changes or periodically
+            if (portReady != IsConnected)
+                Logger.Info($"OnStatusTick: state change — running={running}, portReady={portReady}, wasConnected={IsConnected}");
+
             Application.Current.Dispatcher.Invoke(() =>
             {
                 if (portReady != IsConnected)
                 {
                     IsConnected = portReady;
                     ConnectionStatus = portReady ? "Connected" : running ? "Port not ready" : "Disconnected";
+                    Logger.Info($"OnStatusTick: ConnectionStatus={ConnectionStatus}");
                     if (portReady)
                     {
                         _connectedSince = DateTime.Now;
@@ -457,7 +515,10 @@ public partial class MainViewModel : ObservableObject
                 }
             });
         }
-        catch { /* Swallow polling errors */ }
+        catch (Exception ex)
+        {
+            Logger.Error("OnStatusTick exception", ex);
+        }
     }
 
     private void OnSpeedUpdated()

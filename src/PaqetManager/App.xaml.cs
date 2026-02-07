@@ -34,15 +34,23 @@ public partial class App : Application
         // ── Ensure data directories exist ──────────────────────────
         AppPaths.EnsureDirectories();
 
+        // ── Initialize logger (read settings to check debug mode) ──
+        var configService = new ConfigService();
+        var appSettings = configService.ReadAppSettings();
+        Services.Logger.Initialize(appSettings.DebugMode);
+        Services.Logger.CleanOldLogs();
+        Services.Logger.Info("=== App OnStartup ===");
+
         // ── Migrate from old %USERPROFILE%\paqet if present ────────
         SetupService.MigrateFromOldLocation();
 
         // ── Initialize services ────────────────────────────────────
-        var configService = new ConfigService();
         var paqetService = new PaqetService();
         var proxyService = new ProxyService();
         var networkMonitor = new NetworkMonitorService();
         var setupService = new SetupService(paqetService);
+
+        Services.Logger.Info("Services initialized");
 
         // ── Create ViewModel ───────────────────────────────────────
         _viewModel = new MainViewModel(paqetService, proxyService, networkMonitor, configService, setupService);
@@ -53,8 +61,12 @@ public partial class App : Application
         // ── System tray icon ───────────────────────────────────────
         CreateTrayIcon();
 
+        Services.Logger.Info("Starting InitializeAsync...");
+
         // ── Start services ─────────────────────────────────────────
         await _viewModel.InitializeAsync();
+
+        Services.Logger.Info("InitializeAsync complete");
     }
 
     private void CreateTrayIcon()
