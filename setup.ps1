@@ -129,7 +129,15 @@ function Require-Admin {
     if (Is-Admin) { return }
     WL ""
     Warn "Administrator privileges required. Elevating..."
-    $argList = "-ExecutionPolicy Bypass -File `"$PSCommandPath`" $($Script:OriginalArgs -join ' ')"
+    $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    if ($Command) { $argList += " $Command" }
+    if ($Server) { $argList += ' -Server' }
+    if ($Addr) { $argList += " -Addr `"$Addr`"" }
+    if ($Key) { $argList += " -Key `"$Key`"" }
+    if ($Iface) { $argList += " -Iface `"$Iface`"" }
+    if ($SocksPort -ne 10800) { $argList += " -SocksPort $SocksPort" }
+    if ($Force) { $argList += ' -Force' }
+    if ($Yes) { $argList += ' -y' }
     Start-Process powershell -ArgumentList $argList -Verb RunAs -Wait
     exit
 }
@@ -186,26 +194,55 @@ function Install-Dep($name, $testCmd, $wingetId, $fallbackUrl, $fallbackArgs) {
 
 function Ensure-Git {
     Install-Dep 'Git' 'git' 'Git.Git' `
-        'https://github.com/git-for-windows/git/releases/latest/download/Git-2.47.1-64-bit.exe' `
+        'https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe' `
         '/VERYSILENT /NORESTART'
 }
 
 function Ensure-Dotnet {
-    if (Has-Command 'dotnet') {
-        $ver = & dotnet --version 2>$null
-        if ($ver -match '^8\.') { OK ".NET 8 SDK ($ver)"; return $true }
+    # Check existing install (both Program Files and user-local)
+    $dotnetPaths = @("$env:ProgramFiles\dotnet", "$env:LOCALAPPDATA\Microsoft\dotnet")
+    foreach ($p in $dotnetPaths) {
+        $exe = "$p\dotnet.exe"
+        if (Test-Path $exe) {
+            $ver = & $exe --version 2>$null
+            if ($ver -match '^8\.') {
+                if ($env:PATH -notlike "*$p*") { $env:PATH = "$p;$env:PATH" }
+                OK ".NET 8 SDK ($ver)"
+                return $true
+            }
+        }
     }
-    Install-Dep '.NET 8 SDK' 'dotnet' 'Microsoft.DotNet.SDK.8' `
-        'https://dotnet.microsoft.com/download/dotnet/scripts/v1/dotnet-install.ps1' ''
-    # Fallback: use dotnet-install script
-    if (-not (Has-Command 'dotnet') -or -not ((& dotnet --version 2>$null) -match '^8\.')) {
-        Step "Using dotnet-install script..."
-        $script = "$env:TEMP\dotnet-install.ps1"
-        Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $script -UseBasicParsing
-        & $script -Channel 8.0
-        $env:PATH = $env:LOCALAPPDATA + '\Microsoft\dotnet;' + $env:PATH
+
+    # Try winget first
+    if (Has-Command 'winget') {
+        Step "Installing .NET 8 SDK via winget..."
+        try {
+            & winget install --id Microsoft.DotNet.SDK.8 --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
+            $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+                        [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+            if (Has-Command 'dotnet') {
+                $ver = & dotnet --version 2>$null
+                if ($ver -match '^8\.') { OK ".NET 8 SDK ($ver)"; return $true }
+            }
+        } catch {}
     }
-    return (Has-Command 'dotnet')
+
+    # Fallback: use official dotnet-install script (installs to Program Files for system-wide use)
+    Step "Installing .NET 8 SDK..."
+    $instScript = "$env:TEMP\dotnet-install.ps1"
+    Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $instScript -UseBasicParsing
+    $installDir = "$env:ProgramFiles\dotnet"
+    & $instScript -Channel 8.0 -InstallDir $installDir
+    if ($env:PATH -notlike "*$installDir*") { $env:PATH = "$installDir;$env:PATH" }
+    # Persist to system PATH for future sessions
+    $machinePath = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine')
+    if ($machinePath -notlike "*$installDir*") {
+        [System.Environment]::SetEnvironmentVariable('PATH', "$installDir;$machinePath", 'Machine')
+    }
+    $ver = & "$installDir\dotnet.exe" --version 2>$null
+    if ($ver -match '^8\.') { OK ".NET 8 SDK ($ver)"; return $true }
+    Err ".NET 8 SDK installation failed"
+    return $false
 }
 
 function Ensure-Go {
@@ -216,9 +253,40 @@ function Ensure-Go {
     }
     $arch = Get-Arch
     $goArch = if ($arch -eq 'arm64') { 'arm64' } else { 'amd64' }
-    Install-Dep 'Go' 'go' 'GoLang.Go' `
-        "https://go.dev/dl/go1.24.0.windows-$goArch.msi" ''
-    return (Has-Command 'go')
+
+    # Try winget first
+    if (Has-Command 'winget') {
+        Step "Installing Go via winget..."
+        try {
+            & winget install --id GoLang.Go --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
+            $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+                        [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+            if (Has-Command 'go') { $v = (& go version 2>$null) -replace 'go version go','' -replace ' .*',''; OK "Go ($v)"; return $true }
+        } catch {}
+    }
+
+    # Fallback: detect latest Go version from go.dev and download MSI
+    Step "Installing Go..."
+    try {
+        $dlPage = Invoke-WebRequest 'https://go.dev/dl/?mode=json' -UseBasicParsing | ConvertFrom-Json
+        $latest = ($dlPage | Where-Object { $_.stable -eq $true } | Select-Object -First 1).version
+        if (-not $latest) { $latest = 'go1.25.0' }
+    } catch { $latest = 'go1.25.0' }
+    $goUrl = "https://go.dev/dl/$latest.windows-$goArch.msi"
+    Dim "Downloading $latest..."
+    $dl = "$env:TEMP\go-setup.msi"
+    Invoke-WebRequest $goUrl -OutFile $dl -UseBasicParsing
+    Start-Process msiexec -ArgumentList "/i `"$dl`" /qn /norestart" -Wait
+    Remove-Item $dl -Force -ErrorAction SilentlyContinue
+    $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+                [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+    if (Has-Command 'go') {
+        $v = (& go version 2>$null) -replace 'go version go','' -replace ' .*',''
+        OK "Go ($v)"
+        return $true
+    }
+    Err "Go installation failed. Install manually from https://go.dev/dl/"
+    return $false
 }
 
 function Ensure-InnoSetup {
@@ -347,9 +415,8 @@ function Do-Install {
     Banner
     Step "Installing $Script:AppName$(if($ServerMode){' (Server)'}else{' (Client)'})..."
     WL ""
-    Require-Admin
 
-    # Check dependencies
+    # Check and install dependencies (doesn't need admin)
     Step "Checking dependencies..."
     WL ""
     if (-not (Ensure-Git))    { Err "Git is required"; return }
@@ -357,11 +424,14 @@ function Do-Install {
     if (-not (Ensure-Go))     { Err "Go is required"; return }
     WL ""
 
-    # Build
+    # Build from source (doesn't need admin)
     Step "Building from source..."
     WL ""
     if (-not (Build-FromSource)) { return }
     WL ""
+
+    # Install step requires admin
+    Require-Admin
 
     if ($ServerMode) {
         Do-ServerInstall
@@ -449,7 +519,7 @@ function Do-Update {
 
 function Do-Uninstall {
     Banner
-    if (-not (Is-Installed)) {
+    if (-not (Is-Installed) -and -not (Test-Path $Script:DataDir) -and -not (Test-Path $Script:SourceDir)) {
         Warn "$Script:AppName is not installed"
         return
     }
@@ -465,25 +535,29 @@ function Do-Uninstall {
         Step "Running uninstaller..."
         Start-Process $uninst -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait
         OK "Uninstaller completed"
-    } else {
+    } elseif (Test-Path $Script:InstallDir) {
         Step "Removing files..."
         Remove-Item $Script:InstallDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     # Clean data
-    if (Confirm "Remove app data ($($Script:DataDir))?") {
-        Remove-Item $Script:DataDir -Recurse -Force -ErrorAction SilentlyContinue
-        OK "Data removed"
+    if (Test-Path $Script:DataDir) {
+        if (Confirm "Remove app data ($($Script:DataDir))?") {
+            Remove-Item $Script:DataDir -Recurse -Force -ErrorAction SilentlyContinue
+            OK "Data removed"
+        }
     }
 
     # Clean autostart
     $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
     Remove-ItemProperty -Path $regPath -Name 'PaqetTunnel' -ErrorAction SilentlyContinue
 
-    # Clean source (optional)
-    if ((Test-Path $Script:SourceDir) -and (Confirm "Remove source code ($($Script:SourceDir))?")) {
-        Remove-Item $Script:SourceDir -Recurse -Force -ErrorAction SilentlyContinue
-        OK "Source removed"
+    # Clean source
+    if (Test-Path $Script:SourceDir) {
+        if (Confirm "Remove source code ($($Script:SourceDir))?") {
+            Remove-Item $Script:SourceDir -Recurse -Force -ErrorAction SilentlyContinue
+            OK "Source removed"
+        }
     }
 
     WL ""
@@ -721,17 +795,6 @@ function Show-Interactive {
 # ═══════════════════════════════════════════════════════════════════
 # Entry Point
 # ═══════════════════════════════════════════════════════════════════
-
-# Build arg string for re-elevation
-$Script:OriginalArgs = @()
-if ($Command) { $Script:OriginalArgs += $Command }
-if ($Server) { $Script:OriginalArgs += '-Server' }
-if ($Addr) { $Script:OriginalArgs += "-Addr `"$Addr`"" }
-if ($Key) { $Script:OriginalArgs += "-Key `"$Key`"" }
-if ($Iface) { $Script:OriginalArgs += "-Iface `"$Iface`"" }
-if ($SocksPort -ne 10800) { $Script:OriginalArgs += "-SocksPort $SocksPort" }
-if ($Force) { $Script:OriginalArgs += '-Force' }
-if ($Yes) { $Script:OriginalArgs += '-y' }
 
 switch ($Command.ToLower()) {
     'install'   { if ($Server) { Do-Install -ServerMode } else { Do-Install } }
