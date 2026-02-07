@@ -60,30 +60,42 @@ Paqet Tunnel is a Windows desktop application that provides a user-friendly inte
 
 ## Quick Start
 
-### Install from release
+### One-liner install (Windows)
 
-Download `PaqetTunnelSetup.exe` from [Releases](https://github.com/mewoZa/PaqetTunnel/releases), run it, and follow the wizard. The installer bundles everything needed.
-
-### Build from source
-
-```bat
-git clone --recursive https://github.com/mewoZa/PaqetTunnel.git
-cd PaqetTunnel
-Build.bat
+```powershell
+irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $env:TEMP\pt.ps1; & $env:TEMP\pt.ps1
 ```
 
-Build.bat performs these steps:
-1. Compiles paqet from Go source (submodule)
-2. Publishes .NET 8 app as self-contained single-file
-3. Downloads tun2socks and wintun
-4. Builds the InnoSetup installer
+Or with arguments:
+```powershell
+.\setup.ps1 install -Addr 1.2.3.4:8443 -Key "your-secret-key"
+```
+
+### Linux server
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh | sudo bash
+```
+
+### Setup script commands
+
+| Command | Description |
+|---------|-------------|
+| `setup.ps1 install` | Install client (auto-installs all dependencies) |
+| `setup.ps1 update` | Update to latest version |
+| `setup.ps1 uninstall` | Remove everything |
+| `setup.ps1 status` | Show installation status |
+| `setup.ps1 server` | Install paqet server mode |
+| `setup.ps1 help` | Show all options |
+
+The setup script automatically installs Git, .NET 8 SDK, Go, Inno Setup, and all runtime dependencies. Works on any Windows architecture (x64, ARM64).
 
 ## Project Structure
 
 ```
 PaqetTunnel/
-├── Build.bat                     # One-click release build + installer
-├── Run.bat / Stop.bat            # Dev helpers
+├── setup.ps1                     # Universal setup & management (Windows)
+├── setup.sh                      # Server setup (Linux)
 ├── paqet/                        # Git submodule (mewoZa/paqet fork)
 ├── assets/                       # Logo and branding
 ├── src/PaqetTunnel/
@@ -99,6 +111,7 @@ PaqetTunnel/
 │   │   ├── NetworkMonitorService.cs
 │   │   ├── ConfigService.cs      # YAML + JSON persistence
 │   │   ├── SetupService.cs       # Auto-install + migration
+│   │   ├── UpdateService.cs      # GitHub auto-update checker
 │   │   └── Logger.cs             # File-based debug logger
 │   ├── ViewModels/
 │   │   └── MainViewModel.cs      # MVVM state + commands

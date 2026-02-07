@@ -72,6 +72,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _interfaceList = "";
     [ObservableProperty] private string _pingResult = "";
     [ObservableProperty] private string _fullVersionInfo = "";
+    [ObservableProperty] private string _updateStatus = "";
 
     // ── Connection Info ───────────────────────────────────────────
 
@@ -187,6 +188,10 @@ public partial class MainViewModel : ObservableObject
         }
 
         Logger.Info("InitializeAsync complete");
+
+        // Background update check
+        if (UpdateService.ShouldCheck())
+            _ = CheckForUpdatesAsync();
 
         // Auto-connect if enabled and not already connected
         if (IsAutoConnect && !IsConnected && !NeedsSetup)
@@ -668,6 +673,34 @@ public partial class MainViewModel : ObservableObject
         var info = _paqetService.GetFullVersionInfo();
         FullVersionInfo = info ?? "Version info not available.";
         StatusBarText = info != null ? "Version info loaded." : "Binary not found.";
+    }
+
+    [RelayCommand]
+    private async Task CheckForUpdatesAsync()
+    {
+        UpdateStatus = "Checking...";
+        StatusBarText = "Checking for updates...";
+        var (available, local, remote) = await UpdateService.CheckAsync();
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            if (available)
+            {
+                UpdateStatus = $"Update available ({remote[..7]})";
+                StatusBarText = $"Update available! {local[..7]} → {remote[..7]}";
+            }
+            else
+            {
+                UpdateStatus = "Up to date";
+                StatusBarText = "No updates available.";
+            }
+        });
+    }
+
+    [RelayCommand]
+    private async Task RunUpdateAsync()
+    {
+        StatusBarText = "Starting update...";
+        await UpdateService.RunUpdateAsync();
     }
 
     // ── Periodic Status Check ─────────────────────────────────────

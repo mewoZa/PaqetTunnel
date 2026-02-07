@@ -531,7 +531,17 @@
                                          FontFamily="{StaticResource MonoFont}" FontSize="9.5"
                                          TextWrapping="Wrap" MaxHeight="70"
                                          Visibility="{Binding FullVersionInfo, Converter={StaticResource StringToVis}}"
-                                         Margin="0,4,0,0" />
+                                         Margin="0,4,0,6" />
+
+                                <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,2,0,6" />
+
+                                <Button Content="Check for Updates" Style="{StaticResource SecondaryButton}"
+                                        Command="{Binding CheckForUpdatesAsyncCommand}"
+                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
+                                <TextBlock Text="{Binding UpdateStatus}" FontSize="10"
+                                           Foreground="{StaticResource TextDimBrush}"
+                                           Visibility="{Binding UpdateStatus, Converter={StaticResource StringToVis}}"
+                                           Margin="2,0,0,0" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
