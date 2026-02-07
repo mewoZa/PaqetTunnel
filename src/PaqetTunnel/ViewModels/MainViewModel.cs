@@ -287,6 +287,9 @@ public partial class MainViewModel : ObservableObject
                     }
                 }
 
+                // Disable system proxy before starting TUN — proxy + TUN conflicts
+                EnsureProxyDisabledForTun();
+
                 Application.Current.Dispatcher.Invoke(() => ConnectionStatus = "Starting TUN tunnel...");
                 Logger.Info("Starting TUN tunnel...");
                 var config = _configService.ReadPaqetConfig();
@@ -368,6 +371,15 @@ public partial class MainViewModel : ObservableObject
     private async Task ToggleSystemProxyAsync()
     {
         var newState = !IsSystemProxyEnabled;
+
+        // Block enabling system proxy when TUN tunnel is active
+        if (newState && _tunService.IsRunning())
+        {
+            StatusBarText = "System proxy disabled in TUN mode (not needed)";
+            Logger.Info("Blocked system proxy enable — TUN tunnel active");
+            return;
+        }
+
         IsBusy = true;
         await Task.Run(() =>
         {
@@ -501,6 +513,9 @@ public partial class MainViewModel : ObservableObject
                         return;
                     }
                 }
+
+                // Disable system proxy — TUN handles all traffic
+                EnsureProxyDisabledForTun();
 
                 ConnectionStatus = "Starting TUN tunnel...";
                 var config = _configService.ReadPaqetConfig();
@@ -697,6 +712,36 @@ public partial class MainViewModel : ObservableObject
             });
         }
         catch { /* Swallow UI errors */ }
+    }
+
+    /// <summary>
+    /// Disable system proxy and WinHTTP proxy when TUN tunnel is active.
+    /// TUN routes ALL traffic through the tunnel — proxy settings cause conflicts
+    /// (double-proxy, broken Windows Update, cert mismatches on CDN endpoints).
+    /// </summary>
+    private void EnsureProxyDisabledForTun()
+    {
+        Logger.Info("EnsureProxyDisabledForTun: disabling system proxy for TUN mode");
+
+        // Disable WinINet system proxy (browsers)
+        if (IsSystemProxyEnabled || _proxyService.IsSystemProxyEnabled())
+        {
+            _proxyService.SetSystemProxy(false);
+            Application.Current.Dispatcher.Invoke(() => IsSystemProxyEnabled = false);
+            Logger.Info("Disabled WinINet system proxy for TUN mode");
+        }
+
+        // Reset WinHTTP proxy (Windows Update, system services)
+        try
+        {
+            var winhttp = PaqetService.RunCommand("netsh", "winhttp show proxy");
+            if (!winhttp.Contains("Direct access"))
+            {
+                PaqetService.RunCommand("netsh", "winhttp reset proxy");
+                Logger.Info("Reset WinHTTP proxy for TUN mode");
+            }
+        }
+        catch (Exception ex) { Logger.Debug($"WinHTTP reset: {ex.Message}"); }
     }
 
     public void Cleanup()

@@ -160,6 +160,9 @@ public sealed class ProxyService
             else
             {
                 RunReg($"add \"{INTERNET_SETTINGS_KEY}\" /v ProxyEnable /t REG_DWORD /d 0 /f");
+                // Clear proxy server value to prevent stale entries confusing WinHTTP/services
+                try { RunReg($"delete \"{INTERNET_SETTINGS_KEY}\" /v ProxyServer /f"); } catch { }
+                try { RunReg($"delete \"{INTERNET_SETTINGS_KEY}\" /v ProxyOverride /f"); } catch { }
                 if (_weSetProxy) _weSetProxy = false;
             }
 
