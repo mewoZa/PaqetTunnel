@@ -79,7 +79,7 @@
                         <StackPanel Grid.Column="1">
                             <TextBlock Text="SETUP REQUIRED" FontSize="10" FontWeight="Bold"
                                        Foreground="#d29922" Margin="0,0,0,3"
-                                       FontFamily="{StaticResource MainFont}" CharacterSpacing="80" />
+                                       FontFamily="{StaticResource MainFont}" />
                             <TextBlock Text="{Binding SetupStatus}" Foreground="{StaticResource TextDimBrush}"
                                        TextWrapping="Wrap" FontSize="11.5" Margin="0,0,0,6" />
                             <Button Content="Install" Style="{StaticResource PrimaryButton}"

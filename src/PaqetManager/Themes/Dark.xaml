@@ -329,7 +329,6 @@
         <Setter Property="FontSize" Value="10" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Margin" Value="2,0,0,4" />
-        <Setter Property="CharacterSpacing" Value="60" />
     </Style>
 
     <!-- ── Section Header ──────────────────────────────────────── -->
