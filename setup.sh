@@ -108,7 +108,7 @@ ensure_go() {
     step "Installing Go..."
     local arch
     arch=$(detect_arch)
-    local go_ver="1.24.0"
+    local go_ver="1.25.0"
     local url="https://go.dev/dl/go${go_ver}.linux-${arch}.tar.gz"
 
     curl -fsSL "$url" -o /tmp/go.tar.gz
@@ -146,14 +146,14 @@ build_paqet() {
     local arch
     arch=$(detect_arch)
     CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
-        go build -trimpath -ldflags='-s -w' -o "$src/paqet" ./cmd/paqet 2>&1
+        go build -trimpath -ldflags='-s -w' -o "$src/paqet-bin" ./cmd/paqet 2>&1
 
-    if [[ ! -f "$src/paqet" ]]; then
+    if [[ ! -f "$src/paqet-bin" ]]; then
         err "Build failed"
         exit 1
     fi
-    ok "paqet built ($(du -h "$src/paqet" | cut -f1))"
-    echo "$src/paqet"
+    ok "paqet built ($(du -h "$src/paqet-bin" | cut -f1))"
+    BUILT_BIN="$src/paqet-bin"
 }
 
 # ── Commands ───────────────────────────────────────────────────
@@ -166,14 +166,14 @@ do_install() {
     ensure_go
     echo ""
 
-    local built_bin
-    built_bin=$(build_paqet)
+    BUILT_BIN=""
+    build_paqet
     echo ""
 
     # Install binary
     step "Installing to $INSTALL_DIR..."
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR"
-    cp "$built_bin" "$INSTALL_DIR/$BINARY"
+    cp "$BUILT_BIN" "$INSTALL_DIR/$BINARY"
     chmod +x "$INSTALL_DIR/$BINARY"
     ln -sf "$INSTALL_DIR/$BINARY" /usr/local/bin/paqet
     ok "Binary installed"
@@ -261,13 +261,13 @@ do_update() {
     ensure_go
     echo ""
 
-    local built_bin
-    built_bin=$(build_paqet)
+    BUILT_BIN=""
+    build_paqet
     echo ""
 
     step "Updating..."
     systemctl stop paqet 2>/dev/null || true
-    cp "$built_bin" "$INSTALL_DIR/$BINARY"
+    cp "$BUILT_BIN" "$INSTALL_DIR/$BINARY"
     chmod +x "$INSTALL_DIR/$BINARY"
     systemctl start paqet
     echo "$VERSION" > "$INSTALL_DIR/.version"
@@ -345,7 +345,10 @@ show_help() {
     dim "--yes              Skip confirmations"
     echo ""
     echo -e "  ${B}One-liner:${W}"
-    echo -e "    ${C}curl -fsSL https://raw.githubusercontent.com/$REPO/master/setup.sh | sudo bash${W}"
+    echo -e "    ${C}curl -fsSL https://raw.githubusercontent.com/$REPO/master/setup.sh | sudo bash -s -- install${W}"
+    echo ""
+    echo -e "  ${B}Auto-configure:${W}"
+    echo -e "    ${C}curl -fsSL https://raw.githubusercontent.com/$REPO/master/setup.sh | sudo bash -s -- install --addr 0.0.0.0:8443 --key YOUR_KEY --yes${W}"
     echo ""
 }
 

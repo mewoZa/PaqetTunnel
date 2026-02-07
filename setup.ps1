@@ -25,6 +25,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $Script:AppVersion = '1.0.0'
 $Script:Repo = 'mewoZa/PaqetTunnel'
 $Script:RepoUrl = "https://github.com/$($Script:Repo).git"
@@ -62,6 +63,38 @@ function Confirm($prompt) {
     W "  ? " Yellow; W "$prompt " White; W '[Y/n] ' DarkGray
     $r = Read-Host
     return ($r -eq '' -or $r -match '^[Yy]')
+}
+
+function Download-File($url, $outFile) {
+    # Use curl.exe (built into Windows 10+) as primary — it handles GitHub/TLS reliably
+    # Falls back to Invoke-WebRequest if curl.exe is unavailable
+    $curlExe = "$env:SystemRoot\System32\curl.exe"
+    if (Test-Path $curlExe) {
+        $dir = Split-Path $outFile -Parent
+        if ($dir -and -not (Test-Path $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
+        & $curlExe -fsSL --retry 3 --retry-delay 2 -o $outFile $url 2>&1
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $outFile)) { return $true }
+    }
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $outFile -UseBasicParsing -ErrorAction Stop
+        return $true
+    } catch {
+        Err "Download failed: $url"
+        return $false
+    }
+}
+
+function Download-String($url) {
+    $curlExe = "$env:SystemRoot\System32\curl.exe"
+    if (Test-Path $curlExe) {
+        $result = & $curlExe -fsSL --retry 3 --retry-delay 2 $url 2>&1
+        if ($LASTEXITCODE -eq 0) { return ($result -join "`n") }
+    }
+    try {
+        return (Invoke-WebRequest -Uri $url -UseBasicParsing -ErrorAction Stop).Content
+    } catch {
+        return $null
+    }
 }
 
 function Menu {
@@ -173,7 +206,7 @@ function Install-Dep($name, $testCmd, $wingetId, $fallbackUrl, $fallbackArgs) {
         Step "Downloading $name directly..."
         $ext = if ($fallbackUrl -match '\.msi$') { '.msi' } else { '.exe' }
         $dl = "$env:TEMP\$name-setup$ext"
-        Invoke-WebRequest -Uri $fallbackUrl -OutFile $dl -UseBasicParsing
+        if (-not (Download-File $fallbackUrl $dl)) { Err "Download failed for $name"; return $false }
         if ($ext -eq '.msi') {
             Start-Process msiexec -ArgumentList "/i `"$dl`" /qn" -Wait
         } else {
@@ -230,7 +263,7 @@ function Ensure-Dotnet {
     # Fallback: use official dotnet-install script (installs to Program Files for system-wide use)
     Step "Installing .NET 8 SDK..."
     $instScript = "$env:TEMP\dotnet-install.ps1"
-    Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $instScript -UseBasicParsing
+    if (-not (Download-File 'https://dot.net/v1/dotnet-install.ps1' $instScript)) { Err ".NET download failed"; return $false }
     $installDir = "$env:ProgramFiles\dotnet"
     & $instScript -Channel 8.0 -InstallDir $installDir
     if ($env:PATH -notlike "*$installDir*") { $env:PATH = "$installDir;$env:PATH" }
@@ -267,15 +300,19 @@ function Ensure-Go {
 
     # Fallback: detect latest Go version from go.dev and download MSI
     Step "Installing Go..."
+    $latest = 'go1.25.0'
     try {
-        $dlPage = Invoke-WebRequest 'https://go.dev/dl/?mode=json' -UseBasicParsing | ConvertFrom-Json
-        $latest = ($dlPage | Where-Object { $_.stable -eq $true } | Select-Object -First 1).version
-        if (-not $latest) { $latest = 'go1.25.0' }
-    } catch { $latest = 'go1.25.0' }
+        $json = Download-String 'https://go.dev/dl/?mode=json'
+        if ($json) {
+            $dlPage = $json | ConvertFrom-Json
+            $ver = ($dlPage | Where-Object { $_.stable -eq $true } | Select-Object -First 1).version
+            if ($ver) { $latest = $ver }
+        }
+    } catch {}
     $goUrl = "https://go.dev/dl/$latest.windows-$goArch.msi"
     Dim "Downloading $latest..."
     $dl = "$env:TEMP\go-setup.msi"
-    Invoke-WebRequest $goUrl -OutFile $dl -UseBasicParsing
+    if (-not (Download-File $goUrl $dl)) { Err "Go download failed"; return $false }
     Start-Process msiexec -ArgumentList "/i `"$dl`" /qn /norestart" -Wait
     Remove-Item $dl -Force -ErrorAction SilentlyContinue
     $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
@@ -300,7 +337,7 @@ function Ensure-InnoSetup {
         & winget install --id JRSoftware.InnoSetup --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
     } else {
         $dl = "$env:TEMP\innosetup.exe"
-        Invoke-WebRequest 'https://jrsoftware.org/download.php/is.exe' -OutFile $dl -UseBasicParsing
+        if (-not (Download-File 'https://jrsoftware.org/download.php/is.exe' $dl)) { Err "InnoSetup download failed"; return $null }
         Start-Process $dl -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES' -Wait
         Remove-Item $dl -Force -ErrorAction SilentlyContinue
     }
@@ -359,7 +396,7 @@ function Build-FromSource {
         $t2sArch = if ($arch -eq 'arm64') { 'arm64' } else { 'amd64' }
         $t2sUrl = "https://github.com/xjasonlyu/tun2socks/releases/latest/download/tun2socks-windows-$t2sArch.zip"
         $zipFile = "$env:TEMP\tun2socks.zip"
-        Invoke-WebRequest $t2sUrl -OutFile $zipFile -UseBasicParsing
+        if (-not (Download-File $t2sUrl $zipFile)) { Err "tun2socks download failed"; return $false }
         Expand-Archive $zipFile -DestinationPath "$env:TEMP\t2s" -Force
         Get-ChildItem "$env:TEMP\t2s" -Filter '*.exe' -Recurse | Select-Object -First 1 |
             Copy-Item -Destination "$pubDir\tun2socks.exe"
@@ -370,7 +407,7 @@ function Build-FromSource {
         Step "Downloading WinTun..."
         $wUrl = 'https://www.wintun.net/builds/wintun-0.14.1.zip'
         $wZip = "$env:TEMP\wintun.zip"
-        Invoke-WebRequest $wUrl -OutFile $wZip -UseBasicParsing
+        if (-not (Download-File $wUrl $wZip)) { Err "WinTun download failed"; return $false }
         Expand-Archive $wZip -DestinationPath "$env:TEMP\wintun" -Force
         $wArch = if ($arch -eq 'arm64') { 'arm64' } else { 'amd64' }
         Copy-Item "$env:TEMP\wintun\wintun\bin\$wArch\wintun.dll" "$pubDir\wintun.dll"
