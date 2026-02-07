@@ -4,9 +4,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Timers;
-using PaqetManager.Models;
+using PaqetTunnel.Models;
 
-namespace PaqetManager.Services;
+namespace PaqetTunnel.Services;
 
 /// <summary>
 /// Monitors network speed using lightweight netstat -e calls.

@@ -1,13 +1,13 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using PaqetManager.Models;
+using PaqetTunnel.Models;
 
-namespace PaqetManager.Services;
+namespace PaqetTunnel.Services;
 
 /// <summary>
 /// Manages paqet YAML config and app-level JSON settings.
-/// All paths come from AppPaths (centralized in %LOCALAPPDATA%\PaqetManager).
+/// All paths come from AppPaths (centralized in %LOCALAPPDATA%\PaqetTunnel).
 /// </summary>
 public sealed class ConfigService
 {

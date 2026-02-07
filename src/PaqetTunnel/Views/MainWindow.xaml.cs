@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 
-namespace PaqetManager.Views;
+namespace PaqetTunnel.Views;
 
 public partial class MainWindow : Window
 {

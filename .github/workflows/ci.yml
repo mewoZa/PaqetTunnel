@@ -12,8 +12,10 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout (with submodules)
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
@@ -21,16 +23,16 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore dependencies
-        run: dotnet restore src\PaqetManager\PaqetManager.csproj
+        run: dotnet restore src\PaqetTunnel\PaqetTunnel.csproj
 
       - name: Build (Debug)
-        run: dotnet build src\PaqetManager\PaqetManager.csproj -c Debug --no-restore
+        run: dotnet build src\PaqetTunnel\PaqetTunnel.csproj -c Debug --no-restore
 
       - name: Publish (Release, single-file)
-        run: dotnet publish src\PaqetManager\PaqetManager.csproj -c Release -o publish --self-contained true -r win-x64
+        run: dotnet publish src\PaqetTunnel\PaqetTunnel.csproj -c Release -o publish --self-contained true -r win-x64
 
       - name: Verify output
         run: |
-          if (!(Test-Path "publish\PaqetManager.exe")) { throw "PaqetManager.exe not found" }
-          $size = (Get-Item "publish\PaqetManager.exe").Length / 1MB
-          Write-Host "✓ Build successful — PaqetManager.exe ($([math]::Round($size, 1)) MB)"
+          if (!(Test-Path "publish\PaqetTunnel.exe")) { throw "PaqetTunnel.exe not found" }
+          $size = (Get-Item "publish\PaqetTunnel.exe").Length / 1MB
+          Write-Host "✓ Build successful — PaqetTunnel.exe ($([math]::Round($size, 1)) MB)"

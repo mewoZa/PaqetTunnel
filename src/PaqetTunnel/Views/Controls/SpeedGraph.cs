@@ -5,7 +5,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
-namespace PaqetManager.Views.Controls;
+namespace PaqetTunnel.Views.Controls;
 
 /// <summary>
 /// Lightweight custom control for rendering a speed graph.

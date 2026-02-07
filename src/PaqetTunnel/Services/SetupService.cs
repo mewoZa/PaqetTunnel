@@ -3,7 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 
-namespace PaqetManager.Services;
+namespace PaqetTunnel.Services;
 
 /// <summary>
 /// Orchestrates first-run setup: downloads paqet binary, checks Npcap, creates default config.
@@ -45,7 +45,7 @@ public sealed class SetupService
             var tempPath = Path.Combine(Path.GetTempPath(), "npcap-installer.exe");
 
             using var http = new System.Net.Http.HttpClient();
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetManager/1.0");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
             var bytes = await http.GetByteArrayAsync(npcapUrl);
             await File.WriteAllBytesAsync(tempPath, bytes);
 
@@ -69,27 +69,49 @@ public sealed class SetupService
     }
 
     /// <summary>
-    /// Migrate existing paqet files from old %USERPROFILE%\paqet\ to new AppPaths location.
+    /// Migrate existing paqet files from old locations to new AppPaths location.
+    /// Checks both %USERPROFILE%\paqet and %LOCALAPPDATA%\PaqetManager (pre-rename).
     /// </summary>
     public static void MigrateFromOldLocation()
     {
+        AppPaths.EnsureDirectories();
+
+        // Migrate from old PaqetManager data dir (pre-rename)
+        var oldAppDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PaqetManager");
+        if (Directory.Exists(oldAppDir))
+        {
+            MigrateDir(Path.Combine(oldAppDir, "bin"), AppPaths.BinDir);
+            MigrateDir(Path.Combine(oldAppDir, "config"), AppPaths.ConfigDir);
+            MigrateDir(Path.Combine(oldAppDir, "logs"), AppPaths.LogDir);
+            var oldSettings = Path.Combine(oldAppDir, "settings.json");
+            if (File.Exists(oldSettings) && !File.Exists(AppPaths.SettingsPath))
+                try { File.Copy(oldSettings, AppPaths.SettingsPath, overwrite: false); } catch { }
+            Logger.Info($"Migrated data from old PaqetManager dir: {oldAppDir}");
+        }
+
+        // Migrate from ancient %USERPROFILE%\paqet
         var oldDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "paqet");
         if (!Directory.Exists(oldDir)) return;
 
-        AppPaths.EnsureDirectories();
-
-        // Migrate binary
         var oldBinary = Path.Combine(oldDir, AppPaths.BINARY_NAME);
         if (File.Exists(oldBinary) && !File.Exists(AppPaths.BinaryPath))
-        {
             try { File.Copy(oldBinary, AppPaths.BinaryPath, overwrite: false); } catch { }
-        }
 
-        // Migrate config
         var oldConfig = Path.Combine(oldDir, "client.yaml");
         if (File.Exists(oldConfig) && !File.Exists(AppPaths.PaqetConfigPath))
-        {
             try { File.Copy(oldConfig, AppPaths.PaqetConfigPath, overwrite: false); } catch { }
+    }
+
+    private static void MigrateDir(string src, string dst)
+    {
+        if (!Directory.Exists(src)) return;
+        Directory.CreateDirectory(dst);
+        foreach (var file in Directory.GetFiles(src))
+        {
+            var destFile = Path.Combine(dst, Path.GetFileName(file));
+            if (!File.Exists(destFile))
+                try { File.Copy(file, destFile, overwrite: false); } catch { }
         }
     }
 

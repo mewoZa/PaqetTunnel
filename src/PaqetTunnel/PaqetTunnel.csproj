@@ -7,13 +7,13 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <RootNamespace>PaqetManager</RootNamespace>
-    <AssemblyName>PaqetManager</AssemblyName>
+    <RootNamespace>PaqetTunnel</RootNamespace>
+    <AssemblyName>PaqetTunnel</AssemblyName>
     <ApplicationIcon>Assets\paqet.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Version>1.0.0</Version>
     <Authors>Paqet</Authors>
-    <Description>Paqet Manager — Modern proxy tunnel manager for Windows</Description>
+    <Description>Paqet Tunnel — Modern proxy tunnel manager for Windows</Description>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

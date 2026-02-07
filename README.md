@@ -1,7 +1,7 @@
-# Paqet Manager
+# Paqet Tunnel
 
 <p align="center">
-  <img src="assets/logo-dark.png" width="128" alt="Paqet Manager Logo" />
+  <img src="assets/logo-dark.png" width="128" alt="Paqet Tunnel Logo" />
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 
 ## About
 
-Paqet Manager is a Windows desktop application that provides a user-friendly interface for managing encrypted KCP tunnels. It wraps the [**paqet**](https://github.com/hanselime/paqet) tunnel engine (written in Go by [hanselime](https://github.com/hanselime)) and adds full system tunneling, a modern dark UI, and automated setup.
+Paqet Tunnel is a Windows desktop application that provides a user-friendly interface for managing encrypted KCP tunnels. It wraps the [**paqet**](https://github.com/hanselime/paqet) tunnel engine (written in Go by [hanselime](https://github.com/hanselime)) and adds full system tunneling, a modern dark UI, and automated setup.
 
 > **Note:** The paqet tunnel engine is a third-party open-source project. We fork and compile it from source as a [git submodule](paqet/). All credit for the core tunneling technology goes to [hanselime/paqet](https://github.com/hanselime/paqet).
 
@@ -29,14 +29,14 @@ Paqet Manager is a Windows desktop application that provides a user-friendly int
 - **Speed monitor** — Real-time download/upload speed with live graph
 - **System tray** — Compact popup, minimal footprint, always accessible
 - **Auto-connect** — Optional connect on app launch or Windows startup
-- **Debug logging** — Full diagnostics to `%LOCALAPPDATA%\PaqetManager\logs\`
+- **Debug logging** — Full diagnostics to `%LOCALAPPDATA%\PaqetTunnel\logs\`
 - **Self-compiled paqet** — Built from source via git submodule, no pre-built binaries
 
 ## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    PaqetManager.exe                       │
+│                    PaqetTunnel.exe                       │
 │         WPF System Tray App (.NET 8, Admin)              │
 ├──────────────────┬───────────────────────────────────────┤
 │   SOCKS5 Mode    │      Full System Tunnel Mode          │
@@ -62,13 +62,13 @@ Paqet Manager is a Windows desktop application that provides a user-friendly int
 
 ### Install from release
 
-Download `PaqetManagerSetup.exe` from [Releases](https://github.com/mewoZa/PaqetManager/releases), run it, and follow the wizard. The installer bundles everything needed.
+Download `PaqetTunnelSetup.exe` from [Releases](https://github.com/mewoZa/PaqetTunnel/releases), run it, and follow the wizard. The installer bundles everything needed.
 
 ### Build from source
 
 ```bat
-git clone --recursive https://github.com/mewoZa/PaqetManager.git
-cd PaqetManager
+git clone --recursive https://github.com/mewoZa/PaqetTunnel.git
+cd PaqetTunnel
 Build.bat
 ```
 
@@ -81,12 +81,12 @@ Build.bat performs these steps:
 ## Project Structure
 
 ```
-PaqetManager/
+PaqetTunnel/
 ├── Build.bat                     # One-click release build + installer
 ├── Run.bat / Stop.bat            # Dev helpers
 ├── paqet/                        # Git submodule (mewoZa/paqet fork)
 ├── assets/                       # Logo and branding
-├── src/PaqetManager/
+├── src/PaqetTunnel/
 │   ├── App.xaml.cs               # Entry point, tray icon, single instance
 │   ├── AppPaths.cs               # Centralized path management
 │   ├── app.manifest              # Admin elevation manifest
@@ -114,7 +114,7 @@ PaqetManager/
 
 ## Data Directories
 
-All data stored under `%LOCALAPPDATA%\PaqetManager\`:
+All data stored under `%LOCALAPPDATA%\PaqetTunnel\`:
 
 | Path | Contents |
 |------|----------|
@@ -125,7 +125,7 @@ All data stored under `%LOCALAPPDATA%\PaqetManager\`:
 
 ## Configuration
 
-Config file: `%LOCALAPPDATA%\PaqetManager\config\client.yaml`
+Config file: `%LOCALAPPDATA%\PaqetTunnel\config\client.yaml`
 
 ```yaml
 role: "client"

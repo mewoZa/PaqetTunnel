@@ -1,10 +1,10 @@
 using System;
 using System.IO;
 
-namespace PaqetManager.Services;
+namespace PaqetTunnel.Services;
 
 /// <summary>
-/// Simple file-based logger. Writes to %LOCALAPPDATA%\PaqetManager\logs\.
+/// Simple file-based logger. Writes to %LOCALAPPDATA%\PaqetTunnel\logs\.
 /// Enable via AppSettings.DebugMode or by calling Initialize(true).
 /// </summary>
 public static class Logger
@@ -26,7 +26,7 @@ public static class Logger
         {
             Directory.CreateDirectory(LogDir);
             _logPath = Path.Combine(LogDir, $"paqetmanager_{DateTime.Now:yyyyMMdd_HHmmss}.log");
-            Write("INFO", $"=== PaqetManager Debug Log Started ===");
+            Write("INFO", $"=== PaqetTunnel Debug Log Started ===");
             Write("INFO", $"Log file: {_logPath}");
             Write("INFO", $"DataDir: {AppPaths.DataDir}");
             Write("INFO", $"BinaryPath: {AppPaths.BinaryPath}");

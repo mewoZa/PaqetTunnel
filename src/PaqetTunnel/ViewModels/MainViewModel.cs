@@ -6,10 +6,10 @@ using System.Timers;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using PaqetManager.Models;
-using PaqetManager.Services;
+using PaqetTunnel.Models;
+using PaqetTunnel.Services;
 
-namespace PaqetManager.ViewModels;
+namespace PaqetTunnel.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {

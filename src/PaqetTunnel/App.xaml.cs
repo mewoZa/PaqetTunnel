@@ -3,12 +3,12 @@ using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using PaqetManager.Services;
-using PaqetManager.ViewModels;
-using PaqetManager.Views;
+using PaqetTunnel.Services;
+using PaqetTunnel.ViewModels;
+using PaqetTunnel.Views;
 using Forms = System.Windows.Forms;
 
-namespace PaqetManager;
+namespace PaqetTunnel;
 
 public partial class App : Application
 {
@@ -21,7 +21,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         // ── Single instance check ──────────────────────────────────
-        _mutex = new Mutex(true, "Global\\PaqetManager_SingleInstance", out bool isNew);
+        _mutex = new Mutex(true, "Global\\PaqetTunnel_SingleInstance", out bool isNew);
         if (!isNew)
         {
             // Signal existing instance to show its window
@@ -96,7 +96,7 @@ public partial class App : Application
     {
         _trayIcon = new Forms.NotifyIcon
         {
-            Text = "Paqet Manager",
+            Text = "Paqet Tunnel",
             Icon = GenerateTrayIcon(false),
             Visible = true
         };

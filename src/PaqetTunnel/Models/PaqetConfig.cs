@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace PaqetManager.Models;
+namespace PaqetTunnel.Models;
 
 /// <summary>
 /// Represents the paqet client.yaml configuration.

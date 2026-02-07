@@ -1,6 +1,6 @@
 @echo off
 echo ══════════════════════════════════════════════
-echo   Paqet Manager — Production Build
+echo   Paqet Tunnel — Production Build
 echo ══════════════════════════════════════════════
 echo.
 
@@ -35,14 +35,14 @@ popd
 echo       Output: publish\paqet_windows_amd64.exe
 echo.
 
-echo [2/5] Building PaqetManager (.NET)...
-dotnet publish src\PaqetManager\PaqetManager.csproj -c Release -o publish --self-contained true -r win-x64
+echo [2/5] Building PaqetTunnel (.NET)...
+dotnet publish src\PaqetTunnel\PaqetTunnel.csproj -c Release -o publish --self-contained true -r win-x64
 if %errorlevel% neq 0 (
     echo BUILD FAILED
     pause
     exit /b 1
 )
-echo       Output: publish\PaqetManager.exe
+echo       Output: publish\PaqetTunnel.exe
 echo.
 
 echo [3/5] Downloading tun2socks (if missing)...
@@ -99,7 +99,7 @@ if exist "%ISCC%" (
         pause
         exit /b 1
     )
-    echo       Output: installer\Output\PaqetManagerSetup.exe
+    echo       Output: installer\Output\PaqetTunnelSetup.exe
 ) else (
     echo       Skipped — InnoSetup not found. Install it from: https://jrsoftware.org
 )
@@ -107,9 +107,9 @@ if exist "%ISCC%" (
 echo.
 echo ══════════════════════════════════════════════
 echo   Build complete!
-echo   Exe:       publish\PaqetManager.exe
+echo   Exe:       publish\PaqetTunnel.exe
 if exist "publish\tun2socks.exe" echo   TUN:       publish\tun2socks.exe
 if exist "publish\wintun.dll" echo   WinTun:    publish\wintun.dll
-if exist "installer\Output\PaqetManagerSetup.exe" echo   Installer: installer\Output\PaqetManagerSetup.exe
+if exist "installer\Output\PaqetTunnelSetup.exe" echo   Installer: installer\Output\PaqetTunnelSetup.exe
 echo ══════════════════════════════════════════════
 pause

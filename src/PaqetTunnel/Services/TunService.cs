@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace PaqetManager.Services;
+namespace PaqetTunnel.Services;
 
 /// <summary>
 /// Manages the WinTun TUN adapter via tun2socks.exe for full system traffic tunneling.
@@ -210,7 +210,7 @@ public sealed class TunService
         {
             AppPaths.EnsureDirectories();
             using var http = new System.Net.Http.HttpClient();
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetManager/1.0");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
             http.Timeout = TimeSpan.FromSeconds(120);
 
             // Download tun2socks

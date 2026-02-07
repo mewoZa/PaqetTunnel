@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 
-namespace PaqetManager.Helpers;
+namespace PaqetTunnel.Helpers;
 
 /// <summary>
 /// Attached behavior to enable binding on PasswordBox (which doesn't support it natively).

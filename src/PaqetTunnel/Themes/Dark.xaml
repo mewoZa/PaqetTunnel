@@ -1,7 +1,7 @@
-<!-- Paqet Manager — Modern Dark Theme -->
+<!-- Paqet Tunnel — Modern Dark Theme -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:conv="clr-namespace:PaqetManager.Converters">
+                    xmlns:conv="clr-namespace:PaqetTunnel.Converters">
 
     <!-- ── Colors ──────────────────────────────────────────────── -->
     <Color x:Key="BgColor">#0d1117</Color>

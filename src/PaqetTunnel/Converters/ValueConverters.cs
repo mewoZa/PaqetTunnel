@@ -4,7 +4,7 @@ using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
 
-namespace PaqetManager.Converters;
+namespace PaqetTunnel.Converters;
 
 /// <summary>bool → Visibility</summary>
 public sealed class BoolToVisibilityConverter : IValueConverter

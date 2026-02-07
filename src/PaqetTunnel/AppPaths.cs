@@ -2,11 +2,11 @@ using System;
 using System.Diagnostics;
 using System.IO;
 
-namespace PaqetManager;
+namespace PaqetTunnel;
 
 /// <summary>
 /// Centralized path management. All paqet files live under one app-owned folder.
-/// Installed: %LOCALAPPDATA%\PaqetManager\
+/// Installed: %LOCALAPPDATA%\PaqetTunnel\
 /// Layout:
 ///   bin\paqet_windows_amd64.exe   — tunnel binary
 ///   config\client.yaml            — tunnel config
@@ -18,9 +18,9 @@ public static class AppPaths
     public const string TUN2SOCKS_NAME = "tun2socks.exe";
     public const string WINTUN_DLL_NAME = "wintun.dll";
 
-    /// <summary>Root data folder: %LOCALAPPDATA%\PaqetManager</summary>
+    /// <summary>Root data folder: %LOCALAPPDATA%\PaqetTunnel</summary>
     public static readonly string DataDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PaqetManager");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PaqetTunnel");
 
     /// <summary>Bin folder for the paqet binary.</summary>
     public static readonly string BinDir = Path.Combine(DataDir, "bin");

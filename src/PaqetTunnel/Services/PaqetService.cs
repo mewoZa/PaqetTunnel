@@ -8,11 +8,11 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace PaqetManager.Services;
+namespace PaqetTunnel.Services;
 
 /// <summary>
 /// Manages the paqet binary process — start, stop, status, download from GitHub.
-/// All paths come from AppPaths (centralized in %LOCALAPPDATA%\PaqetManager).
+/// All paths come from AppPaths (centralized in %LOCALAPPDATA%\PaqetTunnel).
 /// Paqet CLI uses cobra subcommands: run, version, iface, ping, dump, secret.
 /// </summary>
 public sealed class PaqetService
@@ -357,7 +357,7 @@ public sealed class PaqetService
             progress?.Report("Fetching latest release info...");
 
             using var http = new System.Net.Http.HttpClient();
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetManager/1.0");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
             http.Timeout = TimeSpan.FromSeconds(60);
 
             var json = await http.GetStringAsync(GITHUB_API);

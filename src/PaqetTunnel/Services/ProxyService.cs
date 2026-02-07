@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
-namespace PaqetManager.Services;
+namespace PaqetTunnel.Services;
 
 /// <summary>
 /// Manages Windows system proxy, port forwarding, firewall rules, and auto-start.
@@ -13,7 +13,7 @@ public sealed class ProxyService
 {
     private const string INTERNET_SETTINGS_KEY = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings";
     private const string AUTOSTART_KEY = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string AUTOSTART_NAME = "PaqetManager";
+    private const string AUTOSTART_NAME = "PaqetTunnel";
     private const int SOCKS_PORT = PaqetService.SOCKS_PORT;
 
     // Saved state for restore on shutdown
