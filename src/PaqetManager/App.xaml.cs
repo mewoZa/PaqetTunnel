@@ -67,6 +67,17 @@ public partial class App : Application
         await _viewModel.InitializeAsync();
 
         Services.Logger.Info("InitializeAsync complete");
+
+        // ── Auto-connect if --connect flag passed ──────────────────
+        if (e.Args.Length > 0 && e.Args[0] == "--connect")
+        {
+            Services.Logger.Info("Auto-connect requested via --connect flag");
+            if (!_viewModel.IsConnected && !_viewModel.NeedsSetup)
+            {
+                await Task.Delay(500);
+                _viewModel.ToggleConnectionCommand.Execute(null);
+            }
+        }
     }
 
     private void CreateTrayIcon()
