@@ -76,6 +76,9 @@ public partial class App : Application
 
         Services.Logger.Info("InitializeAsync complete");
 
+        // Show window on first launch
+        ShowWindow();
+
         // ── Auto-connect if --connect flag passed or AutoConnect setting ──
         var shouldAutoConnect = (e.Args.Length > 0 && e.Args[0] == "--connect");
         if (shouldAutoConnect)

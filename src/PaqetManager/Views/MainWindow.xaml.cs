@@ -27,10 +27,9 @@ public partial class MainWindow : Window
         if (msg == (int)NativeMethods.WM_PAQET_SHOW)
         {
             _suppressHideUntil = DateTime.UtcNow.AddSeconds(2);
-            Show();
-            Activate();
-            if (WindowState == WindowState.Minimized)
-                WindowState = WindowState.Normal;
+            // Use App.ShowWindow() which handles positioning near tray
+            if (Application.Current is App app)
+                app.ShowWindow();
             handled = true;
         }
         return IntPtr.Zero;
