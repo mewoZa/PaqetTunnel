@@ -155,6 +155,17 @@ public partial class MainViewModel : ObservableObject
             await RunSetupAsync();
         }
 
+        // Pre-download TUN binaries in background if missing (so they're ready when user needs them)
+        if (!_tunService.AllBinariesExist())
+        {
+            Logger.Info("TUN binaries missing, pre-downloading in background...");
+            _ = Task.Run(async () =>
+            {
+                var result = await _tunService.DownloadBinariesAsync();
+                Logger.Info($"TUN pre-download: {result.Message}");
+            });
+        }
+
         Logger.Info("InitializeAsync complete");
     }
 
@@ -233,6 +244,28 @@ public partial class MainViewModel : ObservableObject
             // Step 2: If TUN mode, start tun2socks
             if (IsFullSystemTunnel)
             {
+                // Auto-download TUN binaries if missing
+                if (!_tunService.AllBinariesExist())
+                {
+                    Application.Current.Dispatcher.Invoke(() => ConnectionStatus = "Downloading TUN binaries...");
+                    Logger.Info("TUN binaries missing, downloading...");
+                    var dlResult = await _tunService.DownloadBinariesAsync();
+                    Logger.Info($"TUN download: success={dlResult.Success}, message={dlResult.Message}");
+                    if (!dlResult.Success)
+                    {
+                        Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            IsConnected = true;
+                            _connectedSince = DateTime.Now;
+                            ConnectionStatus = $"SOCKS5 only — {dlResult.Message}";
+                            StatusBarText = dlResult.Message;
+                            _networkMonitor.Start();
+                            IsConnecting = false;
+                        });
+                        return;
+                    }
+                }
+
                 Application.Current.Dispatcher.Invoke(() => ConnectionStatus = "Starting TUN tunnel...");
                 Logger.Info("Starting TUN tunnel...");
                 var config = _configService.ReadPaqetConfig();
@@ -424,6 +457,18 @@ public partial class MainViewModel : ObservableObject
         {
             if (IsFullSystemTunnel)
             {
+                // Auto-download TUN binaries if missing
+                if (!_tunService.AllBinariesExist())
+                {
+                    ConnectionStatus = "Downloading TUN binaries...";
+                    var dlResult = await _tunService.DownloadBinariesAsync();
+                    if (!dlResult.Success)
+                    {
+                        ConnectionStatus = $"SOCKS5 only — {dlResult.Message}";
+                        return;
+                    }
+                }
+
                 ConnectionStatus = "Starting TUN tunnel...";
                 var config = _configService.ReadPaqetConfig();
                 var serverIp = config.ServerHost;
