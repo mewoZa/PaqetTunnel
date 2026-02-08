@@ -259,14 +259,19 @@ public sealed class ProxyService
                 // Remove old registry Run entry if present (legacy cleanup)
                 try { RunReg($"delete \"{AUTOSTART_KEY}\" /v {AUTOSTART_NAME} /f"); } catch { }
 
-                // Create scheduled task: at logon, interactive, run elevated (Highest)
-                PaqetService.RunCommand("schtasks",
-                    $"/create /tn \"{TASK_NAME}\" /tr \"\\\"{exePath}\\\"\" " +
-                    $"/sc onlogon /rl highest /it /f");
+                // Use PowerShell to create the scheduled task (handles spaces in paths correctly)
+                var psScript =
+                    $"$a = New-ScheduledTaskAction -Execute '{exePath}';" +
+                    $"$t = New-ScheduledTaskTrigger -AtLogOn -User '{user}';" +
+                    $"$p = New-ScheduledTaskPrincipal -UserId '{user}' -LogonType Interactive -RunLevel Highest;" +
+                    $"$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Seconds 0);" +
+                    $"Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $a -Trigger $t -Principal $p -Settings $s -Force | Out-Null";
+                PaqetService.RunCommand("powershell", $"-NoProfile -Command \"{psScript}\"");
             }
             else
             {
-                PaqetService.RunCommand("schtasks", $"/delete /tn \"{TASK_NAME}\" /f");
+                PaqetService.RunCommand("powershell",
+                    $"-NoProfile -Command \"Unregister-ScheduledTask -TaskName '{TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue\"");
                 // Also clean legacy registry entry
                 try { RunReg($"delete \"{AUTOSTART_KEY}\" /v {AUTOSTART_NAME} /f"); } catch { }
             }
