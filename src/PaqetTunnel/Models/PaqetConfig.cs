@@ -167,6 +167,7 @@ public sealed record SpeedSnapshot(
 public sealed class AppSettings
 {
     public bool AutoStart { get; set; }
+    public bool StartBeforeLogon { get; set; }
     public bool SystemProxyEnabled { get; set; }
     public bool ProxySharingEnabled { get; set; }
     public bool AutoConnectOnLaunch { get; set; }

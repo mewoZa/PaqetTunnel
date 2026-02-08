@@ -889,6 +889,7 @@ function Do-Uninstall {
 
     # Clean autostart (scheduled task + legacy registry entry)
     schtasks /delete /tn "PaqetTunnel" /f 2>$null
+    schtasks /delete /tn "PaqetTunnelService" /f 2>$null
     $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
     Remove-ItemProperty -Path $regPath -Name 'PaqetTunnel' -ErrorAction SilentlyContinue
     # Clean startup folder shortcut

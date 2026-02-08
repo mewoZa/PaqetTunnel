@@ -44,6 +44,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isSystemProxyEnabled;
     [ObservableProperty] private bool _isProxySharingEnabled;
     [ObservableProperty] private bool _isAutoStartEnabled;
+    [ObservableProperty] private bool _isStartBeforeLogonEnabled;
 
     // ── Config Fields ─────────────────────────────────────────────
 
@@ -139,6 +140,7 @@ public partial class MainViewModel : ObservableObject
         IsSystemProxyEnabled = _proxyService.IsSystemProxyEnabled();
         IsProxySharingEnabled = _proxyService.IsProxySharingEnabled();
         IsAutoStartEnabled = _proxyService.IsAutoStartEnabled();
+        IsStartBeforeLogonEnabled = _proxyService.IsStartBeforeLogonEnabled();
 
         // ── Check running state (use IsReady for port-verified status)
         var running = _paqetService.IsRunning();
@@ -459,6 +461,33 @@ public partial class MainViewModel : ObservableObject
                     IsAutoStartEnabled = newState;
                     var settings = _configService.ReadAppSettings();
                     settings.AutoStart = newState;
+                    _configService.WriteAppSettings(settings);
+                    StatusBarText = result.Message;
+                }
+                else
+                {
+                    StatusBarText = result.Message;
+                }
+                IsBusy = false;
+            });
+        });
+    }
+
+    [RelayCommand]
+    private async Task ToggleStartBeforeLogonAsync()
+    {
+        var newState = !IsStartBeforeLogonEnabled;
+        IsBusy = true;
+        await Task.Run(() =>
+        {
+            var result = _proxyService.SetStartBeforeLogon(newState);
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (result.Success)
+                {
+                    IsStartBeforeLogonEnabled = newState;
+                    var settings = _configService.ReadAppSettings();
+                    settings.StartBeforeLogon = newState;
                     _configService.WriteAppSettings(settings);
                     StatusBarText = result.Message;
                 }

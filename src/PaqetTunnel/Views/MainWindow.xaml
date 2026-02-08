@@ -353,6 +353,24 @@
                                               VerticalAlignment="Center" />
                             </Grid>
 
+                            <!-- Start Before Logon -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Start Before Logon" FontSize="12" FontWeight="Medium" />
+                                    <TextBlock Text="Run tunnel at system boot" FontSize="10"
+                                               Foreground="{StaticResource TextDimBrush}" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                              IsChecked="{Binding IsStartBeforeLogonEnabled, Mode=OneWay}"
+                                              Command="{Binding ToggleStartBeforeLogonCommand}"
+                                              IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
+                                              VerticalAlignment="Center" />
+                            </Grid>
+
                             <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
 
                             <!-- System Proxy -->

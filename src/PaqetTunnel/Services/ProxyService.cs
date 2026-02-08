@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 
@@ -281,6 +282,58 @@ public sealed class ProxyService
         {
             Logger.Error($"SetAutoStart({enable}) failed", ex);
             return (false, $"Auto-start change failed: {ex.Message}");
+        }
+    }
+
+    // ── Start Before Logon (SYSTEM-level Scheduled Task at boot) ──
+    // Runs the paqet tunnel binary as SYSTEM at system startup, before
+    // any user logs in. This provides VPN connectivity from boot.
+
+    private const string BOOT_TASK_NAME = "PaqetTunnelService";
+
+    public bool IsStartBeforeLogonEnabled()
+    {
+        try
+        {
+            var output = PaqetService.RunCommand("schtasks", $"/query /tn \"{BOOT_TASK_NAME}\" /fo CSV /nh");
+            return output.Contains(BOOT_TASK_NAME);
+        }
+        catch { return false; }
+    }
+
+    public (bool Success, string Message) SetStartBeforeLogon(bool enable)
+    {
+        try
+        {
+            if (enable)
+            {
+                var binaryPath = AppPaths.BinaryPath;
+                if (!File.Exists(binaryPath))
+                    return (false, "Paqet binary not found. Run setup first.");
+
+                var configPath = AppPaths.PaqetConfigPath;
+                if (!File.Exists(configPath))
+                    return (false, "Paqet config not found. Connect at least once first.");
+
+                var psScript =
+                    $"$a = New-ScheduledTaskAction -Execute '{binaryPath}' -Argument 'run --config \"\"{configPath}\"\"' -WorkingDirectory '{AppPaths.BinDir}';" +
+                    $"$t = New-ScheduledTaskTrigger -AtStartup;" +
+                    $"$p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;" +
+                    $"$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1);" +
+                    $"Register-ScheduledTask -TaskName '{BOOT_TASK_NAME}' -Action $a -Trigger $t -Principal $p -Settings $s -Force | Out-Null";
+                PaqetService.RunCommand("powershell", $"-NoProfile -Command \"{psScript}\"");
+            }
+            else
+            {
+                PaqetService.RunCommand("powershell",
+                    $"-NoProfile -Command \"Unregister-ScheduledTask -TaskName '{BOOT_TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue\"");
+            }
+            return (true, enable ? "Boot-level tunnel enabled." : "Boot-level tunnel disabled.");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"SetStartBeforeLogon({enable}) failed", ex);
+            return (false, $"Boot-level tunnel change failed: {ex.Message}");
         }
     }
 
