@@ -228,14 +228,18 @@ public sealed class ProxyService
         }
     }
 
-    // ── Auto Start ────────────────────────────────────────────────
+    // ── Auto Start (Scheduled Task with Highest RunLevel) ────────
+    // Uses Task Scheduler instead of HKCU\Run so the elevated app
+    // can start at logon without a UAC prompt.
+
+    private const string TASK_NAME = "PaqetTunnel";
 
     public bool IsAutoStartEnabled()
     {
         try
         {
-            var output = PaqetService.RunCommand("reg", $"query \"{AUTOSTART_KEY}\" /v {AUTOSTART_NAME}");
-            return output.Contains(AUTOSTART_NAME);
+            var output = PaqetService.RunCommand("schtasks", $"/query /tn \"{TASK_NAME}\" /fo CSV /nh");
+            return output.Contains(TASK_NAME);
         }
         catch { return false; }
     }
@@ -249,11 +253,22 @@ public sealed class ProxyService
                 var exePath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
                 if (string.IsNullOrEmpty(exePath))
                     return (false, "Cannot determine executable path.");
-                RunReg($"add \"{AUTOSTART_KEY}\" /v {AUTOSTART_NAME} /t REG_SZ /d \"\\\"{exePath}\\\"\" /f");
+
+                var user = Environment.UserName;
+
+                // Remove old registry Run entry if present (legacy cleanup)
+                try { RunReg($"delete \"{AUTOSTART_KEY}\" /v {AUTOSTART_NAME} /f"); } catch { }
+
+                // Create scheduled task: at logon, interactive, run elevated (Highest)
+                PaqetService.RunCommand("schtasks",
+                    $"/create /tn \"{TASK_NAME}\" /tr \"\\\"{exePath}\\\"\" " +
+                    $"/sc onlogon /rl highest /it /f");
             }
             else
             {
-                RunReg($"delete \"{AUTOSTART_KEY}\" /v {AUTOSTART_NAME} /f");
+                PaqetService.RunCommand("schtasks", $"/delete /tn \"{TASK_NAME}\" /f");
+                // Also clean legacy registry entry
+                try { RunReg($"delete \"{AUTOSTART_KEY}\" /v {AUTOSTART_NAME} /f"); } catch { }
             }
             return (true, enable ? "Auto-start enabled." : "Auto-start disabled.");
         }

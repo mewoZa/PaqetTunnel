@@ -887,9 +887,13 @@ function Do-Uninstall {
         }
     }
 
-    # Clean autostart
+    # Clean autostart (scheduled task + legacy registry entry)
+    schtasks /delete /tn "PaqetTunnel" /f 2>$null
     $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
     Remove-ItemProperty -Path $regPath -Name 'PaqetTunnel' -ErrorAction SilentlyContinue
+    # Clean startup folder shortcut
+    $startupFolder = [Environment]::GetFolderPath('Startup')
+    Remove-Item "$startupFolder\Paqet Tunnel.lnk" -Force -ErrorAction SilentlyContinue
 
     # Clean shortcuts
     $desktop = [Environment]::GetFolderPath('Desktop')
