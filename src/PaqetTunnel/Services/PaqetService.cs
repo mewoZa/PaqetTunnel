@@ -112,6 +112,28 @@ public sealed class PaqetService
     /// <summary>Check if paqet is fully ready (process running + port listening).</summary>
     public bool IsReady() => IsRunning() && IsPortListening();
 
+    /// <summary>
+    /// Verify actual tunnel connectivity by making a SOCKS5 request through the tunnel.
+    /// Returns the public IP seen through the tunnel, or null on failure.
+    /// </summary>
+    public static async Task<string?> CheckTunnelConnectivityAsync(int timeoutMs = 5000)
+    {
+        try
+        {
+            var proxy = new WebProxy($"socks5://127.0.0.1:{SOCKS_PORT}");
+            using var handler = new System.Net.Http.HttpClientHandler { Proxy = proxy, UseProxy = true };
+            using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(timeoutMs) };
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
+            var ip = await http.GetStringAsync("http://ifconfig.me/ip");
+            return ip?.Trim();
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug($"CheckTunnelConnectivity: {ex.Message}");
+            return null;
+        }
+    }
+
     /// <summary>Start the paqet tunnel using the 'run' subcommand. Retries on port bind failure.</summary>
     public (bool Success, string Message) Start()
     {

@@ -16,6 +16,9 @@ public sealed class ProxyService
     private const string AUTOSTART_KEY = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
     private const string AUTOSTART_NAME = "PaqetTunnel";
     private const int SOCKS_PORT = PaqetService.SOCKS_PORT;
+    // LAN sharing uses a separate port to avoid portproxy conflict with paqet's SOCKS5 binding.
+    // portproxy on the same port causes iphlpsvc to steal the port from paqet.
+    private const int SHARING_PORT = SOCKS_PORT + 1;
 
     // Saved state for restore on shutdown
     private bool _hadProxyBefore;
@@ -71,15 +74,30 @@ public sealed class ProxyService
                     Logger.Info("Startup: clearing stale port 1080 portproxy rules");
                     try { PaqetService.RunCommand("netsh", "interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=1080"); } catch { }
                 }
-                // Only clean current port rules if sharing was NOT intentionally enabled
-                if (!proxySharingWasEnabled && portproxy.Contains($"{SOCKS_PORT}"))
+                // Always clean legacy same-port rules (caused iphlpsvc conflict)
+                if (portproxy.Contains($"0.0.0.0") && portproxy.Contains($"{SOCKS_PORT}"))
                 {
-                    Logger.Info("Startup: clearing stale portproxy rules (sharing was not enabled)");
-                    try { PaqetService.RunCommand("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SOCKS_PORT}"); } catch { }
+                    // Check if it's the old same-port rule (not the new sharing port)
+                    var lines = portproxy.Split('\n');
+                    foreach (var line in lines)
+                    {
+                        if (line.Contains("0.0.0.0") && line.Contains($"{SOCKS_PORT}") && !line.Contains($"{SHARING_PORT}"))
+                        {
+                            Logger.Info("Startup: removing legacy same-port portproxy rule (prevents port conflict)");
+                            try { PaqetService.RunCommand("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SOCKS_PORT}"); } catch { }
+                            break;
+                        }
+                    }
+                }
+                // Only clean sharing port rules if sharing was NOT intentionally enabled
+                if (!proxySharingWasEnabled && portproxy.Contains($"{SHARING_PORT}"))
+                {
+                    Logger.Info("Startup: clearing stale sharing portproxy rules (sharing was not enabled)");
+                    try { PaqetService.RunCommand("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT}"); } catch { }
                 }
                 else if (proxySharingWasEnabled)
                 {
-                    Logger.Info("Startup: preserving portproxy rules (sharing was enabled in settings)");
+                    Logger.Info("Startup: preserving sharing portproxy rules (sharing was enabled in settings)");
                 }
             }
             catch (Exception ex) { Logger.Debug($"Portproxy cleanup: {ex.Message}"); }
@@ -196,7 +214,7 @@ public sealed class ProxyService
         try
         {
             var output = PaqetService.RunCommand("netsh", "interface portproxy show v4tov4");
-            return output.Contains("0.0.0.0") && output.Contains($"{SOCKS_PORT}");
+            return output.Contains("0.0.0.0") && output.Contains($"{SHARING_PORT}");
         }
         catch { return false; }
     }
@@ -205,21 +223,34 @@ public sealed class ProxyService
     {
         try
         {
+            // Clean up legacy rules that used the same port as paqet (caused iphlpsvc conflict)
+            try
+            {
+                var existing = PaqetService.RunCommand("netsh", "interface portproxy show v4tov4");
+                if (existing.Contains($"0.0.0.0") && existing.Contains($"{SOCKS_PORT}") && !existing.Contains($"{SHARING_PORT}"))
+                {
+                    Logger.Info("Removing legacy portproxy rule on same port as SOCKS5");
+                    PaqetService.RunElevated("netsh",
+                        $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SOCKS_PORT}");
+                }
+            }
+            catch { }
+
             if (enable)
             {
                 PaqetService.RunElevated("netsh",
-                    $"interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport={SOCKS_PORT} connectaddress=127.0.0.1 connectport={SOCKS_PORT}");
+                    $"interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT} connectaddress=127.0.0.1 connectport={SOCKS_PORT}");
                 PaqetService.RunElevated("netsh",
-                    $"advfirewall firewall add rule name=\"Paqet SOCKS5 Sharing\" dir=in action=allow protocol=TCP localport={SOCKS_PORT} profile=any");
-                return (true, $"Proxy sharing enabled on :{SOCKS_PORT}");
+                    $"advfirewall firewall add rule name=\"Paqet SOCKS5 Sharing\" dir=in action=allow protocol=TCP localport={SHARING_PORT} profile=any");
+                return (true, $"LAN sharing enabled on :{SHARING_PORT} → :{SOCKS_PORT}");
             }
             else
             {
                 PaqetService.RunElevated("netsh",
-                    $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SOCKS_PORT}");
+                    $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT}");
                 PaqetService.RunElevated("netsh",
                     "advfirewall firewall delete rule name=\"Paqet SOCKS5 Sharing\"");
-                return (true, "Proxy sharing disabled.");
+                return (true, "LAN sharing disabled.");
             }
         }
         catch (Exception ex)

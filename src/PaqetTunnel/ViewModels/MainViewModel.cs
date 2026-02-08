@@ -336,6 +336,8 @@ public partial class MainViewModel : ObservableObject
                 _networkMonitor.Start();
                 IsConnecting = false;
             });
+            // Flush DNS cache after connecting (clear stale ISP DNS entries)
+            _ = Task.Run(() => TunService.FlushDnsCache());
             _ = FetchPublicIpAsync();
         });
     }
@@ -359,6 +361,9 @@ public partial class MainViewModel : ObservableObject
 
             var (success, message) = _paqetService.Stop();
             Logger.Info($"Stop() returned: success={success}, message={message}");
+
+            // Flush DNS cache after disconnect to clear tunnel DNS entries
+            TunService.FlushDnsCache();
 
             Application.Current.Dispatcher.Invoke(() =>
             {

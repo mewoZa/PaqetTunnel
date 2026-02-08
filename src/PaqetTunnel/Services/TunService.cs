@@ -31,6 +31,8 @@ public sealed class TunService
     private string? _originalGateway;
     private string? _originalInterface;
     private string? _serverIp;
+    private string? _originalDnsPrimary;
+    private bool _physicalDnsChanged;
 
     public bool Tun2SocksExists() => File.Exists(AppPaths.Tun2SocksPath);
     public bool WintunExists() => File.Exists(AppPaths.WintunDllPath);
@@ -190,6 +192,8 @@ public sealed class TunService
             _serverIp = null;
             _originalGateway = null;
             _originalInterface = null;
+            _originalDnsPrimary = null;
+            _physicalDnsChanged = false;
 
             Logger.Info("TUN tunnel stopped");
             return errors.Length == 0
@@ -462,9 +466,31 @@ public sealed class TunService
     {
         try
         {
+            // Set DNS on TUN adapter
             RunNetsh($"interface ip set dns \"{TUN_ADAPTER_NAME}\" static {DNS_PRIMARY}");
             RunNetsh($"interface ip add dns \"{TUN_ADAPTER_NAME}\" {DNS_SECONDARY} index=2");
-            Logger.Info($"DNS set to {DNS_PRIMARY}, {DNS_SECONDARY}");
+            Logger.Info($"DNS set to {DNS_PRIMARY}, {DNS_SECONDARY} on {TUN_ADAPTER_NAME}");
+
+            // Flush DNS cache so stale entries from ISP DNS don't leak
+            FlushDnsCache();
+
+            // DNS leak prevention: set DNS on the physical adapter too
+            // This prevents apps that bypass the TUN adapter from using ISP DNS
+            if (!string.IsNullOrEmpty(_originalInterface))
+            {
+                try
+                {
+                    _originalDnsPrimary = GetInterfaceDns(_originalInterface);
+                    RunNetsh($"interface ip set dns \"{_originalInterface}\" static {DNS_PRIMARY}");
+                    RunNetsh($"interface ip add dns \"{_originalInterface}\" {DNS_SECONDARY} index=2");
+                    _physicalDnsChanged = true;
+                    Logger.Info($"DNS leak prevention: set {DNS_PRIMARY} on {_originalInterface}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Debug($"DNS leak prevention on physical adapter: {ex.Message}");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -476,9 +502,69 @@ public sealed class TunService
     {
         try
         {
-            RunNetsh($"interface ip set dns \"{TUN_ADAPTER_NAME}\" dhcp");
+            // Restore TUN adapter DNS
+            try { RunNetsh($"interface ip set dns \"{TUN_ADAPTER_NAME}\" dhcp"); } catch { }
+
+            // Restore physical adapter DNS if we changed it
+            if (_physicalDnsChanged && !string.IsNullOrEmpty(_originalInterface))
+            {
+                try
+                {
+                    if (!string.IsNullOrEmpty(_originalDnsPrimary))
+                    {
+                        RunNetsh($"interface ip set dns \"{_originalInterface}\" static {_originalDnsPrimary}");
+                        Logger.Info($"Restored DNS on {_originalInterface} to {_originalDnsPrimary}");
+                    }
+                    else
+                    {
+                        RunNetsh($"interface ip set dns \"{_originalInterface}\" dhcp");
+                        Logger.Info($"Restored DNS on {_originalInterface} to DHCP");
+                    }
+                    _physicalDnsChanged = false;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"DNS restore on physical adapter: {ex.Message}");
+                }
+            }
+
+            // Flush DNS cache to clear tunnel DNS entries
+            FlushDnsCache();
         }
         catch { /* Best effort */ }
+    }
+
+    /// <summary>Flush the Windows DNS resolver cache.</summary>
+    public static void FlushDnsCache()
+    {
+        try
+        {
+            PaqetService.RunCommand("ipconfig", "/flushdns", timeout: 5000);
+            Logger.Info("DNS cache flushed");
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug($"FlushDns: {ex.Message}");
+        }
+    }
+
+    /// <summary>Get the current primary DNS server for an interface, or null if DHCP.</summary>
+    private static string? GetInterfaceDns(string interfaceName)
+    {
+        try
+        {
+            var output = PaqetService.RunCommand("netsh",
+                $"interface ip show dns \"{interfaceName}\"", timeout: 5000);
+            // Look for "Statically Configured DNS Servers:" line
+            foreach (var line in output.Split('\n'))
+            {
+                var trimmed = line.Trim();
+                if (System.Net.IPAddress.TryParse(trimmed, out _))
+                    return trimmed;
+            }
+        }
+        catch { }
+        return null;
     }
 
     private static string? GetDefaultGateway()
