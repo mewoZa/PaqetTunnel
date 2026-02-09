@@ -769,11 +769,13 @@ function Do-Install {
     WL ""
     if (-not (Ensure-Git))    { Err "Git is required"; return }
     if (-not (Ensure-Dotnet)) { Err ".NET 8 SDK is required"; return }
-    # Go + MinGW + Npcap are optional (paqet can be downloaded pre-built)
-    $hasGo = Ensure-Go
-    if ($hasGo) {
-        Ensure-MinGW | Out-Null
-        Ensure-Npcap | Out-Null
+    # Go + MinGW + Npcap only needed when building paqet from source
+    if ($Build) {
+        $hasGo = Ensure-Go
+        if ($hasGo) {
+            Ensure-MinGW | Out-Null
+            Ensure-Npcap | Out-Null
+        }
     }
     WL ""
 
@@ -840,9 +842,11 @@ function Do-Update {
     Clean-LegacyInstall
 
     Push-Location $Script:SourceDir
-    & git fetch --all --quiet 2>&1 | Out-Null
+    $oldEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    & git fetch --all --quiet 2>$null
     $local = & git rev-parse HEAD 2>$null
     $remote = & git rev-parse origin/master 2>$null
+    $ErrorActionPreference = $oldEAP
     Pop-Location
 
     if ($local -eq $remote -and -not $Force) {
@@ -897,8 +901,8 @@ function Do-Uninstall {
     }
 
     # Clean autostart (scheduled task + legacy registry entry)
-    schtasks /delete /tn "PaqetTunnel" /f 2>$null
-    schtasks /delete /tn "PaqetTunnelService" /f 2>$null
+    & schtasks /delete /tn "PaqetTunnel" /f 2>&1 | Out-Null
+    & schtasks /delete /tn "PaqetTunnelService" /f 2>&1 | Out-Null
     $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
     Remove-ItemProperty -Path $regPath -Name 'PaqetTunnel' -ErrorAction SilentlyContinue
     # Clean startup folder shortcut
@@ -1037,8 +1041,8 @@ transport:
 
     # Install as service
     Step "Installing Windows service..."
-    $svcBin = "$Script:InstallDir\$Script:PaqetBin"
-    New-Item -Path $Script:InstallDir -ItemType Directory -Force | Out-Null
+    $svcBin = "$Script:InstallDir\bin\$Script:PaqetBin"
+    New-Item -Path "$Script:InstallDir\bin" -ItemType Directory -Force | Out-Null
     Copy-Item $paqetExe $svcBin -Force
 
     $existingSvc = Get-Service -Name 'PaqetServer' -ErrorAction SilentlyContinue
