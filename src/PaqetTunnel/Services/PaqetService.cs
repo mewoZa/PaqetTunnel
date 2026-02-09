@@ -624,4 +624,27 @@ public sealed class PaqetService
         using var proc = Process.Start(psi);
         proc?.WaitForExit(15000);
     }
+
+    /// <summary>
+    /// Runs a command that needs admin privileges. Tries non-elevated first (works if
+    /// the app is already running elevated via schtasks HIGHEST), falls back to RunElevated (UAC).
+    /// </summary>
+    internal static void RunAdmin(string fileName, string arguments)
+    {
+        try
+        {
+            var output = RunCommandWithStderr(fileName, arguments, 10000);
+            if (output.Contains("requires elevation", StringComparison.OrdinalIgnoreCase) ||
+                output.Contains("Access is denied", StringComparison.OrdinalIgnoreCase) ||
+                output.Contains("Run as administrator", StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.Debug($"RunAdmin: non-elevated failed, escalating: {output.Trim()}");
+                RunElevated(fileName, arguments);
+            }
+        }
+        catch
+        {
+            RunElevated(fileName, arguments);
+        }
+    }
 }

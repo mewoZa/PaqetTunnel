@@ -258,7 +258,7 @@ public sealed class ProxyService
                 if (existing.Contains($"0.0.0.0") && existing.Contains($"{SOCKS_PORT}") && !existing.Contains($"{SHARING_PORT}"))
                 {
                     Logger.Info("Removing legacy portproxy rule on same port as SOCKS5");
-                    PaqetService.RunElevated("netsh",
+                    PaqetService.RunAdmin("netsh",
                         $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SOCKS_PORT}");
                 }
             }
@@ -267,17 +267,17 @@ public sealed class ProxyService
             if (enable)
             {
                 // Delete existing rule first to avoid duplicates
-                try { PaqetService.RunElevated("netsh",
+                try { PaqetService.RunAdmin("netsh",
                     $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT}"); } catch { }
 
-                PaqetService.RunElevated("netsh",
+                PaqetService.RunAdmin("netsh",
                     $"interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT} connectaddress=127.0.0.1 connectport={SOCKS_PORT}");
 
                 // Delete existing firewall rules first to avoid accumulation
-                try { PaqetService.RunElevated("netsh",
+                try { PaqetService.RunAdmin("netsh",
                     "advfirewall firewall delete rule name=\"Paqet SOCKS5 Sharing\""); } catch { }
 
-                PaqetService.RunElevated("netsh",
+                PaqetService.RunAdmin("netsh",
                     $"advfirewall firewall add rule name=\"Paqet SOCKS5 Sharing\" dir=in action=allow protocol=TCP localport={SHARING_PORT} profile=any");
 
                 Logger.Info($"LAN sharing enabled: 0.0.0.0:{SHARING_PORT} → 127.0.0.1:{SOCKS_PORT}");
@@ -285,9 +285,9 @@ public sealed class ProxyService
             }
             else
             {
-                try { PaqetService.RunElevated("netsh",
+                try { PaqetService.RunAdmin("netsh",
                     $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT}"); } catch { }
-                try { PaqetService.RunElevated("netsh",
+                try { PaqetService.RunAdmin("netsh",
                     "advfirewall firewall delete rule name=\"Paqet SOCKS5 Sharing\""); } catch { }
                 Logger.Info("LAN sharing disabled");
                 return (true, "LAN sharing disabled.");
