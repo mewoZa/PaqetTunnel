@@ -357,6 +357,11 @@ do_install() {
     # Install binary
     step "Installing to $INSTALL_DIR..."
     mkdir -p "$INSTALL_DIR" "$CONFIG_DIR"
+    # Stop running service before replacing binary (Text file busy)
+    if systemctl is-active --quiet paqet 2>/dev/null; then
+        systemctl stop paqet
+        sleep 1
+    fi
     cp "$BUILT_BIN" "$INSTALL_DIR/$BINARY"
     chmod +x "$INSTALL_DIR/$BINARY"
     ln -sf "$INSTALL_DIR/$BINARY" /usr/local/bin/paqet
