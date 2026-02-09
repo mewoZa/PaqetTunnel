@@ -15,10 +15,10 @@ public sealed class ProxyService
     private const string INTERNET_SETTINGS_KEY = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings";
     private const string AUTOSTART_KEY = @"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
     private const string AUTOSTART_NAME = "PaqetTunnel";
-    private const int SOCKS_PORT = PaqetService.SOCKS_PORT;
-    // LAN sharing uses a separate port to avoid portproxy conflict with paqet's SOCKS5 binding.
-    // portproxy on the same port causes iphlpsvc to steal the port from paqet.
-    public const int SHARING_PORT = SOCKS_PORT + 1;
+
+    // ── STATIC PORTS — NEVER CHANGE THESE ────────────────────────
+    private const int SOCKS_PORT = PaqetService.SOCKS_PORT;       // 10800 — paqet SOCKS5
+    public const int SHARING_PORT = SOCKS_PORT + 1;               // 10801 — LAN sharing portproxy
 
     // Saved state for restore on shutdown
     private bool _hadProxyBefore;
@@ -40,7 +40,16 @@ public sealed class ProxyService
             _savedProxyServer = GetCurrentProxyServer();
             _weSetProxy = false;
 
-            // Clean stale proxy from old port or crashed session
+            // ── FORCE port reservation ──────────────────────────
+            // Reserve both ports permanently so Windows services (ICS, iphlpsvc)
+            // can never steal them. This survives reboots.
+            ReservePorts();
+
+            // ── Kill anything squatting on OUR ports ────────────
+            KillPortThief(SOCKS_PORT);
+            KillPortThief(SHARING_PORT);
+
+            // ── Clean stale proxy settings from old versions ────
             if (_hadProxyBefore && _savedProxyServer != null)
             {
                 if (_savedProxyServer.Contains(":1080") || _savedProxyServer.Contains($":{SOCKS_PORT}"))
@@ -64,55 +73,35 @@ public sealed class ProxyService
             }
             catch (Exception ex) { Logger.Debug($"WinHTTP check: {ex.Message}"); }
 
-            // Clean stale portproxy rules — but preserve them if user had sharing enabled
+            // ── Clean ALL stale portproxy rules ─────────────────
+            // Remove everything that isn't our current sharing rule.
             try
             {
                 var portproxy = PaqetService.RunCommand("netsh", "interface portproxy show v4tov4");
-                // Always clean old port 1080 rules
+                // Remove old port 1080 rules
                 if (portproxy.Contains("1080") && !portproxy.Contains("10800"))
-                {
-                    Logger.Info("Startup: clearing stale port 1080 portproxy rules");
                     try { PaqetService.RunCommand("netsh", "interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=1080"); } catch { }
-                }
-                // Always clean legacy same-port rules (caused iphlpsvc conflict)
+                // Remove legacy same-port rules (paqet port used as portproxy = conflict)
                 if (portproxy.Contains($"0.0.0.0") && portproxy.Contains($"{SOCKS_PORT}"))
                 {
-                    // Check if it's the old same-port rule (not the new sharing port)
-                    var lines = portproxy.Split('\n');
-                    foreach (var line in lines)
+                    foreach (var line in portproxy.Split('\n'))
                     {
                         if (line.Contains("0.0.0.0") && line.Contains($"{SOCKS_PORT}") && !line.Contains($"{SHARING_PORT}"))
                         {
-                            Logger.Info("Startup: removing legacy same-port portproxy rule (prevents port conflict)");
+                            Logger.Info("Startup: removing legacy same-port portproxy rule");
                             try { PaqetService.RunCommand("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SOCKS_PORT}"); } catch { }
                             break;
                         }
                     }
                 }
-                // Only clean sharing port rules if sharing was NOT intentionally enabled
+                // Remove sharing portproxy if sharing is NOT enabled
                 if (!proxySharingWasEnabled && portproxy.Contains($"{SHARING_PORT}"))
                 {
-                    Logger.Info("Startup: clearing stale sharing portproxy rules (sharing was not enabled)");
+                    Logger.Info("Startup: clearing stale sharing portproxy (sharing disabled)");
                     try { PaqetService.RunCommand("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT}"); } catch { }
-                }
-                else if (proxySharingWasEnabled)
-                {
-                    Logger.Info("Startup: preserving sharing portproxy rules (sharing was enabled in settings)");
                 }
             }
             catch (Exception ex) { Logger.Debug($"Portproxy cleanup: {ex.Message}"); }
-
-            // Reserve SOCKS port to prevent ICS/SharedAccess from stealing it
-            try
-            {
-                PaqetService.RunCommand("netsh", $"int ipv4 add excludedportrange protocol=tcp startport={SOCKS_PORT} numberofports=1");
-            }
-            catch { } // May already be reserved or in use — that's OK
-            try
-            {
-                PaqetService.RunCommand("netsh", $"int ipv4 add excludedportrange protocol=udp startport={SOCKS_PORT} numberofports=1");
-            }
-            catch { }
 
             Logger.Info($"ProxyService.OnStartup: hadProxy={_hadProxyBefore}, saved={_savedProxyServer}");
         }
@@ -120,6 +109,83 @@ public sealed class ProxyService
         {
             Logger.Error("ProxyService.OnStartup failed", ex);
         }
+    }
+
+    /// <summary>
+    /// Reserve ports 10800 and 10801 so Windows cannot allocate them to other services.
+    /// Uses both netsh excludedportrange (ephemeral exclusion) and a persistent
+    /// registry entry (survives reboots). Errors are non-fatal.
+    /// </summary>
+    private static void ReservePorts()
+    {
+        foreach (var port in new[] { SOCKS_PORT, SHARING_PORT })
+        {
+            // 1) netsh ephemeral exclusion (immediate effect)
+            foreach (var proto in new[] { "tcp", "udp" })
+            {
+                try { PaqetService.RunCommand("netsh", $"int ipv4 add excludedportrange protocol={proto} startport={port} numberofports=1"); }
+                catch { } // Already reserved or port in use — OK
+            }
+
+            // 2) Persistent registry exclusion (survives reboots)
+            // HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\ReservedPorts
+            try
+            {
+                var regKey = @"HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters";
+                var existing = PaqetService.RunCommand("reg", $"query \"{regKey}\" /v ReservedPorts");
+                var currentPorts = "";
+                var idx = existing.IndexOf("REG_MULTI_SZ", StringComparison.OrdinalIgnoreCase);
+                if (idx >= 0) currentPorts = existing[(idx + 12)..].Trim();
+
+                var portRange = $"{port}-{port}";
+                if (!currentPorts.Contains(portRange))
+                {
+                    var newValue = string.IsNullOrEmpty(currentPorts)
+                        ? portRange
+                        : $"{currentPorts}\\0{portRange}";
+                    PaqetService.RunAdmin("reg",
+                        $"add \"{regKey}\" /v ReservedPorts /t REG_MULTI_SZ /d \"{newValue}\" /f");
+                    Logger.Info($"Reserved port {port} in registry");
+                }
+            }
+            catch (Exception ex) { Logger.Debug($"Registry port reservation for {port}: {ex.Message}"); }
+        }
+    }
+
+    /// <summary>
+    /// Find and kill any non-paqet process squatting on one of our ports.
+    /// This handles ICS/iphlpsvc or any other service that grabbed the port.
+    /// </summary>
+    private static void KillPortThief(int port)
+    {
+        try
+        {
+            var output = PaqetService.RunCommand("netstat", $"-ano -p TCP");
+            foreach (var line in output.Split('\n'))
+            {
+                if (!line.Contains($":{port} ") || !line.Contains("LISTENING")) continue;
+
+                var parts = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 5) continue;
+                if (!int.TryParse(parts[^1], out var pid) || pid <= 4) continue; // Skip System/Idle
+
+                // Don't kill our own processes
+                try
+                {
+                    var proc = Process.GetProcessById(pid);
+                    var name = proc.ProcessName.ToLowerInvariant();
+                    if (name.Contains("paqet") || name.Contains("tun2socks") || name.Contains("paqettunnel"))
+                        continue;
+
+                    Logger.Warn($"Port {port} stolen by PID {pid} ({name}) — killing it");
+                    proc.Kill();
+                    proc.WaitForExit(3000);
+                    Logger.Info($"Killed port thief: PID {pid} ({name})");
+                }
+                catch (Exception ex) { Logger.Debug($"KillPortThief({port}, PID {pid}): {ex.Message}"); }
+            }
+        }
+        catch (Exception ex) { Logger.Debug($"KillPortThief({port}): {ex.Message}"); }
     }
 
     /// <summary>
