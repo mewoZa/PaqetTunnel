@@ -16,7 +16,7 @@
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-purple.svg)](https://dotnet.microsoft.com/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078d4.svg)](#)
 
-<img src="assets/screenshot2.png" width="280" alt="Paqet Tunnel — Settings" />&nbsp;&nbsp;<img src="assets/screenshot1.png" width="280" alt="Paqet Tunnel — Connected" />
+<img src="assets/screenshot1.png" width="280" alt="Paqet Tunnel — Settings" />&nbsp;&nbsp;<img src="assets/screenshot2.png" width="280" alt="Paqet Tunnel — Connected" />
 
 </div>
 
