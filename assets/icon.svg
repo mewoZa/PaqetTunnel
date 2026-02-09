@@ -1,4 +1,4 @@
-<svg viewBox="258 300 635 425" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
@@ -6,7 +6,9 @@
     </linearGradient>
   </defs>
 
-  <g>
+  <rect width="1024" height="1024" rx="200" fill="#0f1115"/>
+
+  <g transform="translate(200,200) scale(0.61)">
     <circle cx="280" cy="512" r="22" fill="url(#logoGradient)" fill-opacity="0.3"/>
     <circle cx="350" cy="512" r="26" fill="url(#logoGradient)" fill-opacity="0.6"/>
     <circle cx="430" cy="512" r="30" fill="url(#logoGradient)" fill-opacity="1"/>
