@@ -371,7 +371,7 @@ do_install() {
     local secret="" existing_config=0
     if [[ -f "$CONFIG_DIR/server.yaml" ]]; then
         existing_config=1
-        secret=$(sed -n '/kcp:/,/^[^ ]/{ s/.*key:.*"\(.*\)".*/\1/p; }' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+        secret=$(grep -A5 'kcp:' "$CONFIG_DIR/server.yaml" | sed -n 's/.*key: *"\([^"]*\)".*/\1/p' | head -1)
     fi
 
     if [[ -n "${KEY:-}" ]]; then
@@ -385,7 +385,7 @@ do_install() {
     local addr="${ADDR:-}"
     if [[ -z "$addr" && $existing_config -eq 1 ]]; then
         local existing_port
-        existing_port=$(sed -n '/^listen:/,/^[^ ]/{ s/.*addr:.*:\([0-9]*\)".*/\1/p; }' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+        existing_port=$(grep -A2 'listen:' "$CONFIG_DIR/server.yaml" | sed -n 's/.*addr:.*:\([0-9]*\)".*/\1/p' | head -1)
         [[ -n "$existing_port" ]] && addr="0.0.0.0:$existing_port"
     fi
     addr="${addr:-0.0.0.0:8443}"
@@ -394,7 +394,7 @@ do_install() {
     # Auto-detect network (preserve from existing config when possible)
     local iface="${IFACE:-}"
     if [[ -z "$iface" && $existing_config -eq 1 ]]; then
-        iface=$(sed -n 's/.*interface:.*"\(.*\)".*/\1/p' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+        iface=$(sed -n 's/.*interface: *"\([^"]*\)".*/\1/p' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
     fi
     if [[ -z "$iface" ]]; then
         iface=$(detect_interface)
@@ -614,9 +614,9 @@ do_status() {
 
     if [[ -f "$CONFIG_DIR/server.yaml" ]]; then
         local listen_addr key iface
-        listen_addr=$(sed -n '/^listen:/,/^[^ ]/{ s/.*addr:.*"\(.*\)".*/\1/p; }' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
-        key=$(sed -n '/kcp:/,/^[^ ]/{ s/.*key:.*"\(.*\)".*/\1/p; }' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
-        iface=$(sed -n 's/.*interface:.*"\(.*\)".*/\1/p' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+        listen_addr=$(grep -A2 'listen:' "$CONFIG_DIR/server.yaml" | sed -n 's/.*addr: *"\([^"]*\)".*/\1/p' | head -1)
+        key=$(grep -A5 'kcp:' "$CONFIG_DIR/server.yaml" | sed -n 's/.*key: *"\([^"]*\)".*/\1/p' | head -1)
+        iface=$(sed -n 's/.*interface: *"\([^"]*\)".*/\1/p' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
         [[ -n "$listen_addr" ]] && echo -e "  Listen    $listen_addr"
         [[ -n "$iface" ]] && echo -e "  Interface $iface"
         [[ -n "$key" ]] && echo -e "  Key       ${D}${key:0:8}...${W}"
