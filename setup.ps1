@@ -1012,7 +1012,7 @@ function Do-Status {
             Step "Server install one-liner (Linux):"
             $sAddr = $Script:CfgServer
             $sKey = $Script:CfgKey
-            Dim "curl -fsSL https://raw.githubusercontent.com/$($Script:Repo)/master/setup.sh -o /tmp/setup.sh && sudo bash /tmp/setup.sh install --addr $sAddr --key `"$sKey`" --yes"
+            Dim "curl -fsSL https://raw.githubusercontent.com/$($Script:Repo)/master/setup.sh -o /tmp/pt.sh && sudo bash /tmp/pt.sh install --addr $sAddr --key `"$sKey`" --yes"
         }
     }
     WL ""
