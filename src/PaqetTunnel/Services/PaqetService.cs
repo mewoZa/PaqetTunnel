@@ -118,22 +118,39 @@ public sealed class PaqetService
     /// Verify actual tunnel connectivity by making a SOCKS5 request through the tunnel.
     /// Returns the public IP seen through the tunnel, or null on failure.
     /// </summary>
+    private static readonly string[] IpCheckEndpoints = new[]
+    {
+        "https://api.ipify.org",
+        "https://ifconfig.me/ip",
+        "https://icanhazip.com",
+        "https://checkip.amazonaws.com",
+    };
+
     public static async Task<string?> CheckTunnelConnectivityAsync(int timeoutMs = 5000)
     {
-        try
+        var proxy = new WebProxy($"socks5://127.0.0.1:{SOCKS_PORT}");
+        using var handler = new System.Net.Http.HttpClientHandler { Proxy = proxy, UseProxy = true };
+        using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(timeoutMs) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
+
+        foreach (var endpoint in IpCheckEndpoints)
         {
-            var proxy = new WebProxy($"socks5://127.0.0.1:{SOCKS_PORT}");
-            using var handler = new System.Net.Http.HttpClientHandler { Proxy = proxy, UseProxy = true };
-            using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(timeoutMs) };
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
-            var ip = await http.GetStringAsync("http://ifconfig.me/ip");
-            return ip?.Trim();
+            try
+            {
+                var ip = await http.GetStringAsync(endpoint);
+                var trimmed = ip?.Trim();
+                if (!string.IsNullOrEmpty(trimmed) && trimmed.Length <= 45)
+                {
+                    Logger.Debug($"CheckTunnelConnectivity OK via {endpoint}: {trimmed}");
+                    return trimmed;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug($"CheckTunnelConnectivity ({endpoint}): {ex.Message}");
+            }
         }
-        catch (Exception ex)
-        {
-            Logger.Debug($"CheckTunnelConnectivity: {ex.Message}");
-            return null;
-        }
+        return null;
     }
 
     /// <summary>Start the paqet tunnel using the 'run' subcommand. Retries on port bind failure.</summary>

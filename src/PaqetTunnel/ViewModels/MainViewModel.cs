@@ -38,7 +38,9 @@ public partial class MainViewModel : ObservableObject
     private const int RECONNECT_BASE_DELAY_MS = 3000;
     private int _healthCheckCounter;
     private int _healthRefreshCounter;
+    private int _consecutiveHealthFailures;
     private const int HEALTH_CHECK_INTERVAL = 10; // every 10 ticks (30s at 3s/tick)
+    private const int HEALTH_FAIL_THRESHOLD = 2;  // require 2 consecutive failures before warning
 
     // ── Speed ─────────────────────────────────────────────────────
 
@@ -304,6 +306,7 @@ public partial class MainViewModel : ObservableObject
         IsConnecting = true;
         _userRequestedConnect = true;
         _reconnectAttempts = 0;
+        _consecutiveHealthFailures = 0;
         ConnectionStatus = "Connecting...";
         StatusBarText = "Connecting...";
         Logger.Info($"ConnectAsync started (FullSystemTunnel={IsFullSystemTunnel})");
@@ -1323,17 +1326,32 @@ public partial class MainViewModel : ObservableObject
                         _healthCheckCounter = 0;
                         _ = Task.Run(async () =>
                         {
-                            var ip = await PaqetService.CheckTunnelConnectivityAsync(5000);
+                            var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
                             if (ip == null && IsConnected)
                             {
-                                Logger.Warn("Health check: tunnel connectivity lost (port open but no traffic)");
-                                Application.Current.Dispatcher.Invoke(() =>
+                                _consecutiveHealthFailures++;
+                                Logger.Warn($"Health check failed ({_consecutiveHealthFailures}/{HEALTH_FAIL_THRESHOLD})");
+                                if (_consecutiveHealthFailures >= HEALTH_FAIL_THRESHOLD)
                                 {
-                                    ConnectionStatus = "Connected (tunnel check failed)";
-                                });
+                                    Application.Current.Dispatcher.Invoke(() =>
+                                    {
+                                        ConnectionStatus = "Connected (tunnel check failed)";
+                                    });
+                                }
                             }
                             else if (ip != null)
                             {
+                                if (_consecutiveHealthFailures > 0)
+                                    Logger.Info($"Health check recovered after {_consecutiveHealthFailures} failure(s)");
+                                _consecutiveHealthFailures = 0;
+                                Application.Current.Dispatcher.Invoke(() =>
+                                {
+                                    // Restore normal status if it was degraded
+                                    if (ConnectionStatus.Contains("tunnel check failed"))
+                                        ConnectionStatus = IsFullSystemTunnel ? "Connected (Full System)" : "Connected";
+                                    if (string.IsNullOrEmpty(PublicIp) || PublicIp == "—")
+                                        PublicIp = ip;
+                                });
                                 Logger.Debug($"Health check OK — exit IP: {ip}");
                             }
                         });
