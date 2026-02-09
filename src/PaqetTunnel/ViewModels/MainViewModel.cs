@@ -101,6 +101,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _dnsStatus = "";
     [ObservableProperty] private string _activeDns = "";
 
+    // Theme
+    [ObservableProperty] private string _selectedTheme = "dark";
+    public string[] AvailableThemes => ThemeManager.AvailableThemes;
+
     public MainViewModel(
         PaqetService paqetService,
         ProxyService proxyService,
@@ -167,6 +171,9 @@ public partial class MainViewModel : ObservableObject
         ActiveDns = $"{dnsPri}, {dnsSec}";
         Logger.Info($"DNS settings: provider={SelectedDnsProvider}, active={ActiveDns}");
         UpdateSharingInfo();
+
+        // Load theme
+        SelectedTheme = appSettings.Theme ?? "dark";
 
         // ── Check running state (use IsReady for port-verified status)
         var running = _paqetService.IsRunning();
@@ -930,6 +937,20 @@ public partial class MainViewModel : ObservableObject
         {
             DnsStatus = $"Auto-select failed: {ex.Message}";
         }
+    }
+
+    // ── Theme ─────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private void SetTheme(string theme)
+    {
+        Logger.Info($"Theme changed: {SelectedTheme} → {theme}");
+        SelectedTheme = theme;
+        ThemeManager.Apply(theme);
+
+        var settings = _configService.ReadAppSettings();
+        settings.Theme = theme;
+        _configService.WriteAppSettings(settings);
     }
 
     // ── Periodic Status Check ─────────────────────────────────────

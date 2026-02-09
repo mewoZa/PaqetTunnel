@@ -43,6 +43,9 @@ public partial class App : Application
         Services.Logger.CleanOldLogs();
         Services.Logger.Info("=== App OnStartup ===");
 
+        // ── Apply saved theme ──────────────────────────────────────
+        ThemeManager.LoadFromSettings(appSettings);
+
         // ── Migrate from old %USERPROFILE%\paqet if present ────────
         SetupService.MigrateFromOldLocation();
 

@@ -459,6 +459,18 @@
                                        Foreground="{StaticResource AccentBrush}"
                                        Visibility="{Binding DnsStatus, Converter={StaticResource StringToVis}}" />
 
+                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,4,0,10" />
+
+                            <!-- Theme -->
+                            <TextBlock Text="Theme" FontSize="12" FontWeight="Medium" Margin="0,0,0,6" />
+                            <ComboBox SelectedValue="{Binding SelectedTheme}" 
+                                      SelectionChanged="ThemeChanged"
+                                      FontSize="11" Padding="6,4" Margin="0,0,0,10">
+                                <ComboBoxItem Content="Dark" Tag="dark" />
+                                <ComboBoxItem Content="Light" Tag="light" />
+                                <ComboBoxItem Content="Nord" Tag="nord" />
+                            </ComboBox>
+
                             <!-- Debug Logging -->
                             <Grid>
                                 <Grid.ColumnDefinitions>

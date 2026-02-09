@@ -1,4 +1,4 @@
-<!-- Paqet Tunnel — Dark Theme (GitHub-inspired) -->
+<!-- Paqet Tunnel — Light Theme -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:conv="clr-namespace:PaqetTunnel.Converters">
@@ -6,21 +6,21 @@
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- ── SEMANTIC COLOR TOKENS ─────────────────────────────── -->
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <Color x:Key="BgColor">#0d1117</Color>
-    <Color x:Key="SurfaceColor">#161b22</Color>
-    <Color x:Key="CardColor">#1c2129</Color>
-    <Color x:Key="BorderColor">#30363d</Color>
-    <Color x:Key="AccentColor">#58a6ff</Color>
-    <Color x:Key="AccentHoverColor">#79b8ff</Color>
-    <Color x:Key="SuccessColor">#3fb950</Color>
-    <Color x:Key="DangerColor">#f85149</Color>
-    <Color x:Key="WarningColor">#d29922</Color>
-    <Color x:Key="TextColor">#e6edf3</Color>
-    <Color x:Key="TextDimColor">#8b949e</Color>
-    <Color x:Key="InputBgColor">#0d1117</Color>
-    <Color x:Key="HoverBgColor">#1f2937</Color>
-    <Color x:Key="PopupBgColor">#1c2129</Color>
-    <Color x:Key="SelectionColor">#1f3a5f</Color>
+    <Color x:Key="BgColor">#f6f8fa</Color>
+    <Color x:Key="SurfaceColor">#ffffff</Color>
+    <Color x:Key="CardColor">#ffffff</Color>
+    <Color x:Key="BorderColor">#d0d7de</Color>
+    <Color x:Key="AccentColor">#0969da</Color>
+    <Color x:Key="AccentHoverColor">#0550ae</Color>
+    <Color x:Key="SuccessColor">#1a7f37</Color>
+    <Color x:Key="DangerColor">#cf222e</Color>
+    <Color x:Key="WarningColor">#9a6700</Color>
+    <Color x:Key="TextColor">#1f2328</Color>
+    <Color x:Key="TextDimColor">#656d76</Color>
+    <Color x:Key="InputBgColor">#ffffff</Color>
+    <Color x:Key="HoverBgColor">#eaeef2</Color>
+    <Color x:Key="PopupBgColor">#ffffff</Color>
+    <Color x:Key="SelectionColor">#ddf4ff</Color>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- ── BRUSHES ───────────────────────────────────────────── -->
@@ -41,8 +41,13 @@
     <SolidColorBrush x:Key="SelectionBrush" Color="{StaticResource SelectionColor}" />
 
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <!-- ── CONVERTERS ────────────────────────────────────────── -->
+    <!-- All control templates are identical to Dark.xaml — only   -->
+    <!-- color tokens above differ. WPF DynamicResource would be   -->
+    <!-- ideal but StaticResource is simpler and faster for our    -->
+    <!-- use case (theme set once at startup).                     -->
     <!-- ═══════════════════════════════════════════════════════════ -->
+
+    <!-- ── CONVERTERS ────────────────────────────────────────── -->
     <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
     <conv:InverseBoolToVisibilityConverter x:Key="InvBoolToVis" />
     <conv:ConnectionColorConverter x:Key="ConnColorConv" />
@@ -51,9 +56,7 @@
     <conv:ToggleTextConverter x:Key="ToggleTextConv" />
     <conv:StringToVisibilityConverter x:Key="StringToVis" />
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- ── TYPOGRAPHY ────────────────────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <FontFamily x:Key="MainFont">Segoe UI Variable, Segoe UI, Arial</FontFamily>
     <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Courier New</FontFamily>
 
@@ -63,9 +66,7 @@
         <Setter Property="FontSize" Value="12.5" />
     </Style>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- ── CARD ──────────────────────────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <Style x:Key="Card" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource CardBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
@@ -75,9 +76,7 @@
         <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- ── TEXT INPUTS ────────────────────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <Style TargetType="TextBox">
         <Setter Property="Background" Value="{StaticResource InputBgBrush}" />
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
@@ -135,9 +134,7 @@
         </Setter>
     </Style>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
-    <!-- ── COMBOBOX (fully themed) ───────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- ── COMBOBOX ──────────────────────────────────────────── -->
     <Style x:Key="ComboBoxToggle" TargetType="ToggleButton">
         <Setter Property="Template">
             <Setter.Value>
@@ -151,7 +148,7 @@
                                 Background="{StaticResource InputBgBrush}"
                                 BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="6" />
-                        <Path Grid.Column="1" Data="M0,0 L4,4 L8,0" 
+                        <Path Grid.Column="1" Data="M0,0 L4,4 L8,0"
                               Stroke="{StaticResource TextDimBrush}" StrokeThickness="1.5"
                               HorizontalAlignment="Center" VerticalAlignment="Center"
                               Margin="0,0,6,0" />
@@ -178,31 +175,22 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
                     <Grid>
-                        <ToggleButton x:Name="ToggleButton"
-                                      Style="{StaticResource ComboBoxToggle}"
+                        <ToggleButton x:Name="ToggleButton" Style="{StaticResource ComboBoxToggle}"
                                       IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
                                       Focusable="False" ClickMode="Press" />
-                        <ContentPresenter x:Name="ContentSite"
-                                          IsHitTestVisible="False"
+                        <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False"
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                          Margin="10,6,28,6"
-                                          VerticalAlignment="Center"
-                                          HorizontalAlignment="Left" />
-                        <Popup x:Name="PART_Popup"
-                               IsOpen="{TemplateBinding IsDropDownOpen}"
+                                          Margin="10,6,28,6" VerticalAlignment="Center" HorizontalAlignment="Left" />
+                        <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}"
                                AllowsTransparency="True" Focusable="False"
                                PopupAnimation="Slide" Placement="Bottom">
-                            <Border x:Name="DropDown"
-                                    Background="{StaticResource PopupBgBrush}"
-                                    BorderBrush="{StaticResource BorderBrush}"
-                                    BorderThickness="1" CornerRadius="8"
-                                    Margin="0,2,0,0" Padding="4"
-                                    MinWidth="{TemplateBinding ActualWidth}"
-                                    MaxHeight="220"
-                                    SnapsToDevicePixels="True">
+                            <Border x:Name="DropDown" Background="{StaticResource PopupBgBrush}"
+                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                    CornerRadius="8" Margin="0,2,0,0" Padding="4"
+                                    MinWidth="{TemplateBinding ActualWidth}" MaxHeight="220" SnapsToDevicePixels="True">
                                 <Border.Effect>
-                                    <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.4" Color="Black" />
+                                    <DropShadowEffect BlurRadius="12" ShadowDepth="3" Opacity="0.15" Color="Black" />
                                 </Border.Effect>
                                 <ScrollViewer CanContentScroll="True">
                                     <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
@@ -242,9 +230,7 @@
         </Setter>
     </Style>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- ── BUTTONS ───────────────────────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <Style x:Key="PrimaryButton" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource AccentBrush}" />
         <Setter Property="Foreground" Value="White" />
@@ -256,7 +242,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="{TemplateBinding Background}" 
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
                             CornerRadius="8" Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -287,7 +273,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="{TemplateBinding Background}" 
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
                             BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                             CornerRadius="6" Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -318,9 +304,9 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="{TemplateBinding Background}" 
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}"
                             CornerRadius="6" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" 
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                           VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -337,9 +323,7 @@
         </Setter>
     </Style>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
-    <!-- ── TITLE BAR BUTTONS ─────────────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- ── TITLE BAR ─────────────────────────────────────────── -->
     <Style x:Key="TitleBarButton" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
@@ -374,9 +358,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Background">
-                                <Setter.Value>
-                                    <SolidColorBrush Color="{StaticResource DangerColor}" />
-                                </Setter.Value>
+                                <Setter.Value><SolidColorBrush Color="{StaticResource DangerColor}" /></Setter.Value>
                             </Setter>
                             <Setter Property="Foreground" Value="White" />
                         </Trigger>
@@ -386,9 +368,7 @@
         </Setter>
     </Style>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- ── TOGGLE SWITCH ─────────────────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <Style x:Key="ToggleSwitch" TargetType="ToggleButton">
         <Setter Property="Width" Value="40" />
         <Setter Property="Height" Value="22" />
@@ -397,13 +377,13 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
                     <Grid>
-                        <Border x:Name="Track" Background="#262c36" 
+                        <Border x:Name="Track" Background="#e1e4e8"
                                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                                 CornerRadius="11" Width="40" Height="22" />
                         <Border x:Name="Thumb" Width="16" Height="16" CornerRadius="8"
-                                Background="#6e7681" HorizontalAlignment="Left" Margin="3,0,0,0">
+                                Background="White" HorizontalAlignment="Left" Margin="3,0,0,0">
                             <Border.Effect>
-                                <DropShadowEffect BlurRadius="3" ShadowDepth="0" Opacity="0.3" Color="Black" />
+                                <DropShadowEffect BlurRadius="3" ShadowDepth="1" Opacity="0.2" Color="Black" />
                             </Border.Effect>
                         </Border>
                     </Grid>
@@ -431,9 +411,7 @@
         </Setter>
     </Style>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- ── TOOLTIP ───────────────────────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <Style TargetType="ToolTip">
         <Setter Property="Background" Value="{StaticResource PopupBgBrush}" />
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
@@ -450,7 +428,7 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="6" Padding="{TemplateBinding Padding}">
                         <Border.Effect>
-                            <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.4" Color="Black" />
+                            <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.15" Color="Black" />
                         </Border.Effect>
                         <ContentPresenter />
                     </Border>
@@ -459,9 +437,7 @@
         </Setter>
     </Style>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- ── SCROLLVIEWER ──────────────────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <Style TargetType="ScrollViewer">
         <Setter Property="Template">
             <Setter.Value>
@@ -483,7 +459,7 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="PART_VerticalScrollBar"
                                                          Storyboard.TargetProperty="Opacity"
-                                                         To="0.4" Duration="0:0:0.15" />
+                                                         To="0.3" Duration="0:0:0.15" />
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
@@ -503,9 +479,7 @@
         </Setter>
     </Style>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!-- ── LABELS ────────────────────────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <Style x:Key="FieldLabel" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
         <Setter Property="FontSize" Value="10" />
@@ -520,9 +494,7 @@
         <Setter Property="Margin" Value="4,0,0,8" />
     </Style>
 
-    <!-- ═══════════════════════════════════════════════════════════ -->
-    <!-- ── NAV BUTTON (sidebar icon) ─────────────────────────── -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- ── NAV BUTTON ────────────────────────────────────────── -->
     <Style x:Key="NavButton" TargetType="RadioButton">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{StaticResource TextDimBrush}" />
@@ -539,7 +511,7 @@
                         <Border x:Name="Indicator" Width="3" Height="20" CornerRadius="2"
                                 HorizontalAlignment="Left" Margin="-2,0,0,0"
                                 Background="Transparent" />
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" 
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
                                 CornerRadius="8" Margin="4,0,0,0">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>

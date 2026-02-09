@@ -90,4 +90,16 @@ public partial class MainWindow : Window
             vm.SetDnsProviderCommand.Execute(provider);
         }
     }
+
+    // ── Theme ComboBox selection handler ──────────────────────────
+    private void ThemeChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.ComboBox combo &&
+            combo.SelectedItem is System.Windows.Controls.ComboBoxItem item &&
+            item.Tag is string theme &&
+            DataContext is ViewModels.MainViewModel vm)
+        {
+            vm.SetThemeCommand.Execute(theme);
+        }
+    }
 }
