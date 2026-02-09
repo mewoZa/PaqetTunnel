@@ -52,6 +52,7 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private bool _isSystemProxyEnabled;
     [ObservableProperty] private bool _isProxySharingEnabled;
+    [ObservableProperty] private string _sharingInfo = "";
     [ObservableProperty] private bool _isAutoStartEnabled;
     [ObservableProperty] private bool _isStartBeforeLogonEnabled;
 
@@ -147,9 +148,10 @@ public partial class MainViewModel : ObservableObject
 
         // Load toggle states
         IsSystemProxyEnabled = _proxyService.IsSystemProxyEnabled();
-        IsProxySharingEnabled = _proxyService.IsProxySharingEnabled();
+        IsProxySharingEnabled = appSettings.ProxySharingEnabled;
         IsAutoStartEnabled = _proxyService.IsAutoStartEnabled();
         IsStartBeforeLogonEnabled = _proxyService.IsStartBeforeLogonEnabled();
+        UpdateSharingInfo();
 
         // ── Check running state (use IsReady for port-verified status)
         var running = _paqetService.IsRunning();
@@ -367,6 +369,17 @@ public partial class MainViewModel : ObservableObject
             // Fetch public IP through tunnel if not already fetched
             if (tunnelIp == null)
                 _ = FetchPublicIpAsync();
+
+            // Restore LAN sharing if it was enabled (portproxy is volatile — lost on reboot)
+            if (IsProxySharingEnabled)
+            {
+                Logger.Info("Restoring LAN sharing after connect...");
+                _ = Task.Run(() =>
+                {
+                    _proxyService.RestoreSharingIfEnabled();
+                    Logger.Info($"LAN sharing active: portproxy={_proxyService.IsPortproxyActive()}");
+                });
+            }
         });
     }
 
@@ -471,6 +484,7 @@ public partial class MainViewModel : ObservableObject
                     settings.ProxySharingEnabled = newState;
                     _configService.WriteAppSettings(settings);
                     StatusBarText = result.Message;
+                    UpdateSharingInfo();
                 }
                 else
                 {
@@ -479,6 +493,23 @@ public partial class MainViewModel : ObservableObject
                 IsBusy = false;
             });
         });
+    }
+
+    private void UpdateSharingInfo()
+    {
+        if (IsProxySharingEnabled)
+        {
+            try
+            {
+                var localIp = PaqetService.RunCommand("powershell", "-NoProfile -Command \"(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -ne '127.0.0.1' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -First 1).IPAddress\"").Trim();
+                SharingInfo = string.IsNullOrEmpty(localIp) ? $":{ProxyService.SHARING_PORT}" : $"{localIp}:{ProxyService.SHARING_PORT}";
+            }
+            catch { SharingInfo = $":{ProxyService.SHARING_PORT}"; }
+        }
+        else
+        {
+            SharingInfo = "";
+        }
     }
 
     [RelayCommand]

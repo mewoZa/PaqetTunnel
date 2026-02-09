@@ -18,7 +18,7 @@ public sealed class ProxyService
     private const int SOCKS_PORT = PaqetService.SOCKS_PORT;
     // LAN sharing uses a separate port to avoid portproxy conflict with paqet's SOCKS5 binding.
     // portproxy on the same port causes iphlpsvc to steal the port from paqet.
-    private const int SHARING_PORT = SOCKS_PORT + 1;
+    public const int SHARING_PORT = SOCKS_PORT + 1;
 
     // Saved state for restore on shutdown
     private bool _hadProxyBefore;
@@ -209,7 +209,10 @@ public sealed class ProxyService
 
     // ── Port Forwarding (for hotspot sharing) ─────────────────────
 
-    public bool IsProxySharingEnabled()
+    /// <summary>
+    /// Checks if portproxy rule actually exists (survives reboots? NO — portproxy is volatile).
+    /// </summary>
+    public bool IsPortproxyActive()
     {
         try
         {
@@ -217,6 +220,31 @@ public sealed class ProxyService
             return output.Contains("0.0.0.0") && output.Contains($"{SHARING_PORT}");
         }
         catch { return false; }
+    }
+
+    /// <summary>
+    /// Re-creates portproxy + firewall rules if sharing was enabled in settings.
+    /// Call after paqet starts and port is listening. Portproxy rules are volatile
+    /// (cleared on reboot), so they must be re-created every app launch.
+    /// </summary>
+    public void RestoreSharingIfEnabled()
+    {
+        try
+        {
+            if (IsPortproxyActive())
+            {
+                Logger.Debug("Sharing portproxy already active, skipping restore");
+                return;
+            }
+
+            Logger.Info("Restoring LAN sharing (portproxy rule was lost after reboot)...");
+            var result = SetProxySharing(true);
+            Logger.Info($"Sharing restore: {result.Message}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Failed to restore sharing", ex);
+        }
     }
 
     public (bool Success, string Message) SetProxySharing(bool enable)
@@ -238,18 +266,30 @@ public sealed class ProxyService
 
             if (enable)
             {
+                // Delete existing rule first to avoid duplicates
+                try { PaqetService.RunElevated("netsh",
+                    $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT}"); } catch { }
+
                 PaqetService.RunElevated("netsh",
                     $"interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT} connectaddress=127.0.0.1 connectport={SOCKS_PORT}");
+
+                // Delete existing firewall rules first to avoid accumulation
+                try { PaqetService.RunElevated("netsh",
+                    "advfirewall firewall delete rule name=\"Paqet SOCKS5 Sharing\""); } catch { }
+
                 PaqetService.RunElevated("netsh",
                     $"advfirewall firewall add rule name=\"Paqet SOCKS5 Sharing\" dir=in action=allow protocol=TCP localport={SHARING_PORT} profile=any");
+
+                Logger.Info($"LAN sharing enabled: 0.0.0.0:{SHARING_PORT} → 127.0.0.1:{SOCKS_PORT}");
                 return (true, $"LAN sharing enabled on :{SHARING_PORT} → :{SOCKS_PORT}");
             }
             else
             {
-                PaqetService.RunElevated("netsh",
-                    $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT}");
-                PaqetService.RunElevated("netsh",
-                    "advfirewall firewall delete rule name=\"Paqet SOCKS5 Sharing\"");
+                try { PaqetService.RunElevated("netsh",
+                    $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT}"); } catch { }
+                try { PaqetService.RunElevated("netsh",
+                    "advfirewall firewall delete rule name=\"Paqet SOCKS5 Sharing\""); } catch { }
+                Logger.Info("LAN sharing disabled");
                 return (true, "LAN sharing disabled.");
             }
         }

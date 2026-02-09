@@ -282,6 +282,16 @@
                                 </Grid>
                                 <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
 
+                                <!-- LAN Sharing Port (visible when sharing enabled) -->
+                                <Grid Margin="0,0,0,5" Visibility="{Binding IsProxySharingEnabled, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="LAN Sharing" FontSize="10.5" 
+                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding SharingInfo}" FontSize="11" FontWeight="Medium"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource AccentBrush}" />
+                                </Grid>
+
                                 <!-- Data transferred -->
                                 <Grid Margin="0,0,0,0">
                                     <TextBlock Text="Transferred" FontSize="10.5" 
