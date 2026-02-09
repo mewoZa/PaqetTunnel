@@ -233,7 +233,7 @@
                                     <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextDimBrush}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{DynamicResource {x:Type TextBlock}}">
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                                 <Setter Property="Text" Value="▸" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ShowInfoPanel}" Value="True">
@@ -518,7 +518,7 @@
                                     <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextDimBrush}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{DynamicResource {x:Type TextBlock}}">
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                                 <Setter Property="Text" Value="▸" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ShowSettings}" Value="True">
@@ -578,7 +578,7 @@
                                     <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextDimBrush}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{DynamicResource {x:Type TextBlock}}">
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                                 <Setter Property="Text" Value="▸" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ShowTools}" Value="True">
