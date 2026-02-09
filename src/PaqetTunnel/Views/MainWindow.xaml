@@ -15,8 +15,8 @@
         Topmost="True"
         Deactivated="Window_Deactivated">
 
-    <Border Background="{StaticResource BgBrush}" 
-            BorderBrush="{StaticResource BorderBrush}" 
+    <Border Background="{DynamicResource BgBrush}" 
+            BorderBrush="{DynamicResource BorderBrush}" 
             BorderThickness="1" 
             CornerRadius="12">
         <Border.Effect>
@@ -44,13 +44,13 @@
                             </TextBlock.Foreground>
                         </TextBlock>
                         <TextBlock Text="Paqet Tunnel" FontSize="12.5" FontWeight="SemiBold" 
-                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
-                                   FontFamily="{StaticResource MainFont}" Opacity="0.9" />
+                                   Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"
+                                   FontFamily="{DynamicResource MainFont}" Opacity="0.9" />
                     </StackPanel>
                     
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <Button Content="─" Style="{StaticResource TitleBarButton}" Click="Minimize_Click" />
-                        <Button Content="✕" Style="{StaticResource CloseButton}" Click="Close_Click" />
+                        <Button Content="─" Style="{DynamicResource TitleBarButton}" Click="Minimize_Click" />
+                        <Button Content="✕" Style="{DynamicResource CloseButton}" Click="Close_Click" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -60,7 +60,7 @@
                 <StackPanel Margin="16,4,16,8">
                 
                     <!-- ── Setup Banner ────────────────────────── -->
-                    <Border Style="{StaticResource Card}"
+                    <Border Style="{DynamicResource Card}"
                             Visibility="{Binding NeedsSetup, Converter={StaticResource BoolToVis}}"
                             BorderBrush="#d29922" Padding="12,10" Margin="0,0,0,6">
                         <Grid>
@@ -73,10 +73,10 @@
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="SETUP REQUIRED" FontSize="9.5" FontWeight="Bold"
                                            Foreground="#d29922" Margin="0,0,0,3"
-                                           FontFamily="{StaticResource MainFont}" />
-                                <TextBlock Text="{Binding SetupStatus}" Foreground="{StaticResource TextDimBrush}"
+                                           FontFamily="{DynamicResource MainFont}" />
+                                <TextBlock Text="{Binding SetupStatus}" Foreground="{DynamicResource TextDimBrush}"
                                            TextWrapping="Wrap" FontSize="11" Margin="0,0,0,6" />
-                                <Button Content="Install" Style="{StaticResource PrimaryButton}"
+                                <Button Content="Install" Style="{DynamicResource PrimaryButton}"
                                         Command="{Binding RunSetupCommand}"
                                         IsEnabled="{Binding IsSettingUp, Converter={StaticResource InvBoolConv}}"
                                         HorizontalAlignment="Left" Padding="16,5" FontSize="11.5" />
@@ -106,7 +106,7 @@
                                         <Ellipse Width="78" Height="78" StrokeThickness="2"
                                                  Stroke="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
                                         <!-- Fill -->
-                                        <Ellipse Width="72" Height="72" Fill="{StaticResource SurfaceBrush}" />
+                                        <Ellipse Width="72" Height="72" Fill="{DynamicResource SurfaceBrush}" />
                                         <!-- Icon -->
                                         <TextBlock Text="»" FontSize="32" FontWeight="Bold"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -115,7 +115,7 @@
                                         <!-- Spinner -->
                                         <Ellipse x:Name="SpinnerRing" Width="86" Height="86"
                                                  StrokeThickness="1.5" StrokeDashArray="3,6"
-                                                 Stroke="{StaticResource AccentBrush}"
+                                                 Stroke="{DynamicResource AccentBrush}"
                                                  Visibility="{Binding IsConnecting, Converter={StaticResource BoolToVis}}"
                                                  RenderTransformOrigin="0.5,0.5">
                                             <Ellipse.RenderTransform>
@@ -147,16 +147,16 @@
                                    Foreground="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
                         <TextBlock Text="{Binding ConnectionTime}" 
                                    FontSize="10.5" 
-                                   FontFamily="{StaticResource MonoFont}"
+                                   FontFamily="{DynamicResource MonoFont}"
                                    HorizontalAlignment="Center"
-                                   Foreground="{StaticResource TextDimBrush}"
+                                   Foreground="{DynamicResource TextDimBrush}"
                                    Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
 
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── LIVE STATS PANEL ──────────────────────── -->
                     <!-- ══════════════════════════════════════════════ -->
-                    <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,4"
+                    <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4"
                             Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <!-- Speed row -->
@@ -171,21 +171,21 @@
                                 <StackPanel Grid.Column="0" HorizontalAlignment="Center">
                                     <TextBlock Text="↓ DOWN" FontSize="9" FontWeight="SemiBold" 
                                                HorizontalAlignment="Center" 
-                                               Foreground="{StaticResource TextDimBrush}"
-                                               FontFamily="{StaticResource MainFont}" />
+                                               Foreground="{DynamicResource TextDimBrush}"
+                                               FontFamily="{DynamicResource MainFont}" />
                                     <TextBlock Text="{Binding DownloadSpeed}" FontSize="15" FontWeight="Bold"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Center" Margin="0,2,0,0"
-                                               Foreground="{StaticResource AccentBrush}" />
+                                               Foreground="{DynamicResource AccentBrush}" />
                                 </StackPanel>
                                 
                                 <!-- Center divider + mode badge -->
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0">
-                                    <Border Background="{StaticResource SurfaceBrush}" CornerRadius="4" Padding="6,2">
+                                    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4" Padding="6,2">
                                         <TextBlock Text="{Binding TunnelMode}" FontSize="8.5" FontWeight="SemiBold"
                                                    HorizontalAlignment="Center"
-                                                   Foreground="{StaticResource TextDimBrush}"
-                                                   FontFamily="{StaticResource MainFont}" />
+                                                   Foreground="{DynamicResource TextDimBrush}"
+                                                   FontFamily="{DynamicResource MainFont}" />
                                     </Border>
                                 </StackPanel>
                                 
@@ -193,12 +193,12 @@
                                 <StackPanel Grid.Column="2" HorizontalAlignment="Center">
                                     <TextBlock Text="↑ UP" FontSize="9" FontWeight="SemiBold" 
                                                HorizontalAlignment="Center" 
-                                               Foreground="{StaticResource TextDimBrush}"
-                                               FontFamily="{StaticResource MainFont}" />
+                                               Foreground="{DynamicResource TextDimBrush}"
+                                               FontFamily="{DynamicResource MainFont}" />
                                     <TextBlock Text="{Binding UploadSpeed}" FontSize="15" FontWeight="Bold"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Center" Margin="0,2,0,0"
-                                               Foreground="{StaticResource SuccessBrush}" />
+                                               Foreground="{DynamicResource SuccessBrush}" />
                                 </StackPanel>
                             </Grid>
 
@@ -213,11 +213,11 @@
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── INFO PANEL (toggle) ──────────────────── -->
                     <!-- ══════════════════════════════════════════════ -->
-                    <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,4"
+                    <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4"
                             Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <!-- Toggle header -->
-                            <Button Style="{StaticResource GhostButton}" 
+                            <Button Style="{DynamicResource GhostButton}" 
                                     Command="{Binding ToggleInfoPanelCommand}"
                                     HorizontalAlignment="Stretch" Padding="12,7"
                                     HorizontalContentAlignment="Stretch">
@@ -225,15 +225,15 @@
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="ℹ" FontSize="11" Margin="0,0,6,0" 
                                                    VerticalAlignment="Center"
-                                                   Foreground="{StaticResource AccentBrush}" />
+                                                   Foreground="{DynamicResource AccentBrush}" />
                                         <TextBlock Text="Connection Details" FontSize="11" FontWeight="Medium"
                                                    VerticalAlignment="Center"
-                                                   Foreground="{StaticResource TextDimBrush}" />
+                                                   Foreground="{DynamicResource TextDimBrush}" />
                                     </StackPanel>
                                     <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextDimBrush}">
+                                               Foreground="{DynamicResource TextDimBrush}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                            <Style TargetType="TextBlock" BasedOn="{DynamicResource {x:Type TextBlock}}">
                                                 <Setter Property="Text" Value="▸" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ShowInfoPanel}" Value="True">
@@ -252,65 +252,65 @@
                                 <!-- Public IP -->
                                 <Grid Margin="0,2,0,5">
                                     <TextBlock Text="Public IP" FontSize="10.5" 
-                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding PublicIp}" FontSize="11" FontWeight="Medium"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextBrush}" />
+                                               Foreground="{DynamicResource TextBrush}" />
                                 </Grid>
-                                <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
+                                <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
 
                                 <!-- Server -->
                                 <Grid Margin="0,0,0,5">
                                     <TextBlock Text="Server" FontSize="10.5" 
-                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding ServerIpDisplay}" FontSize="11" FontWeight="Medium"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextBrush}" />
+                                               Foreground="{DynamicResource TextBrush}" />
                                 </Grid>
-                                <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
+                                <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
 
                                 <!-- SOCKS Port -->
                                 <Grid Margin="0,0,0,5">
                                     <TextBlock Text="SOCKS5 Port" FontSize="10.5" 
-                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding SocksPort}" FontSize="11" FontWeight="Medium"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextBrush}" />
+                                               Foreground="{DynamicResource TextBrush}" />
                                 </Grid>
-                                <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
+                                <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
 
                                 <!-- LAN Sharing Port (visible when sharing enabled) -->
                                 <Grid Margin="0,0,0,5" Visibility="{Binding IsProxySharingEnabled, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="LAN Sharing" FontSize="10.5" 
-                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding SharingInfo}" FontSize="11" FontWeight="Medium"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Foreground="{StaticResource AccentBrush}" />
+                                               Foreground="{DynamicResource AccentBrush}" />
                                 </Grid>
 
                                 <!-- DNS Server -->
                                 <Grid Margin="0,0,0,5">
                                     <TextBlock Text="DNS" FontSize="10.5" 
-                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding ActiveDns}" FontSize="11" FontWeight="Medium"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextBrush}" />
+                                               Foreground="{DynamicResource TextBrush}" />
                                 </Grid>
-                                <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
+                                <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
 
                                 <!-- Data transferred -->
                                 <Grid Margin="0,0,0,0">
                                     <TextBlock Text="Transferred" FontSize="10.5" 
-                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                               Foreground="{DynamicResource TextDimBrush}" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding TotalTransferred}" FontSize="11" FontWeight="Medium"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextBrush}" />
+                                               Foreground="{DynamicResource TextBrush}" />
                                 </Grid>
                             </StackPanel>
                         </StackPanel>
@@ -319,7 +319,7 @@
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── QUICK TOGGLES ─────────────────────────── -->
                     <!-- ══════════════════════════════════════════════ -->
-                    <Border Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,4">
+                    <Border Style="{DynamicResource Card}" Padding="14,10" Margin="0,0,0,4">
                         <StackPanel>
                             <!-- Full System Tunnel -->
                             <Grid Margin="0,0,0,10">
@@ -330,15 +330,15 @@
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <TextBlock Text="Full System Tunnel" FontSize="12" FontWeight="Medium" />
                                     <TextBlock Text="Route all traffic via TUN adapter" FontSize="10"
-                                               Foreground="{StaticResource TextDimBrush}" Margin="0,2,0,0" />
+                                               Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" />
                                 </StackPanel>
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                <ToggleButton Grid.Column="1" Style="{DynamicResource ToggleSwitch}"
                                               IsChecked="{Binding IsFullSystemTunnel, Mode=OneWay}"
                                               Command="{Binding ToggleFullSystemTunnelCommand}"
                                               VerticalAlignment="Center" />
                             </Grid>
 
-                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
 
                             <!-- Auto-Connect -->
                             <Grid Margin="0,0,0,10">
@@ -349,15 +349,15 @@
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <TextBlock Text="Auto-Connect" FontSize="12" FontWeight="Medium" />
                                     <TextBlock Text="Connect on app launch" FontSize="10"
-                                               Foreground="{StaticResource TextDimBrush}" Margin="0,2,0,0" />
+                                               Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" />
                                 </StackPanel>
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                <ToggleButton Grid.Column="1" Style="{DynamicResource ToggleSwitch}"
                                               IsChecked="{Binding IsAutoConnect, Mode=OneWay}"
                                               Command="{Binding ToggleAutoConnectCommand}"
                                               VerticalAlignment="Center" />
                             </Grid>
 
-                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
 
                             <!-- Start with Windows -->
                             <Grid Margin="0,0,0,10">
@@ -367,7 +367,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Start with Windows" FontSize="12" FontWeight="Medium"
                                            VerticalAlignment="Center" />
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                <ToggleButton Grid.Column="1" Style="{DynamicResource ToggleSwitch}"
                                               IsChecked="{Binding IsAutoStartEnabled, Mode=OneWay}"
                                               Command="{Binding ToggleAutoStartCommand}"
                                               IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
@@ -383,16 +383,16 @@
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <TextBlock Text="Start Before Logon" FontSize="12" FontWeight="Medium" />
                                     <TextBlock Text="Run tunnel at system boot" FontSize="10"
-                                               Foreground="{StaticResource TextDimBrush}" Margin="0,2,0,0" />
+                                               Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" />
                                 </StackPanel>
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                <ToggleButton Grid.Column="1" Style="{DynamicResource ToggleSwitch}"
                                               IsChecked="{Binding IsStartBeforeLogonEnabled, Mode=OneWay}"
                                               Command="{Binding ToggleStartBeforeLogonCommand}"
                                               IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
                                               VerticalAlignment="Center" />
                             </Grid>
 
-                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
 
                             <!-- System Proxy -->
                             <Grid Margin="0,0,0,10">
@@ -403,16 +403,16 @@
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <TextBlock Text="System Proxy" FontSize="12" FontWeight="Medium" />
                                     <TextBlock Text="Set browser SOCKS5 proxy" FontSize="10"
-                                               Foreground="{StaticResource TextDimBrush}" Margin="0,2,0,0" />
+                                               Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" />
                                 </StackPanel>
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                <ToggleButton Grid.Column="1" Style="{DynamicResource ToggleSwitch}"
                                               IsChecked="{Binding IsSystemProxyEnabled, Mode=OneWay}"
                                               Command="{Binding ToggleSystemProxyCommand}"
                                               IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
                                               VerticalAlignment="Center" />
                             </Grid>
 
-                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
 
                             <!-- LAN Sharing -->
                             <Grid Margin="0,0,0,10">
@@ -422,14 +422,14 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="LAN Sharing" FontSize="12" FontWeight="Medium"
                                            VerticalAlignment="Center" />
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                <ToggleButton Grid.Column="1" Style="{DynamicResource ToggleSwitch}"
                                               IsChecked="{Binding IsProxySharingEnabled, Mode=OneWay}"
                                               Command="{Binding ToggleProxySharingCommand}"
                                               IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
                                               VerticalAlignment="Center" />
                             </Grid>
 
-                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
 
                             <!-- DNS Provider -->
                             <TextBlock Text="DNS" FontSize="12" FontWeight="Medium" Margin="0,0,0,6" />
@@ -439,31 +439,46 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <ComboBox SelectedValue="{Binding SelectedDnsProvider}" 
+                                          SelectedValuePath="Tag"
                                           SelectionChanged="DnsProviderChanged"
                                           FontSize="11" Padding="6,4" MinWidth="130">
-                                    <ComboBoxItem Content="Auto (Fastest)" Tag="auto" IsSelected="True" />
+                                    <ComboBoxItem Content="Auto (Fastest)" Tag="auto" />
                                     <ComboBoxItem Content="Cloudflare (1.1.1.1)" Tag="cloudflare" />
                                     <ComboBoxItem Content="Google (8.8.8.8)" Tag="google" />
                                     <ComboBoxItem Content="Quad9 (9.9.9.9)" Tag="quad9" />
                                     <ComboBoxItem Content="OpenDNS" Tag="opendns" />
+                                    <ComboBoxItem Content="AdGuard" Tag="adguard" />
+                                    <ComboBoxItem Content="AdGuard Family" Tag="adguard-family" />
+                                    <ComboBoxItem Content="Cloudflare Malware" Tag="cloudflare-malware" />
+                                    <ComboBoxItem Content="Cloudflare Family" Tag="cloudflare-family" />
+                                    <ComboBoxItem Content="NextDNS" Tag="nextdns" />
+                                    <ComboBoxItem Content="CleanBrowsing" Tag="cleanbrowsing-security" />
+                                    <ComboBoxItem Content="CleanBrowsing Family" Tag="cleanbrowsing-family" />
+                                    <ComboBoxItem Content="DNS.SB" Tag="dns.sb" />
+                                    <ComboBoxItem Content="Comodo Secure" Tag="comodo" />
+                                    <ComboBoxItem Content="Verisign" Tag="verisign" />
+                                    <ComboBoxItem Content="Level3/Lumen" Tag="level3" />
+                                    <ComboBoxItem Content="Control D" Tag="controld" />
+                                    <ComboBoxItem Content="Mullvad" Tag="mullvad" />
                                     <ComboBoxItem Content="Custom" Tag="custom" />
                                 </ComboBox>
                                 <Button Grid.Column="1" Content="⚡ Benchmark"
                                         Command="{Binding BenchmarkDnsCommand}"
-                                        Style="{StaticResource GhostButton}"
+                                        Style="{DynamicResource GhostButton}"
                                         FontSize="10" Padding="8,4" Margin="6,0,0,0" />
                             </Grid>
                             <TextBlock Text="{Binding ActiveDns}" FontSize="10" 
-                                       Foreground="{StaticResource TextDimBrush}" Margin="0,2,0,0" />
+                                       Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" />
                             <TextBlock Text="{Binding DnsStatus}" FontSize="9.5" Margin="0,2,0,4"
-                                       Foreground="{StaticResource AccentBrush}"
+                                       Foreground="{DynamicResource AccentBrush}"
                                        Visibility="{Binding DnsStatus, Converter={StaticResource StringToVis}}" />
 
-                            <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,4,0,10" />
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,4,0,10" />
 
                             <!-- Theme -->
                             <TextBlock Text="Theme" FontSize="12" FontWeight="Medium" Margin="0,0,0,6" />
                             <ComboBox SelectedValue="{Binding SelectedTheme}" 
+                                      SelectedValuePath="Tag"
                                       SelectionChanged="ThemeChanged"
                                       FontSize="11" Padding="6,4" Margin="0,0,0,10">
                                 <ComboBoxItem Content="Dark" Tag="dark" />
@@ -479,7 +494,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Debug Logging" FontSize="12" FontWeight="Medium"
                                            VerticalAlignment="Center" />
-                                <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                <ToggleButton Grid.Column="1" Style="{DynamicResource ToggleSwitch}"
                                               IsChecked="{Binding DebugMode, Mode=OneWay}"
                                               Command="{Binding ToggleDebugModeCommand}"
                                               VerticalAlignment="Center" />
@@ -490,20 +505,20 @@
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── SERVER CONFIG (collapsible) ────────────── -->
                     <!-- ══════════════════════════════════════════════ -->
-                    <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,4">
+                    <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4">
                         <StackPanel>
-                            <Button Style="{StaticResource GhostButton}" 
+                            <Button Style="{DynamicResource GhostButton}" 
                                     Command="{Binding ToggleSettingsCommand}"
                                     HorizontalAlignment="Stretch" Padding="12,8"
                                     HorizontalContentAlignment="Stretch">
                                 <Grid>
                                     <TextBlock Text="Server Configuration" FontSize="11" FontWeight="Medium"
                                                VerticalAlignment="Center" HorizontalAlignment="Left"
-                                               Foreground="{StaticResource TextDimBrush}" />
+                                               Foreground="{DynamicResource TextDimBrush}" />
                                     <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextDimBrush}">
+                                               Foreground="{DynamicResource TextDimBrush}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                            <Style TargetType="TextBlock" BasedOn="{DynamicResource {x:Type TextBlock}}">
                                                 <Setter Property="Text" Value="▸" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ShowSettings}" Value="True">
@@ -518,7 +533,7 @@
 
                             <StackPanel Margin="14,0,14,12"
                                         Visibility="{Binding ShowSettings, Converter={StaticResource BoolToVis}}">
-                                <TextBlock Text="SERVER ADDRESS" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="SERVER ADDRESS" Style="{DynamicResource FieldLabel}" />
                                 <TextBox Text="{Binding ServerAddress, UpdateSourceTrigger=PropertyChanged}" 
                                          Margin="0,0,0,8" />
                                 <Grid Margin="0,0,0,8">
@@ -528,19 +543,19 @@
                                         <ColumnDefinition Width="80" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
-                                        <TextBlock Text="INTERFACE" Style="{StaticResource FieldLabel}" />
+                                        <TextBlock Text="INTERFACE" Style="{DynamicResource FieldLabel}" />
                                         <TextBox Text="{Binding NetworkInterface, UpdateSourceTrigger=PropertyChanged}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="2">
-                                        <TextBlock Text="PORT" Style="{StaticResource FieldLabel}" />
+                                        <TextBlock Text="PORT" Style="{DynamicResource FieldLabel}" />
                                         <TextBox Text="{Binding ServerPort, UpdateSourceTrigger=PropertyChanged}" />
                                     </StackPanel>
                                 </Grid>
-                                <TextBlock Text="KEY" Style="{StaticResource FieldLabel}" />
+                                <TextBlock Text="KEY" Style="{DynamicResource FieldLabel}" />
                                 <PasswordBox h:PasswordBoxHelper.BindPassword="True"
                                              h:PasswordBoxHelper.BoundPassword="{Binding Key, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
                                              Margin="0,0,0,10" />
-                                <Button Content="Save Configuration" Style="{StaticResource PrimaryButton}"
+                                <Button Content="Save Configuration" Style="{DynamicResource PrimaryButton}"
                                         Command="{Binding SaveConfigCommand}"
                                         HorizontalAlignment="Stretch" Padding="12,7" FontSize="11.5" />
                             </StackPanel>
@@ -550,20 +565,20 @@
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── TOOLS (collapsible) ───────────────────── -->
                     <!-- ══════════════════════════════════════════════ -->
-                    <Border Style="{StaticResource Card}" Padding="0" Margin="0,0,0,4">
+                    <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4">
                         <StackPanel>
-                            <Button Style="{StaticResource GhostButton}" 
+                            <Button Style="{DynamicResource GhostButton}" 
                                     Command="{Binding ToggleToolsCommand}"
                                     HorizontalAlignment="Stretch" Padding="12,8"
                                     HorizontalContentAlignment="Stretch">
                                 <Grid>
                                     <TextBlock Text="Diagnostics" FontSize="11" FontWeight="Medium"
                                                VerticalAlignment="Center" HorizontalAlignment="Left"
-                                               Foreground="{StaticResource TextDimBrush}" />
+                                               Foreground="{DynamicResource TextDimBrush}" />
                                     <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextDimBrush}">
+                                               Foreground="{DynamicResource TextDimBrush}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                            <Style TargetType="TextBlock" BasedOn="{DynamicResource {x:Type TextBlock}}">
                                                 <Setter Property="Text" Value="▸" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ShowTools}" Value="True">
@@ -578,47 +593,47 @@
 
                             <StackPanel Margin="14,0,14,12"
                                         Visibility="{Binding ShowTools, Converter={StaticResource BoolToVis}}">
-                                <Button Content="List Interfaces" Style="{StaticResource SecondaryButton}"
+                                <Button Content="List Interfaces" Style="{DynamicResource SecondaryButton}"
                                         Command="{Binding ListInterfacesCommand}"
                                         IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
                                         HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
                                 <TextBox Text="{Binding InterfaceList, Mode=OneWay}" IsReadOnly="True"
-                                         FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                         FontFamily="{DynamicResource MonoFont}" FontSize="9.5"
                                          TextWrapping="Wrap" MaxHeight="70"
                                          Visibility="{Binding InterfaceList, Converter={StaticResource StringToVis}}"
                                          Margin="0,0,0,6" />
 
-                                <Button Content="Ping Server" Style="{StaticResource SecondaryButton}"
+                                <Button Content="Ping Server" Style="{DynamicResource SecondaryButton}"
                                         Command="{Binding PingServerCommand}"
                                         IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
                                         HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
                                 <TextBox Text="{Binding PingResult, Mode=OneWay}" IsReadOnly="True"
-                                         FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                         FontFamily="{DynamicResource MonoFont}" FontSize="9.5"
                                          TextWrapping="Wrap" MaxHeight="50"
                                          Visibility="{Binding PingResult, Converter={StaticResource StringToVis}}"
                                          Margin="0,0,0,6" />
 
-                                <Button Content="Generate Secret" Style="{StaticResource SecondaryButton}"
+                                <Button Content="Generate Secret" Style="{DynamicResource SecondaryButton}"
                                         Command="{Binding GenerateSecretCommand}"
                                         IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
                                         HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
 
-                                <Button Content="Version Info" Style="{StaticResource SecondaryButton}"
+                                <Button Content="Version Info" Style="{DynamicResource SecondaryButton}"
                                         Command="{Binding ShowVersionInfoCommand}"
                                         HorizontalAlignment="Stretch" Padding="10,6" FontSize="11.5" />
                                 <TextBox Text="{Binding FullVersionInfo, Mode=OneWay}" IsReadOnly="True"
-                                         FontFamily="{StaticResource MonoFont}" FontSize="9.5"
+                                         FontFamily="{DynamicResource MonoFont}" FontSize="9.5"
                                          TextWrapping="Wrap" MaxHeight="70"
                                          Visibility="{Binding FullVersionInfo, Converter={StaticResource StringToVis}}"
                                          Margin="0,4,0,6" />
 
-                                <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,2,0,6" />
+                                <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,2,0,6" />
 
-                                <Button Content="Check for Updates" Style="{StaticResource SecondaryButton}"
+                                <Button Content="Check for Updates" Style="{DynamicResource SecondaryButton}"
                                         Command="{Binding CheckForUpdatesAsyncCommand}"
                                         HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
                                 <TextBlock Text="{Binding UpdateStatus}" FontSize="10"
-                                           Foreground="{StaticResource TextDimBrush}"
+                                           Foreground="{DynamicResource TextDimBrush}"
                                            Visibility="{Binding UpdateStatus, Converter={StaticResource StringToVis}}"
                                            Margin="2,0,0,0" />
                             </StackPanel>
@@ -630,18 +645,18 @@
             </ScrollViewer>
 
             <!-- ═══ STATUS BAR ═════════════════════════════════════ -->
-            <Border Grid.Row="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
-                    CornerRadius="0,0,12,12" Background="{StaticResource SurfaceBrush}">
+            <Border Grid.Row="2" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+                    CornerRadius="0,0,12,12" Background="{DynamicResource SurfaceBrush}">
                 <Grid Margin="16,0">
                     <TextBlock Text="{Binding StatusBarText}" 
                                FontSize="10" VerticalAlignment="Center"
-                               Foreground="{StaticResource TextDimBrush}" 
+                               Foreground="{DynamicResource TextDimBrush}" 
                                TextTrimming="CharacterEllipsis" />
                     <TextBlock Text="{Binding PaqetVersion}" 
                                FontSize="9.5" VerticalAlignment="Center"
                                HorizontalAlignment="Right"
-                               Foreground="{StaticResource TextDimBrush}" 
-                               FontFamily="{StaticResource MonoFont}" Opacity="0.5" />
+                               Foreground="{DynamicResource TextDimBrush}" 
+                               FontFamily="{DynamicResource MonoFont}" Opacity="0.5" />
                 </Grid>
             </Border>
         </Grid>

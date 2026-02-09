@@ -199,7 +199,7 @@
                                     BorderThickness="1" CornerRadius="8"
                                     Margin="0,2,0,0" Padding="4"
                                     MinWidth="{TemplateBinding ActualWidth}"
-                                    MaxHeight="220"
+                                    MaxHeight="300"
                                     SnapsToDevicePixels="True">
                                 <Border.Effect>
                                     <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.4" Color="Black" />

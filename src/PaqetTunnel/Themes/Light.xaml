@@ -188,7 +188,7 @@
                             <Border x:Name="DropDown" Background="{StaticResource PopupBgBrush}"
                                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                                     CornerRadius="8" Margin="0,2,0,0" Padding="4"
-                                    MinWidth="{TemplateBinding ActualWidth}" MaxHeight="220" SnapsToDevicePixels="True">
+                                    MinWidth="{TemplateBinding ActualWidth}" MaxHeight="300" SnapsToDevicePixels="True">
                                 <Border.Effect>
                                     <DropShadowEffect BlurRadius="12" ShadowDepth="3" Opacity="0.15" Color="Black" />
                                 </Border.Effect>

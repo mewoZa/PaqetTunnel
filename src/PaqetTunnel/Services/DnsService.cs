@@ -17,7 +17,7 @@ namespace PaqetTunnel.Services;
 public static class DnsService
 {
     // ── DNS Provider Presets ──────────────────────────────────────
-    // Optimized for gaming, streaming, and low latency.
+    // Comprehensive list optimized for gaming, streaming, privacy, and security.
 
     public static readonly Dictionary<string, DnsPreset> Providers = new()
     {
@@ -27,34 +27,60 @@ public static class DnsService
             "Ultra reliable, global coverage, DoH/DoT support"),
         ["quad9"] = new("Quad9", "9.9.9.9", "149.112.112.112",
             "Security focused, blocks malware domains, DoH/DoT"),
-        ["cloudflare-gaming"] = new("Cloudflare Gaming", "1.1.1.1", "1.0.0.1",
-            "Same as Cloudflare — lowest latency for gaming"),
         ["opendns"] = new("OpenDNS", "208.67.222.222", "208.67.220.220",
             "Cisco owned, phishing protection, customizable"),
+        ["adguard"] = new("AdGuard", "94.140.14.14", "94.140.15.15",
+            "Ad/tracker blocking DNS, privacy focused"),
+        ["adguard-family"] = new("AdGuard Family", "94.140.14.15", "94.140.15.16",
+            "AdGuard + safe search + adult content blocking"),
+        ["cloudflare-malware"] = new("Cloudflare Malware", "1.1.1.2", "1.0.0.2",
+            "Cloudflare + malware blocking"),
+        ["cloudflare-family"] = new("Cloudflare Family", "1.1.1.3", "1.0.0.3",
+            "Cloudflare + malware + adult content blocking"),
+        ["nextdns"] = new("NextDNS", "45.90.28.0", "45.90.30.0",
+            "Customizable DNS firewall, analytics, ad blocking"),
+        ["cleanbrowsing-security"] = new("CleanBrowsing Security", "185.228.168.9", "185.228.169.9",
+            "Blocks malware, phishing — no adult filtering"),
+        ["cleanbrowsing-family"] = new("CleanBrowsing Family", "185.228.168.168", "185.228.169.168",
+            "Blocks adult content, malware, mixed content"),
+        ["dns.sb"] = new("DNS.SB", "185.222.222.222", "45.11.45.11",
+            "Privacy focused, no logging, DNSSEC validated"),
+        ["comodo"] = new("Comodo Secure", "8.26.56.26", "8.20.247.20",
+            "Blocks malware, spyware, and phishing sites"),
+        ["verisign"] = new("Verisign", "64.6.64.6", "64.6.65.6",
+            "Stable, no logging, privacy focused"),
+        ["level3"] = new("Level3/Lumen", "4.2.2.1", "4.2.2.2",
+            "Enterprise grade, ultra-low latency backbone"),
+        ["controld"] = new("Control D", "76.76.2.0", "76.76.10.0",
+            "Customizable DNS, ad blocking, geo-unblocking"),
+        ["mullvad"] = new("Mullvad", "194.242.2.2", "193.19.108.2",
+            "Privacy focused, no logging, ad/tracker blocking"),
     };
 
     /// <summary>
     /// Benchmark all DNS providers and return sorted by latency (fastest first).
-    /// Tests actual DNS resolution time, not just ICMP ping.
+    /// Runs benchmarks in parallel for speed. Uses direct network (bypasses tunnel).
     /// </summary>
-    public static async Task<List<DnsBenchmarkResult>> BenchmarkAllAsync()
+    public static async Task<List<DnsBenchmarkResult>> BenchmarkAllAsync(string? localBindIp = null)
     {
-        var results = new List<DnsBenchmarkResult>();
         var testDomains = new[] { "google.com", "cloudflare.com", "microsoft.com" };
 
-        foreach (var (id, preset) in Providers)
+        // Run all benchmarks in parallel for speed
+        var tasks = Providers.Select(async kvp =>
         {
-            var latency = await BenchmarkDnsAsync(preset.Primary, testDomains);
-            results.Add(new DnsBenchmarkResult(id, preset.Name, preset.Primary, preset.Secondary, latency));
-        }
+            var latency = await BenchmarkDnsAsync(kvp.Value.Primary, testDomains, localBindIp);
+            return new DnsBenchmarkResult(kvp.Key, kvp.Value.Name, kvp.Value.Primary, kvp.Value.Secondary, latency);
+        });
 
+        var results = await Task.WhenAll(tasks);
         return results.OrderBy(r => r.AvgLatencyMs).ToList();
     }
 
     /// <summary>
     /// Benchmark a single DNS server by resolving multiple domains and returning average latency.
+    /// Optionally binds to a specific local IP to bypass tunnel.
     /// </summary>
-    public static async Task<double> BenchmarkDnsAsync(string dnsServer, string[]? domains = null)
+    public static async Task<double> BenchmarkDnsAsync(string dnsServer, string[]? domains = null, string? localBindIp = null)
     {
         domains ??= new[] { "google.com", "cloudflare.com", "github.com" };
         var latencies = new List<double>();
@@ -64,10 +90,13 @@ public static class DnsService
             try
             {
                 var sw = Stopwatch.StartNew();
-                // Use direct UDP DNS query (port 53) for accurate measurement
                 using var udp = new UdpClient();
                 udp.Client.ReceiveTimeout = 3000;
                 udp.Client.SendTimeout = 1000;
+
+                // Bind to physical adapter to bypass tunnel routing
+                if (!string.IsNullOrEmpty(localBindIp) && IPAddress.TryParse(localBindIp, out var bindAddr))
+                    udp.Client.Bind(new IPEndPoint(bindAddr, 0));
 
                 var endpoint = new IPEndPoint(IPAddress.Parse(dnsServer), 53);
                 var query = BuildDnsQuery(domain);
@@ -81,7 +110,7 @@ public static class DnsService
             }
             catch
             {
-                latencies.Add(9999); // Timeout/unreachable
+                latencies.Add(9999);
             }
         }
 
@@ -90,13 +119,14 @@ public static class DnsService
 
     /// <summary>
     /// Auto-select the best DNS provider by benchmarking all and returning the fastest.
+    /// Benchmarks bypass the tunnel to measure real network latency.
     /// </summary>
-    public static async Task<(string ProviderId, string Primary, string Secondary)> AutoSelectAsync()
+    public static async Task<(string ProviderId, string Primary, string Secondary)> AutoSelectAsync(string? localBindIp = null)
     {
         Logger.Info("DNS auto-selection: benchmarking all providers...");
-        var results = await BenchmarkAllAsync();
+        var results = await BenchmarkAllAsync(localBindIp);
 
-        foreach (var r in results)
+        foreach (var r in results.Take(5))
             Logger.Info($"  DNS benchmark: {r.Name} ({r.Primary}) = {r.AvgLatencyMs:F1}ms");
 
         var best = results.First();

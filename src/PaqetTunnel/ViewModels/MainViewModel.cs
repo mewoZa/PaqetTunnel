@@ -869,12 +869,13 @@ public partial class MainViewModel : ObservableObject
         DnsStatus = "Benchmarking DNS...";
         try
         {
-            var results = await DnsService.BenchmarkAllAsync();
+            // Benchmark outside tunnel by binding to physical adapter IP
+            var results = await DnsService.BenchmarkAllAsync(LocalIp);
             var best = results.First();
             DnsStatus = $"Fastest: {best.Name} ({best.AvgLatencyMs:F0}ms)";
             Logger.Info($"DNS benchmark complete. Best: {best.Name} at {best.AvgLatencyMs:F1}ms");
 
-            foreach (var r in results)
+            foreach (var r in results.Take(5))
                 Logger.Info($"  {r.Name}: {r.AvgLatencyMs:F1}ms ({r.Primary})");
         }
         catch (Exception ex)
@@ -898,11 +899,12 @@ public partial class MainViewModel : ObservableObject
         var (p, s) = DnsService.Resolve(settings);
         ActiveDns = $"{p}, {s}";
 
-        // If connected with TUN, apply immediately
-        if (IsConnected && IsFullSystemTunnel && _tunService.IsRunning())
+        // Apply DNS immediately if connected
+        if (IsConnected)
         {
-            DnsService.ForceAdapterDns("PaqetTun", p, s);
-            DnsService.ForceAllAdaptersDns(p, s, excludeAdapter: "PaqetTun");
+            if (IsFullSystemTunnel && _tunService.IsRunning())
+                DnsService.ForceAdapterDns("PaqetTun", p, s);
+            DnsService.ForceAllAdaptersDns(p, s, excludeAdapter: IsFullSystemTunnel ? "PaqetTun" : null);
             DnsService.FlushCache();
             DnsStatus = $"Applied: {p}";
             Logger.Info($"DNS live-updated to {p}, {s}");
@@ -915,7 +917,7 @@ public partial class MainViewModel : ObservableObject
         DnsStatus = "Auto-selecting best DNS...";
         try
         {
-            var (providerId, primary, secondary) = await DnsService.AutoSelectAsync();
+            var (providerId, primary, secondary) = await DnsService.AutoSelectAsync(LocalIp);
             SelectedDnsProvider = providerId;
             ActiveDns = $"{primary}, {secondary}";
 
@@ -925,11 +927,11 @@ public partial class MainViewModel : ObservableObject
 
             DnsStatus = $"Selected: {DnsService.Providers[providerId].Name} (fastest)";
 
-            // Apply immediately if TUN is active
-            if (IsConnected && IsFullSystemTunnel && _tunService.IsRunning())
+            if (IsConnected)
             {
-                DnsService.ForceAdapterDns("PaqetTun", primary, secondary);
-                DnsService.ForceAllAdaptersDns(primary, secondary, excludeAdapter: "PaqetTun");
+                if (IsFullSystemTunnel && _tunService.IsRunning())
+                    DnsService.ForceAdapterDns("PaqetTun", primary, secondary);
+                DnsService.ForceAllAdaptersDns(primary, secondary, excludeAdapter: IsFullSystemTunnel ? "PaqetTun" : null);
                 DnsService.FlushCache();
             }
         }
