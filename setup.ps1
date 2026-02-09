@@ -824,6 +824,7 @@ function Do-Install {
     WL ""
     Line
     OK "Installation complete!"
+    Show-ClientInfo
     Dim "Run from Start Menu or Desktop shortcut"
     Dim ('Or: ' + $Script:InstallDir + '\' + $Script:ExeName)
     WL ""
@@ -938,6 +939,35 @@ function Do-Uninstall {
     OK "Uninstalled successfully"
 }
 
+# Read client config into script-level variables
+function Read-ClientConfig {
+    $Script:CfgServer = ''; $Script:CfgSocks = ''; $Script:CfgKey = ''
+    $Script:CfgIface = ''; $Script:CfgTransport = ''; $Script:CfgBlock = ''
+    $cfg = "$Script:DataDir\config\client.yaml"
+    if (-not (Test-Path $cfg)) { return }
+    $content = Get-Content $cfg -Raw
+    if ($content -match 'server:\s*\r?\n\s*addr:\s*"([^"]+)"') { $Script:CfgServer = $Matches[1] }
+    if ($content -match 'listen:\s*"([^"]+)"') { $Script:CfgSocks = $Matches[1] }
+    if ($content -match 'key:\s*"([^"]+)"') { $Script:CfgKey = $Matches[1] }
+    if ($content -match 'interface:\s*"([^"]+)"') { $Script:CfgIface = $Matches[1] }
+    if ($content -match 'protocol:\s*"([^"]+)"') { $Script:CfgTransport = $Matches[1] }
+    if ($content -match 'block:\s*"([^"]+)"') { $Script:CfgBlock = $Matches[1] }
+}
+
+# Show config summary (used in status, menu, post-install)
+function Show-ClientInfo {
+    Read-ClientConfig
+    if ($Script:CfgServer) { W "  Server    "; WL $Script:CfgServer White }
+    if ($Script:CfgSocks) { W "  SOCKS5    "; WL $Script:CfgSocks DarkGray }
+    if ($Script:CfgIface) { W "  Interface "; WL $Script:CfgIface DarkGray }
+    if ($Script:CfgTransport) {
+        $proto = $Script:CfgTransport
+        if ($Script:CfgBlock) { $proto += " ($($Script:CfgBlock))" }
+        W "  Transport "; WL $proto DarkGray
+    }
+    if ($Script:CfgKey) { W "  Key       "; WL $Script:CfgKey White }
+}
+
 function Do-Status {
     Banner
     $installed = Is-Installed
@@ -968,15 +998,22 @@ function Do-Status {
             ForEach-Object { Dim "$($_.ProcessName) (PID $($_.Id), $([math]::Round($_.WorkingSet64/1MB))MB)" }
     }
 
-    # Config check
-    $cfg = "$Script:DataDir\config\client.yaml"
-    if (Test-Path $cfg) {
+    # Config
+    $cfgFile = "$Script:DataDir\config\client.yaml"
+    if (Test-Path $cfgFile) {
         WL ""
         Step "Configuration:"
-        $content = Get-Content $cfg -Raw
-        if ($content -match 'server:\s*\r?\n\s*addr:\s*"([^"]+)"') { Dim "Server: $($Matches[1])" }
-        if ($content -match 'listen:\s*"([^"]+)"') { Dim "SOCKS5: $($Matches[1])" }
-        if ($content -match 'protocol:\s*"([^"]+)"') { Dim "Transport: $($Matches[1])" }
+        Show-ClientInfo
+
+        # Show server install one-liner if we have server info
+        Read-ClientConfig
+        if ($Script:CfgServer -and $Script:CfgKey) {
+            WL ""
+            Step "Server install one-liner (Linux):"
+            $sAddr = $Script:CfgServer
+            $sKey = $Script:CfgKey
+            Dim "curl -fsSL https://raw.githubusercontent.com/$($Script:Repo)/master/setup.sh -o /tmp/setup.sh && sudo bash /tmp/setup.sh install --addr $sAddr --key `"$sKey`" --yes"
+        }
     }
     WL ""
 }
@@ -1239,47 +1276,86 @@ function Show-Help {
 # ═══════════════════════════════════════════════════════════════════
 
 function Show-Interactive {
-    Banner
-    $os = Get-OsInfo
-    $installed = Is-Installed
-    $running = Is-Running
-    $ver = Get-InstalledVersion
+    while ($true) {
+        Clear-Host
+        Banner
+        $os = Get-OsInfo
+        $installed = Is-Installed
+        $running = Is-Running
+        $ver = Get-InstalledVersion
 
-    W "  System    "; WL $os White
-    W "  Status    "
-    if ($running) { WL "Running ●" Green }
-    elseif ($installed) { WL "Installed" Cyan }
-    else { WL "Not installed" DarkGray }
-    if ($ver) { W "  Version   "; WL $ver White }
-
-    $items = if ($installed) {
-        @('Update', 'Reinstall', 'Uninstall', 'Status', 'Start / Stop', 'Server Setup')
-    } else {
-        @('Install Client', 'Install Server', 'Status', 'Help')
-    }
-
-    $sel = Menu '' $items
-
-    if ($installed) {
-        switch ($sel) {
-            '1' { Do-Update }
-            '2' { Do-Install }
-            '3' { Do-Uninstall }
-            '4' { Do-Status }
-            '5' { if (Is-Running) { Stop-App; OK "Stopped" } else { Start-App } }
-            '6' { Do-Install -ServerMode }
-            '0' { return }
-            default { Warn "Invalid selection" }
+        W "  System    "; WL $os White
+        W "  Status    "
+        if ($running) {
+            WL "Running $([char]0x25CF)" Green
+            # Show process info
+            $procs = Get-Process -Name 'PaqetTunnel','paqet_windows_amd64','tun2socks' -ErrorAction SilentlyContinue
+            if ($procs) {
+                $totalMem = ($procs | Measure-Object -Property WorkingSet64 -Sum).Sum
+                W "  Memory    "; WL "$([math]::Round($totalMem/1MB))MB" DarkGray
+            }
         }
-    } else {
-        switch ($sel) {
-            '1' { Do-Install }
-            '2' { Do-Install -ServerMode }
-            '3' { Do-Status }
-            '4' { Show-Help }
-            '0' { return }
-            default { Warn "Invalid selection" }
+        elseif ($installed) { WL "Installed (stopped)" Cyan }
+        else { WL "Not installed" DarkGray }
+        if ($ver) { W "  Version   "; WL $ver White }
+
+        # Show config info when installed
+        if ($installed -and (Test-Path "$Script:DataDir\config\client.yaml")) {
+            Show-ClientInfo
         }
+
+        WL ""; Line
+        if ($installed) {
+            W "  "; W "1" Cyan; WL "  Update"
+            W "  "; W "2" Cyan; WL "  Reinstall"
+            W "  "; W "3" Cyan; WL "  Uninstall"
+            W "  "; W "4" Cyan; WL "  Status (detailed)"
+            W "  "; W "5" Cyan; WL "  $(if(Is-Running){'Stop'}else{'Start'})"
+            W "  "; W "6" Cyan; WL "  Server Setup"
+            W "  "; W "7" Cyan; WL "  Help"
+            W "  "; W "0" DarkGray; WL "  Exit" DarkGray
+        } else {
+            W "  "; W "1" Cyan; WL "  Install Client"
+            W "  "; W "2" Cyan; WL "  Install Server"
+            W "  "; W "3" Cyan; WL "  Status"
+            W "  "; W "4" Cyan; WL "  Help"
+            W "  "; W "0" DarkGray; WL "  Exit" DarkGray
+        }
+
+        WL ""
+        W "  Select " DarkGray; W "> " Cyan
+        $sel = Read-Host
+
+        $exitLoop = $false
+        if ($installed) {
+            switch ($sel) {
+                '1' { Do-Update }
+                '2' { Do-Install }
+                '3' { Do-Uninstall; $exitLoop = $true }
+                '4' { Do-Status }
+                '5' { if (Is-Running) { Stop-App; OK "Stopped" } else { Start-App } }
+                '6' { Do-Install -ServerMode }
+                '7' { Show-Help }
+                '0' { return }
+                default { continue }
+            }
+        } else {
+            switch ($sel) {
+                '1' { Do-Install }
+                '2' { Do-Install -ServerMode }
+                '3' { Do-Status }
+                '4' { Show-Help }
+                '0' { return }
+                default { continue }
+            }
+        }
+
+        if ($exitLoop) { return }
+
+        # Pause before returning to menu
+        WL ""
+        W "  Press Enter to return to menu..." DarkGray
+        Read-Host | Out-Null
     }
 }
 

@@ -699,70 +699,90 @@ show_help() {
     echo ""
 }
 
+pause_menu() {
+    echo ""
+    echo -en "  ${D}Press Enter to return to menu...${W}"
+    read -r
+}
+
 show_menu() {
-    banner
-    local installed=0
-    [[ -f "$INSTALL_DIR/$BINARY" ]] && installed=1
+    while true; do
+        clear 2>/dev/null || true
+        banner
+        local installed=0
+        [[ -f "$INSTALL_DIR/$BINARY" ]] && installed=1
 
-    if systemctl is-active --quiet paqet 2>/dev/null; then
-        echo -e "  Status    ${G}Running ●${W}"
-    elif [[ $installed -eq 1 ]]; then
-        echo -e "  Status    ${C}Installed (stopped)${W}"
-    else
-        echo -e "  Status    ${D}Not installed${W}"
-    fi
+        if systemctl is-active --quiet paqet 2>/dev/null; then
+            echo -e "  Status    ${G}Running ●${W}"
+            # Show process info
+            local pid
+            pid=$(systemctl show paqet -p MainPID --value 2>/dev/null)
+            if [[ -n "$pid" && "$pid" != "0" ]]; then
+                local mem
+                mem=$(ps -o rss= -p "$pid" 2>/dev/null | awk '{printf "%.1fMB", $1/1024}')
+                local uptime_val
+                uptime_val=$(ps -o etime= -p "$pid" 2>/dev/null | sed 's/^ *//')
+                [[ -n "$mem" ]] && echo -e "  Process   ${D}PID $pid, $mem${W}"
+                [[ -n "$uptime_val" ]] && echo -e "  Uptime    ${D}$uptime_val${W}"
+            fi
+        elif [[ $installed -eq 1 ]]; then
+            echo -e "  Status    ${C}Installed (stopped)${W}"
+        else
+            echo -e "  Status    ${D}Not installed${W}"
+        fi
 
-    # Show server info in menu when installed
-    if [[ $installed -eq 1 ]]; then
-        read_config 2>/dev/null
-        local public_ip="${CFG_IP:-}"
-        [[ -n "$CFG_IFACE" ]]  && echo -e "  Interface ${D}$CFG_IFACE${W}"
-        [[ -n "$CFG_LISTEN" ]] && echo -e "  Listen    ${D}$CFG_LISTEN${W}"
-        [[ -n "$public_ip" ]]  && echo -e "  Public IP ${D}$public_ip${W}"
-        [[ -n "$CFG_KEY" ]]    && echo -e "  Key       ${W}$CFG_KEY${W}"
-    fi
+        # Show server info in menu when installed
+        if [[ $installed -eq 1 ]]; then
+            read_config 2>/dev/null
+            local public_ip="${CFG_IP:-}"
+            [[ -n "$CFG_IFACE" ]]  && echo -e "  Interface ${D}$CFG_IFACE${W}"
+            [[ -n "$CFG_LISTEN" ]] && echo -e "  Listen    ${D}$CFG_LISTEN${W}"
+            [[ -n "$public_ip" ]]  && echo -e "  Public IP ${D}$public_ip${W}"
+            [[ -n "$CFG_KEY" ]]    && echo -e "  Key       ${W}$CFG_KEY${W}"
+        fi
 
-    echo ""
-    line
-    if [[ $installed -eq 1 ]]; then
-        echo -e "  ${C}1${W}  Update"
-        echo -e "  ${C}2${W}  Reinstall"
-        echo -e "  ${C}3${W}  Uninstall"
-        echo -e "  ${C}4${W}  Status (detailed)"
-        echo -e "  ${C}5${W}  Restart"
-        echo -e "  ${C}6${W}  Logs"
-        echo -e "  ${C}7${W}  Help"
-        echo -e "  ${D}0${W}  ${D}Exit${W}"
-    else
-        echo -e "  ${C}1${W}  Install Server"
-        echo -e "  ${C}2${W}  Help"
-        echo -e "  ${D}0${W}  ${D}Exit${W}"
-    fi
+        echo ""
+        line
+        if [[ $installed -eq 1 ]]; then
+            echo -e "  ${C}1${W}  Update"
+            echo -e "  ${C}2${W}  Reinstall"
+            echo -e "  ${C}3${W}  Uninstall"
+            echo -e "  ${C}4${W}  Status (detailed)"
+            echo -e "  ${C}5${W}  Restart"
+            echo -e "  ${C}6${W}  Logs"
+            echo -e "  ${C}7${W}  Help"
+            echo -e "  ${D}0${W}  ${D}Exit${W}"
+        else
+            echo -e "  ${C}1${W}  Install Server"
+            echo -e "  ${C}2${W}  Help"
+            echo -e "  ${D}0${W}  ${D}Exit${W}"
+        fi
 
-    echo ""
-    echo -en "  ${D}Select${W} ${C}›${W} "
-    read -r sel
+        echo ""
+        echo -en "  ${D}Select${W} ${C}›${W} "
+        read -r sel
 
-    if [[ $installed -eq 1 ]]; then
-        case "$sel" in
-            1) do_update ;;
-            2) do_install ;;
-            3) do_uninstall ;;
-            4) do_status ;;
-            5) do_restart ;;
-            6) do_logs ;;
-            7) show_help ;;
-            0) exit 0 ;;
-            *) warn "Invalid selection" ;;
-        esac
-    else
-        case "$sel" in
-            1) do_install ;;
-            2) show_help ;;
-            0) exit 0 ;;
-            *) warn "Invalid selection" ;;
-        esac
-    fi
+        if [[ $installed -eq 1 ]]; then
+            case "$sel" in
+                1) do_update; pause_menu ;;
+                2) do_install; pause_menu ;;
+                3) do_uninstall; pause_menu ;;
+                4) do_status; pause_menu ;;
+                5) do_restart; pause_menu ;;
+                6) do_logs; pause_menu ;;
+                7) show_help; pause_menu ;;
+                0) exit 0 ;;
+                *) ;;
+            esac
+        else
+            case "$sel" in
+                1) do_install; pause_menu ;;
+                2) show_help; pause_menu ;;
+                0) exit 0 ;;
+                *) ;;
+            esac
+        fi
+    done
 }
 
 # ── Parse Args ─────────────────────────────────────────────────
