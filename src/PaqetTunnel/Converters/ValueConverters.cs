@@ -79,3 +79,20 @@ public sealed class StringToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type t, object parameter, CultureInfo c) =>
         throw new NotImplementedException();
 }
+
+/// <summary>Hex color string → SolidColorBrush</summary>
+public sealed class StringToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type t, object parameter, CultureInfo c)
+    {
+        if (value is string hex && !string.IsNullOrEmpty(hex))
+        {
+            try { return new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)); }
+            catch { }
+        }
+        return new SolidColorBrush(Color.FromRgb(139, 148, 158));
+    }
+
+    public object ConvertBack(object value, Type t, object parameter, CultureInfo c) =>
+        throw new NotImplementedException();
+}

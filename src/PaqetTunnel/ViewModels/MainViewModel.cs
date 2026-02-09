@@ -37,6 +37,7 @@ public partial class MainViewModel : ObservableObject
     private const int MAX_RECONNECT_ATTEMPTS = 5;
     private const int RECONNECT_BASE_DELAY_MS = 3000;
     private int _healthCheckCounter;
+    private int _healthRefreshCounter;
     private const int HEALTH_CHECK_INTERVAL = 10; // every 10 ticks (30s at 3s/tick)
 
     // ── Speed ─────────────────────────────────────────────────────
@@ -111,6 +112,27 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isDiagnosticRunning;
     [ObservableProperty] private string _diagnosticReport = "";
     [ObservableProperty] private string _diagnosticStatus = "";
+    [ObservableProperty] private bool _showDiagnosticPanel;
+
+    // ── Process Health ─────────────────────────────────────────
+
+    [ObservableProperty] private string _paqetPid = "—";
+    [ObservableProperty] private string _paqetMemory = "—";
+    [ObservableProperty] private string _paqetUptime = "—";
+    [ObservableProperty] private string _tun2socksPid = "—";
+    [ObservableProperty] private string _tun2socksMemory = "—";
+    [ObservableProperty] private string _tunAdapterStatus = "—";
+    [ObservableProperty] private string _encryptionInfo = "—";
+    [ObservableProperty] private string _kcpModeInfo = "—";
+    [ObservableProperty] private string _connectionQuality = "—";
+    [ObservableProperty] private string _connectionQualityColor = "#8b949e";
+
+    // ── Live Log Viewer ────────────────────────────────────────
+
+    [ObservableProperty] private bool _showLogViewer;
+    [ObservableProperty] private string _logViewerText = "";
+    [ObservableProperty] private string _logFilter = "ALL";
+    private readonly List<LogEntry> _logEntries = new();
 
     public MainViewModel(
         PaqetService paqetService,
@@ -130,6 +152,9 @@ public partial class MainViewModel : ObservableObject
 
         // Speed updates from monitor
         _networkMonitor.SpeedUpdated += OnSpeedUpdated;
+
+        // Live log viewer subscription
+        Logger.LogAdded += OnLogAdded;
 
         // Periodic status polling (every 3 seconds)
         _statusTimer = new Timer(3000);
@@ -1047,6 +1072,164 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private void ToggleDiagnosticPanel() => ShowDiagnosticPanel = !ShowDiagnosticPanel;
+
+    // ── Live Log Viewer ───────────────────────────────────────────
+
+    [RelayCommand]
+    private void ToggleLogViewer()
+    {
+        ShowLogViewer = !ShowLogViewer;
+        if (ShowLogViewer) RefreshLogViewer();
+    }
+
+    [RelayCommand]
+    private void ClearLogs()
+    {
+        Logger.ClearBuffer();
+        _logEntries.Clear();
+        LogViewerText = "";
+    }
+
+    [RelayCommand]
+    private void SetLogFilter(string filter)
+    {
+        LogFilter = filter;
+        RefreshLogViewer();
+    }
+
+    private void OnLogAdded(LogEntry entry)
+    {
+        try
+        {
+            _logEntries.Add(entry);
+            if (_logEntries.Count > 500)
+                _logEntries.RemoveAt(0);
+
+            if (!ShowLogViewer) return;
+            if (LogFilter != "ALL" && entry.Level != LogFilter) return;
+
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                LogViewerText += entry.Formatted + "\n";
+                // Trim if too long
+                if (LogViewerText.Length > 50000)
+                    LogViewerText = LogViewerText[^30000..];
+            }));
+        }
+        catch { }
+    }
+
+    private void RefreshLogViewer()
+    {
+        var entries = Logger.GetRecentLogs(200);
+        if (LogFilter != "ALL")
+            entries = entries.Where(e => e.Level == LogFilter).ToList();
+        LogViewerText = string.Join("\n", entries.Select(e => e.Formatted));
+    }
+
+    // ── Process Health ────────────────────────────────────────────
+
+    private void RefreshProcessHealth()
+    {
+        try
+        {
+            // Paqet process
+            var paqetProc = System.Diagnostics.Process.GetProcessesByName("paqet_windows_amd64").FirstOrDefault();
+            if (paqetProc != null)
+            {
+                PaqetPid = paqetProc.Id.ToString();
+                PaqetMemory = $"{paqetProc.WorkingSet64 / (1024 * 1024)} MB";
+                var uptime = DateTime.Now - paqetProc.StartTime;
+                PaqetUptime = uptime.TotalHours >= 1
+                    ? uptime.ToString(@"hh\:mm\:ss")
+                    : uptime.ToString(@"mm\:ss");
+            }
+            else
+            {
+                PaqetPid = "—";
+                PaqetMemory = "—";
+                PaqetUptime = "—";
+            }
+
+            // tun2socks process
+            var t2sProc = System.Diagnostics.Process.GetProcessesByName("tun2socks").FirstOrDefault();
+            if (t2sProc != null)
+            {
+                Tun2socksPid = t2sProc.Id.ToString();
+                Tun2socksMemory = $"{t2sProc.WorkingSet64 / (1024 * 1024)} MB";
+            }
+            else
+            {
+                Tun2socksPid = "—";
+                Tun2socksMemory = "—";
+            }
+
+            // TUN adapter
+            TunAdapterStatus = _tunService.IsRunning() ? "Active" : "Inactive";
+
+            // Config info
+            if (System.IO.File.Exists(AppPaths.PaqetConfigPath))
+            {
+                var config = PaqetConfig.FromYaml(System.IO.File.ReadAllText(AppPaths.PaqetConfigPath));
+                EncryptionInfo = "AES (KCP)";
+                KcpModeInfo = "fast";
+            }
+
+            // Connection quality based on health check result
+            if (IsConnected)
+            {
+                var status = ConnectionStatus;
+                if (status.Contains("tunnel check failed"))
+                {
+                    ConnectionQuality = "⚠ Degraded";
+                    ConnectionQualityColor = "#d29922";
+                }
+                else if (status.Contains("Reconnecting"))
+                {
+                    ConnectionQuality = "⚠ Reconnecting";
+                    ConnectionQualityColor = "#d29922";
+                }
+                else
+                {
+                    ConnectionQuality = "● Excellent";
+                    ConnectionQualityColor = "#3fb950";
+                }
+            }
+            else
+            {
+                ConnectionQuality = "○ Offline";
+                ConnectionQualityColor = "#8b949e";
+            }
+        }
+        catch { }
+    }
+
+    [RelayCommand]
+    private void OpenLogFolder()
+    {
+        try
+        {
+            var logDir = Logger.LogDir;
+            if (System.IO.Directory.Exists(logDir))
+                System.Diagnostics.Process.Start("explorer.exe", logDir);
+        }
+        catch { }
+    }
+
+    [RelayCommand]
+    private void OpenDiagnosticsFolder()
+    {
+        try
+        {
+            var diagDir = AppPaths.DiagnosticsDir;
+            if (System.IO.Directory.Exists(diagDir))
+                System.Diagnostics.Process.Start("explorer.exe", diagDir);
+        }
+        catch { }
+    }
+
     // ── Periodic Status Check ─────────────────────────────────────
 
     private void OnStatusTick(object? sender, ElapsedEventArgs e)
@@ -1141,6 +1324,14 @@ public partial class MainViewModel : ObservableObject
                     ConnectionTime = elapsed.TotalHours >= 1
                         ? elapsed.ToString(@"hh\:mm\:ss")
                         : elapsed.ToString(@"mm\:ss");
+                }
+
+                // Update process health info (every tick when connected, or every 10th tick otherwise)
+                _healthRefreshCounter++;
+                if (_healthRefreshCounter >= (IsConnected ? 1 : 10))
+                {
+                    _healthRefreshCounter = 0;
+                    RefreshProcessHealth();
                 }
             });
         }
@@ -1257,6 +1448,7 @@ public partial class MainViewModel : ObservableObject
 
     public void Cleanup()
     {
+        Logger.LogAdded -= OnLogAdded;
         _statusTimer.Stop();
         _statusTimer.Dispose();
         _networkMonitor.Stop();

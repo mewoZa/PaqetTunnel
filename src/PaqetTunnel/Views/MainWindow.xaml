@@ -452,6 +452,56 @@
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextBrush}" />
                                 </Grid>
+
+                                <!-- Debug-only details -->
+                                <StackPanel Visibility="{Binding DebugMode, Converter={StaticResource BoolToVis}}">
+                                    <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,5,0,5" />
+                                    <TextBlock Text="DEBUG INFO" FontSize="8" FontWeight="Bold"
+                                               Foreground="{DynamicResource TextDimBrush}" Opacity="0.5"
+                                               Margin="0,0,0,4" FontFamily="{DynamicResource MainFont}" />
+                                    <Grid Margin="0,0,0,3">
+                                        <TextBlock Text="Encryption" FontSize="10" Foreground="{DynamicResource TextDimBrush}" />
+                                        <TextBlock Text="{Binding EncryptionInfo}" FontSize="10"
+                                                   FontFamily="{DynamicResource MonoFont}"
+                                                   HorizontalAlignment="Right"
+                                                   Foreground="{DynamicResource AccentBrush}" />
+                                    </Grid>
+                                    <Grid Margin="0,0,0,3">
+                                        <TextBlock Text="KCP Mode" FontSize="10" Foreground="{DynamicResource TextDimBrush}" />
+                                        <TextBlock Text="{Binding KcpModeInfo}" FontSize="10"
+                                                   FontFamily="{DynamicResource MonoFont}"
+                                                   HorizontalAlignment="Right"
+                                                   Foreground="{DynamicResource TextBrush}" />
+                                    </Grid>
+                                    <Grid Margin="0,0,0,3">
+                                        <TextBlock Text="Paqet PID" FontSize="10" Foreground="{DynamicResource TextDimBrush}" />
+                                        <TextBlock Text="{Binding PaqetPid}" FontSize="10"
+                                                   FontFamily="{DynamicResource MonoFont}"
+                                                   HorizontalAlignment="Right"
+                                                   Foreground="{DynamicResource TextBrush}" />
+                                    </Grid>
+                                    <Grid Margin="0,0,0,3">
+                                        <TextBlock Text="Paqet Memory" FontSize="10" Foreground="{DynamicResource TextDimBrush}" />
+                                        <TextBlock Text="{Binding PaqetMemory}" FontSize="10"
+                                                   FontFamily="{DynamicResource MonoFont}"
+                                                   HorizontalAlignment="Right"
+                                                   Foreground="{DynamicResource TextBrush}" />
+                                    </Grid>
+                                    <Grid Margin="0,0,0,3">
+                                        <TextBlock Text="Uptime" FontSize="10" Foreground="{DynamicResource TextDimBrush}" />
+                                        <TextBlock Text="{Binding PaqetUptime}" FontSize="10"
+                                                   FontFamily="{DynamicResource MonoFont}"
+                                                   HorizontalAlignment="Right"
+                                                   Foreground="{DynamicResource TextBrush}" />
+                                    </Grid>
+                                    <Grid Margin="0,0,0,3">
+                                        <TextBlock Text="Quality" FontSize="10" Foreground="{DynamicResource TextDimBrush}" />
+                                        <TextBlock Text="{Binding ConnectionQuality}" FontSize="10"
+                                                   FontFamily="{DynamicResource MonoFont}"
+                                                   HorizontalAlignment="Right"
+                                                   Foreground="{Binding ConnectionQualityColor, Converter={StaticResource StringToBrush}}" />
+                                    </Grid>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -650,6 +700,79 @@
                     </Border>
 
                     <!-- ══════════════════════════════════════════════ -->
+                    <!-- ── SYSTEM HEALTH (visible when connected) ─── -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4"
+                            Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Margin="14,10,14,10">
+                            <Grid Margin="0,0,0,6">
+                                <TextBlock Text="System Health" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextDimBrush}"
+                                           VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding ConnectionQuality}" FontSize="10" FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               Foreground="{Binding ConnectionQualityColor, Converter={StaticResource StringToBrush}}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Process grid -->
+                            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="6" Padding="10,8" Margin="0,0,0,6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition />
+                                        <RowDefinition />
+                                    </Grid.RowDefinitions>
+                                    <!-- Paqet -->
+                                    <StackPanel Grid.Column="0" Grid.Row="0" Margin="0,0,0,4">
+                                        <TextBlock Text="PAQET" FontSize="8.5" FontWeight="Bold"
+                                                   Foreground="{DynamicResource TextDimBrush}" Opacity="0.6"
+                                                   FontFamily="{DynamicResource MainFont}" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                            <TextBlock Text="PID " FontSize="9.5" Foreground="{DynamicResource TextDimBrush}" />
+                                            <TextBlock Text="{Binding PaqetPid}" FontSize="9.5" FontWeight="Medium"
+                                                       FontFamily="{DynamicResource MonoFont}"
+                                                       Foreground="{DynamicResource AccentBrush}" />
+                                        </StackPanel>
+                                        <TextBlock FontSize="9.5" Foreground="{DynamicResource TextDimBrush}" Margin="0,1,0,0">
+                                            <Run Text="{Binding PaqetMemory, Mode=OneWay}" /> · <Run Text="{Binding PaqetUptime, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <!-- tun2socks -->
+                                    <StackPanel Grid.Column="1" Grid.Row="0" Margin="0,0,0,4">
+                                        <TextBlock Text="TUN2SOCKS" FontSize="8.5" FontWeight="Bold"
+                                                   Foreground="{DynamicResource TextDimBrush}" Opacity="0.6"
+                                                   FontFamily="{DynamicResource MainFont}" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                            <TextBlock Text="PID " FontSize="9.5" Foreground="{DynamicResource TextDimBrush}" />
+                                            <TextBlock Text="{Binding Tun2socksPid}" FontSize="9.5" FontWeight="Medium"
+                                                       FontFamily="{DynamicResource MonoFont}"
+                                                       Foreground="{DynamicResource AccentBrush}" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Tun2socksMemory}" FontSize="9.5"
+                                                   Foreground="{DynamicResource TextDimBrush}" Margin="0,1,0,0" />
+                                    </StackPanel>
+                                    <!-- Tunnel info -->
+                                    <StackPanel Grid.Column="0" Grid.Row="1" Margin="0,4,0,0">
+                                        <TextBlock FontSize="9.5" Foreground="{DynamicResource TextDimBrush}">
+                                            <Run Text="🔒" /> <Run Text="{Binding EncryptionInfo, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Grid.Row="1" Margin="0,4,0,0">
+                                        <TextBlock FontSize="9.5" Foreground="{DynamicResource TextDimBrush}">
+                                            <Run Text="TUN:" /> <Run Text="{Binding TunAdapterStatus, Mode=OneWay}" FontWeight="Medium" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ══════════════════════════════════════════════ -->
                     <!-- ── SERVER CONFIG (collapsible) ────────────── -->
                     <!-- ══════════════════════════════════════════════ -->
                     <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4">
@@ -710,7 +833,7 @@
                     </Border>
 
                     <!-- ══════════════════════════════════════════════ -->
-                    <!-- ── TOOLS (collapsible) ───────────────────── -->
+                    <!-- ── TOOLS &amp; DIAGNOSTICS (collapsible) ──────── -->
                     <!-- ══════════════════════════════════════════════ -->
                     <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4">
                         <StackPanel>
@@ -719,9 +842,12 @@
                                     HorizontalAlignment="Stretch" Padding="12,8"
                                     HorizontalContentAlignment="Stretch">
                                 <Grid>
-                                    <TextBlock Text="Diagnostics" FontSize="11" FontWeight="Medium"
-                                               VerticalAlignment="Center" HorizontalAlignment="Left"
-                                               Foreground="{DynamicResource TextDimBrush}" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="🔧" FontSize="10" Margin="0,0,5,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="Tools &amp; Diagnostics" FontSize="11" FontWeight="Medium"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextDimBrush}" />
+                                    </StackPanel>
                                     <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextDimBrush}">
                                         <TextBlock.Style>
@@ -740,49 +866,207 @@
 
                             <StackPanel Margin="14,0,14,12"
                                         Visibility="{Binding ShowTools, Converter={StaticResource BoolToVis}}">
-                                <Button Content="List Interfaces" Style="{DynamicResource SecondaryButton}"
-                                        Command="{Binding ListInterfacesCommand}"
-                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
-                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
+
+                                <!-- Network Tools -->
+                                <TextBlock Text="NETWORK TOOLS" FontSize="8.5" FontWeight="Bold" 
+                                           Foreground="{DynamicResource TextDimBrush}" Opacity="0.6"
+                                           Margin="0,0,0,6" FontFamily="{DynamicResource MainFont}" />
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="6" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="List Interfaces" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding ListInterfacesCommand}"
+                                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                    <Button Grid.Column="2" Content="Ping Server" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding PingServerCommand}"
+                                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                </Grid>
                                 <TextBox Text="{Binding InterfaceList, Mode=OneWay}" IsReadOnly="True"
-                                         FontFamily="{DynamicResource MonoFont}" FontSize="9.5"
+                                         FontFamily="{DynamicResource MonoFont}" FontSize="9"
                                          TextWrapping="Wrap" MaxHeight="70"
                                          Visibility="{Binding InterfaceList, Converter={StaticResource StringToVis}}"
-                                         Margin="0,0,0,6" />
-
-                                <Button Content="Ping Server" Style="{DynamicResource SecondaryButton}"
-                                        Command="{Binding PingServerCommand}"
-                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
-                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
+                                         Margin="0,2,0,4" />
                                 <TextBox Text="{Binding PingResult, Mode=OneWay}" IsReadOnly="True"
-                                         FontFamily="{DynamicResource MonoFont}" FontSize="9.5"
+                                         FontFamily="{DynamicResource MonoFont}" FontSize="9"
                                          TextWrapping="Wrap" MaxHeight="50"
                                          Visibility="{Binding PingResult, Converter={StaticResource StringToVis}}"
-                                         Margin="0,0,0,6" />
+                                         Margin="0,0,0,4" />
 
-                                <Button Content="Generate Secret" Style="{DynamicResource SecondaryButton}"
-                                        Command="{Binding GenerateSecretCommand}"
-                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
-                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
-
-                                <Button Content="Version Info" Style="{DynamicResource SecondaryButton}"
-                                        Command="{Binding ShowVersionInfoCommand}"
-                                        HorizontalAlignment="Stretch" Padding="10,6" FontSize="11.5" />
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="6" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="Generate Secret" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding GenerateSecretCommand}"
+                                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                    <Button Grid.Column="2" Content="Version Info" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding ShowVersionInfoCommand}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                </Grid>
                                 <TextBox Text="{Binding FullVersionInfo, Mode=OneWay}" IsReadOnly="True"
-                                         FontFamily="{DynamicResource MonoFont}" FontSize="9.5"
+                                         FontFamily="{DynamicResource MonoFont}" FontSize="9"
                                          TextWrapping="Wrap" MaxHeight="70"
                                          Visibility="{Binding FullVersionInfo, Converter={StaticResource StringToVis}}"
-                                         Margin="0,4,0,6" />
+                                         Margin="0,2,0,4" />
 
-                                <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,2,0,6" />
+                                <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,4,0,8" />
 
+                                <!-- Performance Benchmarks -->
+                                <TextBlock Text="PERFORMANCE BENCHMARKS" FontSize="8.5" FontWeight="Bold" 
+                                           Foreground="{DynamicResource TextDimBrush}" Opacity="0.6"
+                                           Margin="0,0,0,6" FontFamily="{DynamicResource MainFont}" />
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="6" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="⚡ Full Diagnostic" Style="{DynamicResource PrimaryButton}"
+                                            Command="{Binding RunDiagnosticCommand}"
+                                            IsEnabled="{Binding IsDiagnosticRunning, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="8,7" FontSize="10.5" />
+                                    <Button Grid.Column="2" Content="⏱ Quick Check" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding RunQuickCheckCommand}"
+                                            IsEnabled="{Binding IsDiagnosticRunning, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="8,7" FontSize="10.5" />
+                                </Grid>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="6" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="📊 Last Report" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding ShowLatestDiagnosticCommand}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                    <Button Grid.Column="2" Content="📈 Compare" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding CompareDiagnosticsCommand}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                </Grid>
+
+                                <!-- Diagnostic status -->
+                                <TextBlock Text="{Binding DiagnosticStatus}" FontSize="9.5" Margin="0,2,0,0"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           Visibility="{Binding DiagnosticStatus, Converter={StaticResource StringToVis}}" />
+
+                                <!-- Diagnostic report output -->
+                                <TextBox Text="{Binding DiagnosticReport, Mode=OneWay}" IsReadOnly="True"
+                                         FontFamily="{DynamicResource MonoFont}" FontSize="9"
+                                         TextWrapping="Wrap" MaxHeight="250"
+                                         VerticalScrollBarVisibility="Auto"
+                                         Visibility="{Binding DiagnosticReport, Converter={StaticResource StringToVis}}"
+                                         Margin="0,6,0,4" />
+
+                                <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,4,0,8" />
+
+                                <!-- Utilities -->
+                                <TextBlock Text="UTILITIES" FontSize="8.5" FontWeight="Bold" 
+                                           Foreground="{DynamicResource TextDimBrush}" Opacity="0.6"
+                                           Margin="0,0,0,6" FontFamily="{DynamicResource MainFont}" />
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="6" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="📂 Open Logs" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding OpenLogFolderCommand}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                    <Button Grid.Column="2" Content="📂 Diagnostics" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding OpenDiagnosticsFolderCommand}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                </Grid>
                                 <Button Content="Check for Updates" Style="{DynamicResource SecondaryButton}"
                                         Command="{Binding CheckForUpdatesAsyncCommand}"
-                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="10,6" FontSize="11.5" />
-                                <TextBlock Text="{Binding UpdateStatus}" FontSize="10"
+                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="8,6" FontSize="10.5" />
+                                <TextBlock Text="{Binding UpdateStatus}" FontSize="9.5"
                                            Foreground="{DynamicResource TextDimBrush}"
                                            Visibility="{Binding UpdateStatus, Converter={StaticResource StringToVis}}"
                                            Margin="2,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ══════════════════════════════════════════════ -->
+                    <!-- ── LIVE LOG VIEWER (collapsible) ──────────── -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4"
+                            Visibility="{Binding DebugMode, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <Button Style="{DynamicResource GhostButton}" 
+                                    Command="{Binding ToggleLogViewerCommand}"
+                                    HorizontalAlignment="Stretch" Padding="12,8"
+                                    HorizontalContentAlignment="Stretch">
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="📋" FontSize="10" Margin="0,0,5,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="Live Log Viewer" FontSize="11" FontWeight="Medium"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextDimBrush}" />
+                                    </StackPanel>
+                                    <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextDimBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                <Setter Property="Text" Value="▸" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ShowLogViewer}" Value="True">
+                                                        <Setter Property="Text" Value="▾" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Button>
+
+                            <StackPanel Margin="14,0,14,12"
+                                        Visibility="{Binding ShowLogViewer, Converter={StaticResource BoolToVis}}">
+                                <!-- Filter buttons -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <Button Content="ALL" Style="{DynamicResource GhostButton}"
+                                            Command="{Binding SetLogFilterCommand}" CommandParameter="ALL"
+                                            Padding="6,3" FontSize="9" Margin="0,0,3,0" />
+                                    <Button Content="INFO" Style="{DynamicResource GhostButton}"
+                                            Command="{Binding SetLogFilterCommand}" CommandParameter="INFO"
+                                            Padding="6,3" FontSize="9" Margin="0,0,3,0" />
+                                    <Button Content="WARN" Style="{DynamicResource GhostButton}"
+                                            Command="{Binding SetLogFilterCommand}" CommandParameter="WARN"
+                                            Padding="6,3" FontSize="9" Margin="0,0,3,0" />
+                                    <Button Content="ERROR" Style="{DynamicResource GhostButton}"
+                                            Command="{Binding SetLogFilterCommand}" CommandParameter="ERROR"
+                                            Padding="6,3" FontSize="9" Margin="0,0,3,0" />
+                                    <Button Content="PERF" Style="{DynamicResource GhostButton}"
+                                            Command="{Binding SetLogFilterCommand}" CommandParameter="PERF"
+                                            Padding="6,3" FontSize="9" Margin="0,0,3,0" />
+                                    <Button Content="🗑 Clear" Style="{DynamicResource GhostButton}"
+                                            Command="{Binding ClearLogsCommand}"
+                                            Padding="6,3" FontSize="9" HorizontalAlignment="Right" />
+                                </StackPanel>
+
+                                <!-- Log filter indicator -->
+                                <TextBlock FontSize="9" Foreground="{DynamicResource TextDimBrush}" Margin="0,0,0,4">
+                                    <Run Text="Filter:" /> <Run Text="{Binding LogFilter, Mode=OneWay}" FontWeight="SemiBold" 
+                                                                 Foreground="{DynamicResource AccentBrush}" />
+                                </TextBlock>
+
+                                <!-- Log output -->
+                                <TextBox Text="{Binding LogViewerText, Mode=OneWay}" IsReadOnly="True"
+                                         FontFamily="{DynamicResource MonoFont}" FontSize="8.5"
+                                         TextWrapping="NoWrap" MaxHeight="300" MinHeight="100"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         Background="{DynamicResource SurfaceBrush}"
+                                         Foreground="{DynamicResource TextDimBrush}"
+                                         Padding="8,6" />
                             </StackPanel>
                         </StackPanel>
                     </Border>

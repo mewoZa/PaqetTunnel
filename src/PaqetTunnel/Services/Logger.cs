@@ -15,11 +15,16 @@ public static class Logger
     private static bool _debugMode;
     private static string _logPath = "";
     private static readonly object _lock = new();
+    private static readonly List<LogEntry> _buffer = new();
+    private const int MaxBufferSize = 500;
 
     public static bool IsEnabled => _initialized;
     public static bool DebugEnabled => _debugMode;
     public static string LogPath => _logPath;
     public static string LogDir => Path.Combine(AppPaths.DataDir, "logs");
+
+    /// <summary>Fired when a new log entry is written. UI can subscribe to display live logs.</summary>
+    public static event Action<LogEntry>? LogAdded;
 
     /// <summary>
     /// Initialize logger. Always logs INFO/WARN/ERROR. Debug messages only when debugMode=true.
@@ -74,14 +79,41 @@ public static class Logger
     private static void Write(string level, string message)
     {
         if (!_initialized || string.IsNullOrEmpty(_logPath)) return;
+        var entry = new LogEntry
+        {
+            Time = DateTime.Now,
+            Level = level,
+            Message = message,
+            Formatted = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {message}"
+        };
         lock (_lock)
         {
             try
             {
-                File.AppendAllText(_logPath, $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {message}\n");
+                File.AppendAllText(_logPath, entry.Formatted + "\n");
+                _buffer.Add(entry);
+                if (_buffer.Count > MaxBufferSize)
+                    _buffer.RemoveAt(0);
             }
             catch { /* Best-effort logging */ }
         }
+        try { LogAdded?.Invoke(entry); } catch { }
+    }
+
+    /// <summary>Get recent log entries from in-memory buffer.</summary>
+    public static List<LogEntry> GetRecentLogs(int count = 100)
+    {
+        lock (_lock)
+        {
+            var start = Math.Max(0, _buffer.Count - count);
+            return _buffer.GetRange(start, _buffer.Count - start).ToList();
+        }
+    }
+
+    /// <summary>Clear the in-memory log buffer.</summary>
+    public static void ClearBuffer()
+    {
+        lock (_lock) { _buffer.Clear(); }
     }
 
     /// <summary>Clean up old log files (keep last 10).</summary>
@@ -101,4 +133,13 @@ public static class Logger
         }
         catch { }
     }
+}
+
+/// <summary>Single log entry for in-memory buffer and UI display.</summary>
+public sealed class LogEntry
+{
+    public DateTime Time { get; init; }
+    public string Level { get; init; } = "";
+    public string Message { get; init; } = "";
+    public string Formatted { get; init; } = "";
 }

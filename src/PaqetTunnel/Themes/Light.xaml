@@ -55,6 +55,7 @@
     <conv:InverseBoolConverter x:Key="InvBoolConv" />
     <conv:ToggleTextConverter x:Key="ToggleTextConv" />
     <conv:StringToVisibilityConverter x:Key="StringToVis" />
+    <conv:StringToBrushConverter x:Key="StringToBrush" />
 
     <!-- ── TYPOGRAPHY ────────────────────────────────────────── -->
     <FontFamily x:Key="MainFont">Segoe UI Variable, Segoe UI, Arial</FontFamily>
