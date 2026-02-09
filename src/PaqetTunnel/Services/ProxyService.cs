@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.Win32;
 
 namespace PaqetTunnel.Services;
@@ -153,8 +154,8 @@ public sealed class ProxyService
     }
 
     /// <summary>
-    /// Find and kill any non-paqet process squatting on one of our ports.
-    /// This handles ICS/iphlpsvc or any other service that grabbed the port.
+    /// Find and kill any non-paqet, non-system process squatting on one of our ports.
+    /// For svchost (iphlpsvc portproxy), removes stale portproxy rules instead of killing.
     /// </summary>
     private static void KillPortThief(int port)
     {
@@ -167,15 +168,28 @@ public sealed class ProxyService
 
                 var parts = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length < 5) continue;
-                if (!int.TryParse(parts[^1], out var pid) || pid <= 4) continue; // Skip System/Idle
+                if (!int.TryParse(parts[^1], out var pid) || pid <= 4) continue;
 
-                // Don't kill our own processes
                 try
                 {
                     var proc = Process.GetProcessById(pid);
                     var name = proc.ProcessName.ToLowerInvariant();
+
+                    // Skip our own processes
                     if (name.Contains("paqet") || name.Contains("tun2socks") || name.Contains("paqettunnel"))
                         continue;
+
+                    // svchost = iphlpsvc serving a stale portproxy rule.
+                    // Don't kill svchost — it hosts critical services including the portproxy
+                    // we need. Instead, remove the stale portproxy rule.
+                    if (name == "svchost")
+                    {
+                        Logger.Warn($"Port {port} held by svchost (PID {pid}) — removing stale portproxy rule");
+                        try { PaqetService.RunAdmin("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={port}"); } catch { }
+                        // Give iphlpsvc a moment to release the port
+                        Thread.Sleep(1000);
+                        continue;
+                    }
 
                     Logger.Warn($"Port {port} stolen by PID {pid} ({name}) — killing it");
                     proc.Kill();
@@ -317,7 +331,7 @@ public sealed class ProxyService
     {
         try
         {
-            // Clean up legacy rules that used the same port as paqet (caused iphlpsvc conflict)
+            // Clean up legacy rules that used the same port as paqet
             try
             {
                 var existing = PaqetService.RunCommand("netsh", "interface portproxy show v4tov4");
@@ -332,6 +346,9 @@ public sealed class ProxyService
 
             if (enable)
             {
+                // Ensure iphlpsvc is running — it implements portproxy
+                EnsureIphlpsvc();
+
                 // Delete existing rule first to avoid duplicates
                 try { PaqetService.RunAdmin("netsh",
                     $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={SHARING_PORT}"); } catch { }
@@ -346,8 +363,18 @@ public sealed class ProxyService
                 PaqetService.RunAdmin("netsh",
                     $"advfirewall firewall add rule name=\"Paqet SOCKS5 Sharing\" dir=in action=allow protocol=TCP localport={SHARING_PORT} profile=any");
 
+                // Verify port is actually listening
+                Thread.Sleep(500);
+                var listening = PaqetService.RunCommand("netstat", "-ano -p TCP")
+                    .Contains($":{SHARING_PORT}");
+                if (!listening)
+                {
+                    Logger.Warn("Portproxy rule created but port not yet listening — restarting iphlpsvc");
+                    EnsureIphlpsvc();
+                }
+
                 Logger.Info($"LAN sharing enabled: 0.0.0.0:{SHARING_PORT} → 127.0.0.1:{SOCKS_PORT}");
-                return (true, $"LAN sharing enabled on :{SHARING_PORT} → :{SOCKS_PORT}");
+                return (true, $"LAN sharing on port {SHARING_PORT}");
             }
             else
             {
@@ -364,6 +391,23 @@ public sealed class ProxyService
             Logger.Error($"SetProxySharing({enable}) failed", ex);
             return (false, $"Sharing change failed: {ex.Message}");
         }
+    }
+
+    /// <summary>Ensure IP Helper service (iphlpsvc) is running — required for portproxy.</summary>
+    private static void EnsureIphlpsvc()
+    {
+        try
+        {
+            var status = PaqetService.RunCommand("powershell",
+                "-NoProfile -Command \"(Get-Service iphlpsvc).Status\"").Trim();
+            if (!status.Contains("Running"))
+            {
+                Logger.Info($"iphlpsvc is {status}, starting it...");
+                PaqetService.RunAdmin("net", "start iphlpsvc");
+                Thread.Sleep(1000);
+            }
+        }
+        catch (Exception ex) { Logger.Debug($"EnsureIphlpsvc: {ex.Message}"); }
     }
 
     // ── Auto Start (Scheduled Task with Highest RunLevel) ────────
