@@ -61,6 +61,15 @@ public static class Program
                 case "info":
                     RunInfo();
                     break;
+                case "check":
+                    RunUpdateCheck().GetAwaiter().GetResult();
+                    break;
+                case "update":
+                    RunUpdate().GetAwaiter().GetResult();
+                    break;
+                case "server":
+                    RunServerCommand(args.Skip(1).ToArray()).GetAwaiter().GetResult();
+                    break;
                 case "help":
                 case "h":
                     ShowHelp();
@@ -329,24 +338,142 @@ public static class Program
         }
     }
 
+    private static async Task RunUpdateCheck()
+    {
+        Console.WriteLine("\nChecking for updates...");
+        var (available, local, remote, message) = await UpdateService.CheckAsync();
+        if (available)
+        {
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"\n  Update available!");
+            Console.ResetColor();
+            Console.WriteLine($"  Local:   {(string.IsNullOrEmpty(local) ? "unknown" : local[..7])}");
+            Console.WriteLine($"  Remote:  {remote[..7]}");
+            if (!string.IsNullOrEmpty(message))
+                Console.WriteLine($"  Message: {message}");
+            Console.WriteLine($"\n  Run --update to install.");
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.Write("  [OK] ");
+            Console.ResetColor();
+            Console.WriteLine("Already up to date" + (string.IsNullOrEmpty(local) ? "" : $" ({local[..7]})"));
+        }
+    }
+
+    private static async Task RunUpdate()
+    {
+        Console.WriteLine("\nChecking for updates...");
+        var (available, local, remote, message) = await UpdateService.CheckAsync();
+        if (!available)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.Write("  [OK] ");
+            Console.ResetColor();
+            Console.WriteLine("Already up to date" + (string.IsNullOrEmpty(local) ? "" : $" ({local[..7]})"));
+            return;
+        }
+        Console.WriteLine($"  Update: {local[..7]} -> {remote[..7]}");
+        if (!string.IsNullOrEmpty(message))
+            Console.WriteLine($"  Message: {message}");
+        Console.WriteLine("\nStarting update...");
+        var (success, msg) = await UpdateService.RunSilentUpdateAsync(p =>
+        {
+            Console.WriteLine($"  {p}");
+        });
+        if (success)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("\n  Update started — app will restart shortly.");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"\n  Update failed: {msg}");
+            Console.ResetColor();
+        }
+    }
+
+    private static async Task RunServerCommand(string[] args)
+    {
+        var configService = new ConfigService();
+        var settings = configService.ReadAppSettings();
+
+        if (string.IsNullOrEmpty(settings.ServerSshHost))
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("  Server SSH not configured.");
+            Console.ResetColor();
+            Console.WriteLine("  Configure in GUI Settings or set in settings.json:");
+            Console.WriteLine("    ServerSshHost, ServerSshUser, ServerSshKeyPath or ServerSshPassword");
+            return;
+        }
+
+        var subCmd = args.Length > 0 ? args[0].ToLower().TrimStart('-') : "status";
+
+        var sshService = new SshService();
+        Console.WriteLine($"\n  Connecting to {settings.ServerSshUser}@{settings.ServerSshHost}...");
+
+        var (success, output) = await sshService.RunServerCommandAsync(settings, subCmd, p =>
+        {
+            Console.WriteLine($"  {p}");
+        });
+
+        Console.WriteLine();
+        if (!string.IsNullOrEmpty(output))
+        {
+            foreach (var line in output.Split('\n'))
+                Console.WriteLine($"  {line.TrimEnd('\r')}");
+        }
+
+        if (success)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.Write("\n  [OK] ");
+            Console.ResetColor();
+            Console.WriteLine($"Server {subCmd} complete.");
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Write("\n  [ERR] ");
+            Console.ResetColor();
+            Console.WriteLine($"Server {subCmd} failed.");
+        }
+    }
+
     private static void ShowHelp()
     {
         Console.WriteLine(@"
-Usage: PaqetTunnel.exe [--command]
+Usage: PaqetTunnel.exe [--command] [options]
 
-Commands:
+Client Commands:
   (no args)     Start the GUI application
   --diag        Run full diagnostic suite (DNS + ping + speed + info)
   --dns         Benchmark all DNS providers
   --ping        Test server connectivity (TCP + SOCKS5)
   --speed       Test download speed through tunnel
   --info        Show installation and config info
+  --check       Check for client updates
+  --update      Check and install client update
+
+Server Commands:
+  --server status      Show server status
+  --server install     Install paqet server
+  --server update      Update paqet server
+  --server uninstall   Uninstall paqet server
+  --server restart     Restart paqet server
+  --server logs        Show server logs
+
   --help        Show this help
 
 Examples:
-  PaqetTunnel.exe --dns
-  PaqetTunnel.exe --diag
-  PaqetTunnel.exe --ping
+  PaqetTunnel.exe --check
+  PaqetTunnel.exe --update
+  PaqetTunnel.exe --server status
+  PaqetTunnel.exe --server install
 ");
     }
 }

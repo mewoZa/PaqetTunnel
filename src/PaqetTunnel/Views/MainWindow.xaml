@@ -85,8 +85,7 @@
             </Border>
 
             <!-- ═══ UPDATE NOTIFICATION BAR ════════════════════════ -->
-            <Border Grid.Row="1" Padding="10,0" ClipToBounds="True"
-                    Background="{DynamicResource SurfaceBrush}">
+            <Border Grid.Row="1" ClipToBounds="True">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="MaxHeight" Value="0" />
@@ -97,7 +96,7 @@
                                     <BeginStoryboard>
                                         <Storyboard>
                                             <DoubleAnimation Storyboard.TargetProperty="MaxHeight"
-                                                             From="0" To="100" Duration="0:0:0.35">
+                                                             From="0" To="80" Duration="0:0:0.35">
                                                 <DoubleAnimation.EasingFunction>
                                                     <CubicEase EasingMode="EaseOut" />
                                                 </DoubleAnimation.EasingFunction>
@@ -126,14 +125,13 @@
                     </Style>
                 </Border.Style>
 
-                <Border Background="#183B82F6" CornerRadius="8" Padding="12,8" Margin="6,4,6,2">
+                <Border Background="#183B82F6" Padding="14,7">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- Left: update info -->
                         <StackPanel VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="⬆" FontSize="11" Foreground="#60A5FA" 
@@ -157,7 +155,6 @@
                                            VerticalAlignment="Center" Margin="8,0,0,0"
                                            Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}" />
                             </StackPanel>
-                            <!-- Commit message or progress -->
                             <TextBlock FontSize="9.5" Foreground="{DynamicResource TextDimBrush}" 
                                        Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
                                 <TextBlock.Style>
@@ -173,7 +170,6 @@
                             </TextBlock>
                         </StackPanel>
 
-                        <!-- Right: buttons -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                                     Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}">
                             <Button Content="Install" Style="{DynamicResource PrimaryButton}"
@@ -184,7 +180,6 @@
                                     Padding="6,4" FontSize="10" Opacity="0.6" />
                         </StackPanel>
 
-                        <!-- Spinner when updating -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                                     Visibility="{Binding IsUpdating, Converter={StaticResource BoolToVis}}">
                             <Ellipse Width="14" Height="14" StrokeThickness="2"
@@ -991,6 +986,145 @@
                                 <Button Content="Save Configuration" Style="{DynamicResource PrimaryButton}"
                                         Command="{Binding SaveConfigCommand}"
                                         HorizontalAlignment="Stretch" Padding="12,7" FontSize="11.5" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ══════════════════════════════════════════════ -->
+                    <!-- ── SERVER MANAGEMENT (SSH) (collapsible) ───── -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4">
+                        <StackPanel>
+                            <Button Style="{DynamicResource GhostButton}" 
+                                    Command="{Binding ToggleServerPanelCommand}"
+                                    HorizontalAlignment="Stretch" Padding="12,8"
+                                    HorizontalContentAlignment="Stretch">
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="🖥" FontSize="10" Margin="0,0,5,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="Server Management" FontSize="11" FontWeight="Medium"
+                                                   VerticalAlignment="Center" Foreground="{DynamicResource TextDimBrush}" />
+                                    </StackPanel>
+                                    <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextDimBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                <Setter Property="Text" Value="▸" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ShowServerPanel}" Value="True">
+                                                        <Setter Property="Text" Value="▾" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Button>
+
+                            <StackPanel Margin="14,0,14,12"
+                                        Visibility="{Binding ShowServerPanel, Converter={StaticResource BoolToVis}}">
+
+                                <!-- SSH Connection -->
+                                <TextBlock Text="SSH HOST" Style="{DynamicResource FieldLabel}" />
+                                <TextBox Text="{Binding ServerSshHost, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6" />
+
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="8" />
+                                        <ColumnDefinition Width="60" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="USER" Style="{DynamicResource FieldLabel}" />
+                                        <TextBox Text="{Binding ServerSshUser, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="PORT" Style="{DynamicResource FieldLabel}" />
+                                        <TextBox Text="{Binding ServerSshPort, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <TextBlock Text="SSH KEY PATH (or leave empty for password)" Style="{DynamicResource FieldLabel}" />
+                                <TextBox Text="{Binding ServerSshKeyPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6" />
+
+                                <TextBlock Text="PASSWORD (if no key)" Style="{DynamicResource FieldLabel}" />
+                                <PasswordBox h:PasswordBoxHelper.BindPassword="True"
+                                             h:PasswordBoxHelper.BoundPassword="{Binding ServerSshPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                             Margin="0,0,0,8" />
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="6" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" Content="Save SSH Config" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding SaveServerConfigCommand}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                    <Button Grid.Column="2" Content="Test Connection" Style="{DynamicResource PrimaryButton}"
+                                            Command="{Binding TestServerConnectionCommand}"
+                                            IsEnabled="{Binding IsServerBusy, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                </Grid>
+
+                                <!-- Server Actions -->
+                                <TextBlock Text="SERVER ACTIONS" Style="{DynamicResource FieldLabel}" Margin="0,4,0,4" />
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="4" />
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="4" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" Content="Status" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding RunServerActionCommand}" CommandParameter="status"
+                                            IsEnabled="{Binding IsServerBusy, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="6,5" FontSize="10" />
+                                    <Button Grid.Column="2" Content="Restart" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding RunServerActionCommand}" CommandParameter="restart"
+                                            IsEnabled="{Binding IsServerBusy, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="6,5" FontSize="10" />
+                                    <Button Grid.Column="4" Content="Logs" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding RunServerActionCommand}" CommandParameter="logs"
+                                            IsEnabled="{Binding IsServerBusy, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="6,5" FontSize="10" />
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="4" />
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="4" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" Content="Install" Style="{DynamicResource PrimaryButton}"
+                                            Command="{Binding RunServerActionCommand}" CommandParameter="install"
+                                            IsEnabled="{Binding IsServerBusy, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="6,5" FontSize="10" />
+                                    <Button Grid.Column="2" Content="Update" Style="{DynamicResource PrimaryButton}"
+                                            Command="{Binding RunServerActionCommand}" CommandParameter="update"
+                                            IsEnabled="{Binding IsServerBusy, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="6,5" FontSize="10" />
+                                    <Button Grid.Column="4" Content="Uninstall" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding RunServerActionCommand}" CommandParameter="uninstall"
+                                            IsEnabled="{Binding IsServerBusy, Converter={StaticResource InvBoolConv}}"
+                                            HorizontalAlignment="Stretch" Padding="6,5" FontSize="10"
+                                            Foreground="#f85149" />
+                                </Grid>
+
+                                <!-- Server Output -->
+                                <TextBlock Text="{Binding ServerStatus}" FontSize="10" Margin="0,0,0,4"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           Visibility="{Binding ServerStatus, Converter={StaticResource StringToVis}}" />
+                                <Border Background="#0d1117" CornerRadius="4" Padding="8" Margin="0,0,0,4"
+                                        MaxHeight="150"
+                                        Visibility="{Binding ServerOutput, Converter={StaticResource StringToVis}}">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="140">
+                                        <TextBlock Text="{Binding ServerOutput}" FontFamily="Consolas" FontSize="9.5"
+                                                   Foreground="#c9d1d9" TextWrapping="Wrap" />
+                                    </ScrollViewer>
+                                </Border>
                             </StackPanel>
                         </StackPanel>
                     </Border>

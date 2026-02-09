@@ -143,6 +143,19 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _logFilter = "ALL";
     private readonly List<LogEntry> _logEntries = new();
 
+    // ── Server Management ────────────────────────────────────────
+
+    [ObservableProperty] private string _serverSshHost = "";
+    [ObservableProperty] private string _serverSshUser = "root";
+    [ObservableProperty] private int _serverSshPort = 22;
+    [ObservableProperty] private string _serverSshKeyPath = "";
+    [ObservableProperty] private string _serverSshPassword = "";
+    [ObservableProperty] private string _serverOutput = "";
+    [ObservableProperty] private string _serverStatus = "";
+    [ObservableProperty] private bool _isServerBusy;
+    [ObservableProperty] private bool _showServerPanel;
+    private readonly SshService _sshService = new();
+
     public MainViewModel(
         PaqetService paqetService,
         ProxyService proxyService,
@@ -217,6 +230,13 @@ public partial class MainViewModel : ObservableObject
 
         // Load theme
         SelectedTheme = appSettings.Theme ?? "dark";
+
+        // Load server SSH settings
+        ServerSshHost = appSettings.ServerSshHost ?? "";
+        ServerSshUser = string.IsNullOrEmpty(appSettings.ServerSshUser) ? "root" : appSettings.ServerSshUser;
+        ServerSshPort = appSettings.ServerSshPort > 0 ? appSettings.ServerSshPort : 22;
+        ServerSshKeyPath = appSettings.ServerSshKeyPath ?? "";
+        ServerSshPassword = appSettings.ServerSshPassword ?? "";
 
         // ── Check running state (use IsReady for port-verified status)
         var running = _paqetService.IsRunning();
@@ -679,6 +699,12 @@ public partial class MainViewModel : ObservableObject
     private void ToggleTools()
     {
         ShowTools = !ShowTools;
+    }
+
+    [RelayCommand]
+    private void ToggleServerPanel()
+    {
+        ShowServerPanel = !ShowServerPanel;
     }
 
     [RelayCommand]
@@ -1582,5 +1608,83 @@ public partial class MainViewModel : ObservableObject
         }
         catch { }
         return "Unknown";
+    }
+
+    // ── Server Management Commands ─────────────────────────────
+
+    private void SaveServerSettings()
+    {
+        var settings = _configService.ReadAppSettings();
+        settings.ServerSshHost = ServerSshHost;
+        settings.ServerSshUser = ServerSshUser;
+        settings.ServerSshPort = ServerSshPort;
+        settings.ServerSshKeyPath = ServerSshKeyPath;
+        settings.ServerSshPassword = ServerSshPassword;
+        _configService.WriteAppSettings(settings);
+    }
+
+    private AppSettings GetServerSettings()
+    {
+        var settings = _configService.ReadAppSettings();
+        settings.ServerSshHost = ServerSshHost;
+        settings.ServerSshUser = ServerSshUser;
+        settings.ServerSshPort = ServerSshPort;
+        settings.ServerSshKeyPath = ServerSshKeyPath;
+        settings.ServerSshPassword = ServerSshPassword;
+        return settings;
+    }
+
+    [RelayCommand]
+    private void SaveServerConfig()
+    {
+        SaveServerSettings();
+        ServerStatus = "Settings saved";
+        Logger.Info($"Server SSH config saved: {ServerSshHost}:{ServerSshPort} user={ServerSshUser}");
+    }
+
+    [RelayCommand]
+    private async Task TestServerConnection()
+    {
+        if (IsServerBusy) return;
+        SaveServerSettings();
+        IsServerBusy = true;
+        ServerStatus = "Testing connection...";
+        ServerOutput = "";
+        try
+        {
+            var (ok, msg) = await _sshService.TestConnectionAsync(GetServerSettings());
+            ServerStatus = ok ? "Connected" : "Failed";
+            ServerOutput = msg;
+        }
+        catch (Exception ex)
+        {
+            ServerStatus = "Error";
+            ServerOutput = ex.Message;
+        }
+        finally { IsServerBusy = false; }
+    }
+
+    [RelayCommand]
+    private async Task RunServerAction(string command)
+    {
+        if (IsServerBusy) return;
+        SaveServerSettings();
+        IsServerBusy = true;
+        ServerStatus = $"Running {command}...";
+        ServerOutput = "";
+        try
+        {
+            var (ok, output) = await _sshService.RunServerCommandAsync(
+                GetServerSettings(), command,
+                msg => Application.Current?.Dispatcher?.Invoke(() => ServerOutput = msg));
+            ServerStatus = ok ? "Done" : "Failed";
+            ServerOutput = output;
+        }
+        catch (Exception ex)
+        {
+            ServerStatus = "Error";
+            ServerOutput = ex.Message;
+        }
+        finally { IsServerBusy = false; }
     }
 }

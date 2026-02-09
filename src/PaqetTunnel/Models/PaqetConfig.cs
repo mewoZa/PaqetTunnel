@@ -191,4 +191,11 @@ public sealed class AppSettings
     public string CustomDnsSecondary { get; set; } = "";
     public string PaqetBinaryPath { get; set; } = "";
     public string PaqetConfigPath { get; set; } = "";
+
+    // Server SSH management
+    public string ServerSshHost { get; set; } = "";
+    public int ServerSshPort { get; set; } = 22;
+    public string ServerSshUser { get; set; } = "root";
+    public string ServerSshKeyPath { get; set; } = "";
+    public string ServerSshPassword { get; set; } = "";
 }
