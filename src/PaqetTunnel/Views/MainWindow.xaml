@@ -292,6 +292,17 @@
                                                Foreground="{StaticResource AccentBrush}" />
                                 </Grid>
 
+                                <!-- DNS Server -->
+                                <Grid Margin="0,0,0,5">
+                                    <TextBlock Text="DNS" FontSize="10.5" 
+                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding ActiveDns}" FontSize="11" FontWeight="Medium"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextBrush}" />
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
+
                                 <!-- Data transferred -->
                                 <Grid Margin="0,0,0,0">
                                     <TextBlock Text="Transferred" FontSize="10.5" 
@@ -419,6 +430,34 @@
                             </Grid>
 
                             <Border Height="1" Background="{StaticResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
+
+                            <!-- DNS Provider -->
+                            <TextBlock Text="DNS" FontSize="12" FontWeight="Medium" Margin="0,0,0,6" />
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox SelectedValue="{Binding SelectedDnsProvider}" 
+                                          SelectionChanged="DnsProviderChanged"
+                                          FontSize="11" Padding="6,4" MinWidth="130">
+                                    <ComboBoxItem Content="Auto (Fastest)" Tag="auto" IsSelected="True" />
+                                    <ComboBoxItem Content="Cloudflare (1.1.1.1)" Tag="cloudflare" />
+                                    <ComboBoxItem Content="Google (8.8.8.8)" Tag="google" />
+                                    <ComboBoxItem Content="Quad9 (9.9.9.9)" Tag="quad9" />
+                                    <ComboBoxItem Content="OpenDNS" Tag="opendns" />
+                                    <ComboBoxItem Content="Custom" Tag="custom" />
+                                </ComboBox>
+                                <Button Grid.Column="1" Content="⚡ Benchmark"
+                                        Command="{Binding BenchmarkDnsCommand}"
+                                        Style="{StaticResource GhostButton}"
+                                        FontSize="10" Padding="8,4" Margin="6,0,0,0" />
+                            </Grid>
+                            <TextBlock Text="{Binding ActiveDns}" FontSize="10" 
+                                       Foreground="{StaticResource TextDimBrush}" Margin="0,2,0,0" />
+                            <TextBlock Text="{Binding DnsStatus}" FontSize="9.5" Margin="0,2,0,4"
+                                       Foreground="{StaticResource AccentBrush}"
+                                       Visibility="{Binding DnsStatus, Converter={StaticResource StringToVis}}" />
 
                             <!-- Debug Logging -->
                             <Grid>

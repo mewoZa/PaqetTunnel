@@ -94,6 +94,13 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _showInfoPanel;
     [ObservableProperty] private string _publicIp = "—";
 
+    // DNS settings
+    [ObservableProperty] private string _selectedDnsProvider = "auto";
+    [ObservableProperty] private string _customDnsPrimary = "";
+    [ObservableProperty] private string _customDnsSecondary = "";
+    [ObservableProperty] private string _dnsStatus = "";
+    [ObservableProperty] private string _activeDns = "";
+
     public MainViewModel(
         PaqetService paqetService,
         ProxyService proxyService,
@@ -151,6 +158,14 @@ public partial class MainViewModel : ObservableObject
         IsProxySharingEnabled = appSettings.ProxySharingEnabled;
         IsAutoStartEnabled = _proxyService.IsAutoStartEnabled();
         IsStartBeforeLogonEnabled = _proxyService.IsStartBeforeLogonEnabled();
+
+        // Load DNS settings
+        SelectedDnsProvider = appSettings.DnsProvider ?? "auto";
+        CustomDnsPrimary = appSettings.CustomDnsPrimary ?? "";
+        CustomDnsSecondary = appSettings.CustomDnsSecondary ?? "";
+        var (dnsPri, dnsSec) = DnsService.Resolve(appSettings);
+        ActiveDns = $"{dnsPri}, {dnsSec}";
+        Logger.Info($"DNS settings: provider={SelectedDnsProvider}, active={ActiveDns}");
         UpdateSharingInfo();
 
         // ── Check running state (use IsReady for port-verified status)
@@ -335,7 +350,7 @@ public partial class MainViewModel : ObservableObject
                 Logger.Info("Starting TUN tunnel...");
                 var config = _configService.ReadPaqetConfig();
                 var serverIp = config.ServerHost;
-                var tunResult = await _tunService.StartAsync(serverIp);
+                var tunResult = await _tunService.StartAsync(serverIp, _configService.ReadAppSettings());
                 Logger.Info($"TUN start: success={tunResult.Success}, message={tunResult.Message}");
 
                 if (!tunResult.Success)
@@ -365,7 +380,18 @@ public partial class MainViewModel : ObservableObject
                 IsConnecting = false;
             });
             // Flush DNS cache after connecting (clear stale ISP DNS entries)
-            _ = Task.Run(() => TunService.FlushDnsCache());
+            _ = Task.Run(() =>
+            {
+                DnsService.FlushCache();
+                // In SOCKS5-only mode, still force DNS to prevent ISP DNS leaks
+                if (!IsFullSystemTunnel)
+                {
+                    var appSett = _configService.ReadAppSettings();
+                    var (p, s) = DnsService.Resolve(appSett);
+                    Logger.Info($"SOCKS5 mode: forcing DNS to {p}, {s} for leak prevention");
+                    DnsService.ForceAllAdaptersDns(p, s);
+                }
+            });
             // Fetch public IP through tunnel if not already fetched
             if (tunnelIp == null)
                 _ = FetchPublicIpAsync();
@@ -405,8 +431,21 @@ public partial class MainViewModel : ObservableObject
             var (success, message) = _paqetService.Stop();
             Logger.Info($"Stop() returned: success={success}, message={message}");
 
-            // Flush DNS cache after disconnect to clear tunnel DNS entries
-            TunService.FlushDnsCache();
+            // Flush DNS cache and restore DNS to DHCP after disconnect
+            DnsService.FlushCache();
+            // Restore all adapters to DHCP (undo SOCKS5-mode DNS forcing)
+            try
+            {
+                var output = PaqetService.RunCommand("powershell", "-NoProfile -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -ExpandProperty Name\"");
+                foreach (var adapter in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var name = adapter.Trim();
+                    if (!string.IsNullOrEmpty(name) && name != "PaqetTun")
+                        DnsService.RestoreAdapterDns(name, null);
+                }
+            }
+            catch { }
+            DnsService.FlushCache();
 
             Application.Current.Dispatcher.Invoke(() =>
             {
@@ -656,7 +695,7 @@ public partial class MainViewModel : ObservableObject
                 ConnectionStatus = "Starting TUN tunnel...";
                 var config = _configService.ReadPaqetConfig();
                 var serverIp = config.ServerHost;
-                var result = await _tunService.StartAsync(serverIp);
+                var result = await _tunService.StartAsync(serverIp, _configService.ReadAppSettings());
                 ConnectionStatus = result.Success ? "Connected (Full System)" : $"SOCKS5 only — TUN: {result.Message}";
             }
             else
@@ -802,6 +841,84 @@ public partial class MainViewModel : ObservableObject
     {
         StatusBarText = "Starting update...";
         await UpdateService.RunUpdateAsync();
+    }
+
+    // ── DNS Commands ──────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task BenchmarkDnsAsync()
+    {
+        DnsStatus = "Benchmarking DNS...";
+        try
+        {
+            var results = await DnsService.BenchmarkAllAsync();
+            var best = results.First();
+            DnsStatus = $"Fastest: {best.Name} ({best.AvgLatencyMs:F0}ms)";
+            Logger.Info($"DNS benchmark complete. Best: {best.Name} at {best.AvgLatencyMs:F1}ms");
+
+            foreach (var r in results)
+                Logger.Info($"  {r.Name}: {r.AvgLatencyMs:F1}ms ({r.Primary})");
+        }
+        catch (Exception ex)
+        {
+            DnsStatus = $"Benchmark failed: {ex.Message}";
+            Logger.Error("DNS benchmark failed", ex);
+        }
+    }
+
+    [RelayCommand]
+    private void SetDnsProvider(string provider)
+    {
+        Logger.Info($"DNS provider changed: {SelectedDnsProvider} → {provider}");
+        SelectedDnsProvider = provider;
+        var settings = _configService.ReadAppSettings();
+        settings.DnsProvider = provider;
+        settings.CustomDnsPrimary = CustomDnsPrimary;
+        settings.CustomDnsSecondary = CustomDnsSecondary;
+        _configService.WriteAppSettings(settings);
+
+        var (p, s) = DnsService.Resolve(settings);
+        ActiveDns = $"{p}, {s}";
+
+        // If connected with TUN, apply immediately
+        if (IsConnected && IsFullSystemTunnel && _tunService.IsRunning())
+        {
+            DnsService.ForceAdapterDns("PaqetTun", p, s);
+            DnsService.ForceAllAdaptersDns(p, s, excludeAdapter: "PaqetTun");
+            DnsService.FlushCache();
+            DnsStatus = $"Applied: {p}";
+            Logger.Info($"DNS live-updated to {p}, {s}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task AutoSelectDnsAsync()
+    {
+        DnsStatus = "Auto-selecting best DNS...";
+        try
+        {
+            var (providerId, primary, secondary) = await DnsService.AutoSelectAsync();
+            SelectedDnsProvider = providerId;
+            ActiveDns = $"{primary}, {secondary}";
+
+            var settings = _configService.ReadAppSettings();
+            settings.DnsProvider = providerId;
+            _configService.WriteAppSettings(settings);
+
+            DnsStatus = $"Selected: {DnsService.Providers[providerId].Name} (fastest)";
+
+            // Apply immediately if TUN is active
+            if (IsConnected && IsFullSystemTunnel && _tunService.IsRunning())
+            {
+                DnsService.ForceAdapterDns("PaqetTun", primary, secondary);
+                DnsService.ForceAllAdaptersDns(primary, secondary, excludeAdapter: "PaqetTun");
+                DnsService.FlushCache();
+            }
+        }
+        catch (Exception ex)
+        {
+            DnsStatus = $"Auto-select failed: {ex.Message}";
+        }
     }
 
     // ── Periodic Status Check ─────────────────────────────────────
@@ -991,7 +1108,7 @@ public partial class MainViewModel : ObservableObject
             if (IsFullSystemTunnel && _tunService.AllBinariesExist())
             {
                 var config = _configService.ReadPaqetConfig();
-                var tunResult = await _tunService.StartAsync(config.ServerHost);
+                var tunResult = await _tunService.StartAsync(config.ServerHost, _configService.ReadAppSettings());
                 if (!tunResult.Success)
                     Logger.Warn($"TUN reconnect failed: {tunResult.Message}");
             }
@@ -1008,7 +1125,7 @@ public partial class MainViewModel : ObservableObject
                 _networkMonitor.Start();
                 IsConnecting = false;
             });
-            _ = Task.Run(() => TunService.FlushDnsCache());
+            _ = Task.Run(() => DnsService.FlushCache());
         });
     }
 

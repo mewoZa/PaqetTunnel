@@ -179,6 +179,9 @@ public sealed class AppSettings
     public bool AutoConnectOnLaunch { get; set; }
     public bool DebugMode { get; set; }
     public bool FullSystemTunnel { get; set; }
+    public string DnsProvider { get; set; } = "auto"; // auto, cloudflare, google, quad9, custom
+    public string CustomDnsPrimary { get; set; } = "";
+    public string CustomDnsSecondary { get; set; } = "";
     public string PaqetBinaryPath { get; set; } = "";
     public string PaqetConfigPath { get; set; } = "";
 }

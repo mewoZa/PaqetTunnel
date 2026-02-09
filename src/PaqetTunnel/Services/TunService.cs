@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -8,6 +9,7 @@ using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using PaqetTunnel.Models;
 
 namespace PaqetTunnel.Services;
 
@@ -23,16 +25,15 @@ public sealed class TunService
     private const string TUN_GATEWAY = "10.0.85.1";
     private const string TUN_SUBNET = "255.255.255.0";
     private const string TUN_CIDR = "10.0.85.2/24";
-    private const string DNS_PRIMARY = "8.8.8.8";
-    private const string DNS_SECONDARY = "8.8.4.4";
     private const int TUN_METRIC = 1;
 
     private Process? _tun2socksProcess;
     private string? _originalGateway;
     private string? _originalInterface;
     private string? _serverIp;
-    private string? _originalDnsPrimary;
-    private bool _physicalDnsChanged;
+    private string _dnsPrimary = "1.1.1.1";
+    private string _dnsSecondary = "1.0.0.1";
+    private List<(string Name, string? OriginalDns)> _changedAdapters = new();
 
     public bool Tun2SocksExists() => File.Exists(AppPaths.Tun2SocksPath);
     public bool WintunExists() => File.Exists(AppPaths.WintunDllPath);
@@ -71,7 +72,7 @@ public sealed class TunService
     /// Start the full system tunnel. Requires paqet SOCKS5 to be running on port 10800.
     /// Steps: 1) Start tun2socks  2) Configure TUN adapter IP  3) Set routes  4) Set DNS
     /// </summary>
-    public async Task<(bool Success, string Message)> StartAsync(string paqetServerIp)
+    public async Task<(bool Success, string Message)> StartAsync(string paqetServerIp, AppSettings? settings = null)
     {
         Logger.Info("TunService.StartAsync called");
 
@@ -95,6 +96,15 @@ public sealed class TunService
         }
 
         _serverIp = paqetServerIp;
+
+        // Resolve DNS servers from settings
+        if (settings != null)
+        {
+            var (p, s) = DnsService.Resolve(settings);
+            _dnsPrimary = p;
+            _dnsSecondary = s;
+        }
+        Logger.Info($"DNS servers: {_dnsPrimary}, {_dnsSecondary}");
 
         try
         {
@@ -192,8 +202,7 @@ public sealed class TunService
             _serverIp = null;
             _originalGateway = null;
             _originalInterface = null;
-            _originalDnsPrimary = null;
-            _physicalDnsChanged = false;
+            _changedAdapters.Clear();
 
             Logger.Info("TUN tunnel stopped");
             return errors.Length == 0
@@ -467,30 +476,15 @@ public sealed class TunService
         try
         {
             // Set DNS on TUN adapter
-            RunNetsh($"interface ip set dns \"{TUN_ADAPTER_NAME}\" static {DNS_PRIMARY}");
-            RunNetsh($"interface ip add dns \"{TUN_ADAPTER_NAME}\" {DNS_SECONDARY} index=2");
-            Logger.Info($"DNS set to {DNS_PRIMARY}, {DNS_SECONDARY} on {TUN_ADAPTER_NAME}");
+            DnsService.ForceAdapterDns(TUN_ADAPTER_NAME, _dnsPrimary, _dnsSecondary);
 
             // Flush DNS cache so stale entries from ISP DNS don't leak
-            FlushDnsCache();
+            DnsService.FlushCache();
 
-            // DNS leak prevention: set DNS on the physical adapter too
-            // This prevents apps that bypass the TUN adapter from using ISP DNS
-            if (!string.IsNullOrEmpty(_originalInterface))
-            {
-                try
-                {
-                    _originalDnsPrimary = GetInterfaceDns(_originalInterface);
-                    RunNetsh($"interface ip set dns \"{_originalInterface}\" static {DNS_PRIMARY}");
-                    RunNetsh($"interface ip add dns \"{_originalInterface}\" {DNS_SECONDARY} index=2");
-                    _physicalDnsChanged = true;
-                    Logger.Info($"DNS leak prevention: set {DNS_PRIMARY} on {_originalInterface}");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Debug($"DNS leak prevention on physical adapter: {ex.Message}");
-                }
-            }
+            // DNS leak prevention: force DNS on ALL active adapters (not just physical)
+            // This prevents any app from using ISP DNS regardless of which adapter it uses
+            _changedAdapters = DnsService.ForceAllAdaptersDns(_dnsPrimary, _dnsSecondary, excludeAdapter: TUN_ADAPTER_NAME);
+            Logger.Info($"DNS leak prevention: forced DNS on {_changedAdapters.Count} adapters");
         }
         catch (Exception ex)
         {
@@ -505,67 +499,21 @@ public sealed class TunService
             // Restore TUN adapter DNS
             try { RunNetsh($"interface ip set dns \"{TUN_ADAPTER_NAME}\" dhcp"); } catch { }
 
-            // Restore physical adapter DNS if we changed it
-            if (_physicalDnsChanged && !string.IsNullOrEmpty(_originalInterface))
+            // Restore ALL adapters we changed
+            foreach (var (name, originalDns) in _changedAdapters)
             {
-                try
-                {
-                    if (!string.IsNullOrEmpty(_originalDnsPrimary))
-                    {
-                        RunNetsh($"interface ip set dns \"{_originalInterface}\" static {_originalDnsPrimary}");
-                        Logger.Info($"Restored DNS on {_originalInterface} to {_originalDnsPrimary}");
-                    }
-                    else
-                    {
-                        RunNetsh($"interface ip set dns \"{_originalInterface}\" dhcp");
-                        Logger.Info($"Restored DNS on {_originalInterface} to DHCP");
-                    }
-                    _physicalDnsChanged = false;
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"DNS restore on physical adapter: {ex.Message}");
-                }
+                DnsService.RestoreAdapterDns(name, originalDns);
             }
+            _changedAdapters.Clear();
 
             // Flush DNS cache to clear tunnel DNS entries
-            FlushDnsCache();
+            DnsService.FlushCache();
         }
         catch { /* Best effort */ }
     }
 
     /// <summary>Flush the Windows DNS resolver cache.</summary>
-    public static void FlushDnsCache()
-    {
-        try
-        {
-            PaqetService.RunCommand("ipconfig", "/flushdns", timeout: 5000);
-            Logger.Info("DNS cache flushed");
-        }
-        catch (Exception ex)
-        {
-            Logger.Debug($"FlushDns: {ex.Message}");
-        }
-    }
-
-    /// <summary>Get the current primary DNS server for an interface, or null if DHCP.</summary>
-    private static string? GetInterfaceDns(string interfaceName)
-    {
-        try
-        {
-            var output = PaqetService.RunCommand("netsh",
-                $"interface ip show dns \"{interfaceName}\"", timeout: 5000);
-            // Look for "Statically Configured DNS Servers:" line
-            foreach (var line in output.Split('\n'))
-            {
-                var trimmed = line.Trim();
-                if (System.Net.IPAddress.TryParse(trimmed, out _))
-                    return trimmed;
-            }
-        }
-        catch { }
-        return null;
-    }
+    public static void FlushDnsCache() => DnsService.FlushCache();
 
     private static string? GetDefaultGateway()
     {

@@ -78,4 +78,16 @@ public partial class MainWindow : Window
         };
         timer.Start();
     }
+
+    // ── DNS ComboBox selection handler ────────────────────────────
+    private void DnsProviderChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.ComboBox combo &&
+            combo.SelectedItem is System.Windows.Controls.ComboBoxItem item &&
+            item.Tag is string provider &&
+            DataContext is ViewModels.MainViewModel vm)
+        {
+            vm.SetDnsProviderCommand.Execute(provider);
+        }
+    }
 }
