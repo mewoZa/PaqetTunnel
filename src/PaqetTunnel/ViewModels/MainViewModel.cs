@@ -88,6 +88,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _pingResult = "";
     [ObservableProperty] private string _fullVersionInfo = "";
     [ObservableProperty] private string _updateStatus = "";
+    [ObservableProperty] private bool _isUpdateAvailable;
+    [ObservableProperty] private bool _isUpdating;
+    [ObservableProperty] private string _updateProgressText = "";
+    [ObservableProperty] private string _updateCommitMessage = "";
+    [ObservableProperty] private string _updateRemoteSha = "";
 
     // ── Connection Info ───────────────────────────────────────────
 
@@ -881,16 +886,21 @@ public partial class MainViewModel : ObservableObject
     {
         UpdateStatus = "Checking...";
         StatusBarText = "Checking for updates...";
-        var (available, local, remote) = await UpdateService.CheckAsync();
+        var (available, local, remote, message) = await UpdateService.CheckAsync();
         Application.Current.Dispatcher.Invoke(() =>
         {
             if (available)
             {
+                IsUpdateAvailable = true;
+                UpdateRemoteSha = remote[..7];
+                UpdateCommitMessage = message;
                 UpdateStatus = $"Update available ({remote[..7]})";
                 StatusBarText = $"Update available! {local[..7]} → {remote[..7]}";
+                Logger.Info($"Update banner shown: {message}");
             }
             else
             {
+                IsUpdateAvailable = false;
                 UpdateStatus = "Up to date";
                 StatusBarText = "No updates available.";
             }
@@ -898,10 +908,52 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task InstallUpdateAsync()
+    {
+        if (IsUpdating) return;
+        IsUpdating = true;
+        UpdateProgressText = "Preparing update...";
+        Logger.Info("User initiated in-app update");
+
+        var (success, msg) = await UpdateService.RunSilentUpdateAsync(progress =>
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                UpdateProgressText = progress;
+                StatusBarText = progress;
+            });
+        });
+
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            if (success)
+            {
+                UpdateProgressText = "Updating... app will restart shortly";
+                StatusBarText = "Updating... app will restart shortly";
+            }
+            else
+            {
+                IsUpdating = false;
+                UpdateProgressText = "";
+                UpdateStatus = msg;
+                StatusBarText = $"Update failed: {msg}";
+                Logger.Warn($"Update failed: {msg}");
+            }
+        });
+    }
+
+    [RelayCommand]
+    private void DismissUpdate()
+    {
+        IsUpdateAvailable = false;
+        UpdateProgressText = "";
+        StatusBarText = IsConnected ? (TunnelMode == "TUNNEL" ? "Full system tunnel active" : "Connected") : "Ready";
+    }
+
+    [RelayCommand]
     private async Task RunUpdateAsync()
     {
-        StatusBarText = "Starting update...";
-        await UpdateService.RunUpdateAsync();
+        await InstallUpdateAsync();
     }
 
     // ── DNS Commands ──────────────────────────────────────────────

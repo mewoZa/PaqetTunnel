@@ -21,7 +21,9 @@ param(
     [int]$SocksPort = 10800,
     [switch]$Build,
     [switch]$Force,
-    [Alias('y')][switch]$Yes
+    [Alias('y')][switch]$Yes,
+    [switch]$Silent,
+    [switch]$Launch
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,16 +68,17 @@ if (-not $env:PAQET_SETUP_REEXEC -and $Command -and (Test-Path "$env:USERPROFILE
 # UI Helpers
 # ═══════════════════════════════════════════════════════════════════
 
-function W($t,$c='White'){ Write-Host $t -ForegroundColor $c -NoNewline }
-function WL($t,$c='White'){ Write-Host $t -ForegroundColor $c }
-function Step($t){ W "  › " Cyan; WL $t }
-function OK($t){ W "  ✓ " Green; WL $t }
-function Warn($t){ W "  ! " Yellow; WL $t }
-function Err($t){ W "  ✗ " Red; WL $t }
-function Dim($t){ WL "    $t" DarkGray }
-function Line(){ WL "  ────────────────────────────────" DarkGray }
+function W($t,$c='White'){ if (-not $Silent) { Write-Host $t -ForegroundColor $c -NoNewline } }
+function WL($t,$c='White'){ if (-not $Silent) { Write-Host $t -ForegroundColor $c } }
+function Step($t){ if ($Silent) { Write-Output "[STEP] $t" } else { W "  › " Cyan; WL $t } }
+function OK($t){ if ($Silent) { Write-Output "[OK] $t" } else { W "  ✓ " Green; WL $t } }
+function Warn($t){ if ($Silent) { Write-Output "[WARN] $t" } else { W "  ! " Yellow; WL $t } }
+function Err($t){ if ($Silent) { Write-Output "[ERR] $t" } else { W "  ✗ " Red; WL $t } }
+function Dim($t){ if (-not $Silent) { WL "    $t" DarkGray } }
+function Line(){ if (-not $Silent) { WL "  ────────────────────────────────" DarkGray } }
 
 function Banner {
+    if ($Silent) { return }
     Write-Host ""
     W "  » " Cyan; WL "Paqet Tunnel" White
     W "    " DarkGray; WL "Setup and Management v$($Script:AppVersion)" DarkGray
@@ -83,7 +86,7 @@ function Banner {
 }
 
 function Confirm($prompt) {
-    if ($Yes) { return $true }
+    if ($Yes -or $Silent) { return $true }
     W "  ? " Yellow; W "$prompt " White; W '[Y/n] ' DarkGray
     $r = Read-Host
     return ($r -eq '' -or $r -match '^[Yy]')
@@ -828,6 +831,8 @@ function Do-Install {
     Dim "Run from Start Menu or Desktop shortcut"
     Dim ('Or: ' + $Script:InstallDir + '\' + $Script:ExeName)
     WL ""
+
+    if ($Launch -or $Yes) { Start-App }
 }
 
 function Do-Update {
@@ -883,7 +888,8 @@ function Do-Update {
     WL ""
     OK "Update complete!"
 
-    if (Confirm "Start $($Script:AppName)?") { Start-App }
+    if ($Launch -or $Yes) { Start-App }
+    elseif (Confirm "Start $($Script:AppName)?") { Start-App }
 }
 
 function Do-Uninstall {

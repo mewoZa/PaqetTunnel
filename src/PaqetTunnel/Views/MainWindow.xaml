@@ -26,6 +26,7 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="40" />  <!-- Title bar -->
+                <RowDefinition Height="Auto" /> <!-- Update bar -->
                 <RowDefinition Height="*" />   <!-- Content -->
                 <RowDefinition Height="30" />  <!-- Status bar -->
             </Grid.RowDefinitions>
@@ -33,6 +34,24 @@
             <!-- ═══ TITLE BAR ══════════════════════════════════════ -->
             <Border Grid.Row="0" Background="Transparent" 
                     CornerRadius="12,12,0,0" MouseLeftButtonDown="TitleBar_MouseDown">
+                <!-- Accent glow when update available -->
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsUpdateAvailable}" Value="True">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#1A3B82F6" Offset="0" />
+                                            <GradientStop Color="#0D3B82F6" Offset="0.5" />
+                                            <GradientStop Color="#1A3B82F6" Offset="1" />
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <Grid Margin="16,0,6,0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Viewbox Width="16" Height="16" Margin="0,0,7,0" VerticalAlignment="Center">
@@ -65,8 +84,134 @@
                 </Grid>
             </Border>
 
+            <!-- ═══ UPDATE NOTIFICATION BAR ════════════════════════ -->
+            <Border Grid.Row="1" Padding="10,0" ClipToBounds="True"
+                    Background="{DynamicResource SurfaceBrush}">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="MaxHeight" Value="0" />
+                        <Setter Property="Opacity" Value="0" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsUpdateAvailable}" Value="True">
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="MaxHeight"
+                                                             From="0" To="100" Duration="0:0:0.35">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0" To="1" Duration="0:0:0.3" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                                <DataTrigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="MaxHeight"
+                                                             To="0" Duration="0:0:0.25">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseIn" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             To="0" Duration="0:0:0.2" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.ExitActions>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+
+                <Border Background="#183B82F6" CornerRadius="8" Padding="12,8" Margin="6,4,6,2">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Left: update info -->
+                        <StackPanel VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⬆" FontSize="11" Foreground="#60A5FA" 
+                                           VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBlock FontSize="11.5" FontWeight="SemiBold" 
+                                           Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="Update available" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsUpdating}" Value="True">
+                                                    <Setter Property="Text" Value="Updating..." />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Text="{Binding UpdateRemoteSha}" FontSize="9.5" 
+                                           Foreground="{DynamicResource TextDimBrush}"
+                                           FontFamily="{DynamicResource MonoFont}"
+                                           VerticalAlignment="Center" Margin="8,0,0,0"
+                                           Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}" />
+                            </StackPanel>
+                            <!-- Commit message or progress -->
+                            <TextBlock FontSize="9.5" Foreground="{DynamicResource TextDimBrush}" 
+                                       Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="{Binding UpdateCommitMessage}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsUpdating}" Value="True">
+                                                <Setter Property="Text" Value="{Binding UpdateProgressText}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+
+                        <!-- Right: buttons -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                                    Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}">
+                            <Button Content="Install" Style="{DynamicResource PrimaryButton}"
+                                    Command="{Binding InstallUpdateAsyncCommand}"
+                                    Padding="14,5" FontSize="10.5" Margin="0,0,4,0" />
+                            <Button Content="✕" Style="{DynamicResource GhostButton}"
+                                    Command="{Binding DismissUpdateCommand}"
+                                    Padding="6,4" FontSize="10" Opacity="0.6" />
+                        </StackPanel>
+
+                        <!-- Spinner when updating -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                                    Visibility="{Binding IsUpdating, Converter={StaticResource BoolToVis}}">
+                            <Ellipse Width="14" Height="14" StrokeThickness="2"
+                                     Stroke="#60A5FA" StrokeDashArray="3,2"
+                                     RenderTransformOrigin="0.5,0.5">
+                                <Ellipse.RenderTransform>
+                                    <RotateTransform x:Name="UpdateSpinRotation" />
+                                </Ellipse.RenderTransform>
+                                <Ellipse.Triggers>
+                                    <EventTrigger RoutedEvent="Loaded">
+                                        <BeginStoryboard>
+                                            <Storyboard RepeatBehavior="Forever">
+                                                <DoubleAnimation Storyboard.TargetName="UpdateSpinRotation"
+                                                                 Storyboard.TargetProperty="Angle"
+                                                                 From="0" To="360" Duration="0:0:1.2" />
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </EventTrigger>
+                                </Ellipse.Triggers>
+                            </Ellipse>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Border>
+
             <!-- ═══ MAIN CONTENT ═══════════════════════════════════ -->
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden" Padding="0">
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Hidden" Padding="0">
                 <StackPanel Margin="16,4,16,8">
                 
                     <!-- ── Setup Banner ────────────────────────── -->
@@ -1002,9 +1147,35 @@
                                             Command="{Binding OpenDiagnosticsFolderCommand}"
                                             HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
                                 </Grid>
-                                <Button Content="Check for Updates" Style="{DynamicResource SecondaryButton}"
-                                        Command="{Binding CheckForUpdatesAsyncCommand}"
-                                        HorizontalAlignment="Stretch" Margin="0,0,0,4" Padding="8,6" FontSize="10.5" />
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="6" />
+                                        <ColumnDefinition />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="Check Updates" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding CheckForUpdatesAsyncCommand}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
+                                    <Button Grid.Column="2" Style="{DynamicResource SecondaryButton}"
+                                            Command="{Binding InstallUpdateAsyncCommand}"
+                                            IsEnabled="{Binding IsUpdateAvailable}"
+                                            HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5">
+                                        <Button.Content>
+                                            <TextBlock>
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Install Update" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsUpdating}" Value="True">
+                                                                <Setter Property="Text" Value="Updating..." />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Button.Content>
+                                    </Button>
+                                </Grid>
                                 <TextBlock Text="{Binding UpdateStatus}" FontSize="9.5"
                                            Foreground="{DynamicResource TextDimBrush}"
                                            Visibility="{Binding UpdateStatus, Converter={StaticResource StringToVis}}"
@@ -1094,7 +1265,7 @@
             </ScrollViewer>
 
             <!-- ═══ STATUS BAR ═════════════════════════════════════ -->
-            <Border Grid.Row="2" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+            <Border Grid.Row="3" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
                     CornerRadius="0,0,12,12" Background="{DynamicResource SurfaceBrush}">
                 <Grid Margin="16,0">
                     <TextBlock Text="{Binding StatusBarText}" 
