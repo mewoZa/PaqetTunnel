@@ -19,6 +19,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ConfigService _configService;
     private readonly SetupService _setupService;
     private readonly TunService _tunService;
+    private readonly DiagnosticService _diagnosticService;
     private readonly Timer _statusTimer;
 
     // ── Connection State ──────────────────────────────────────────
@@ -105,6 +106,12 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _selectedTheme = "dark";
     public string[] AvailableThemes => ThemeManager.AvailableThemes;
 
+    // ── Diagnostics ──────────────────────────────────────────────
+
+    [ObservableProperty] private bool _isDiagnosticRunning;
+    [ObservableProperty] private string _diagnosticReport = "";
+    [ObservableProperty] private string _diagnosticStatus = "";
+
     public MainViewModel(
         PaqetService paqetService,
         ProxyService proxyService,
@@ -119,6 +126,7 @@ public partial class MainViewModel : ObservableObject
         _configService = configService;
         _setupService = setupService;
         _tunService = tunService;
+        _diagnosticService = new DiagnosticService(paqetService);
 
         // Speed updates from monitor
         _networkMonitor.SpeedUpdated += OnSpeedUpdated;
@@ -953,6 +961,90 @@ public partial class MainViewModel : ObservableObject
         var settings = _configService.ReadAppSettings();
         settings.Theme = theme;
         _configService.WriteAppSettings(settings);
+    }
+
+    // ── Diagnostics ───────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task RunDiagnosticAsync()
+    {
+        if (IsDiagnosticRunning) return;
+        IsDiagnosticRunning = true;
+        DiagnosticStatus = "Running full diagnostic...";
+        DiagnosticReport = "";
+        try
+        {
+            var report = await _diagnosticService.RunFullDiagnosticAsync();
+            DiagnosticReport = DiagnosticService.FormatReport(report);
+            DiagnosticStatus = $"Complete ({report.DurationMs / 1000:F1}s)";
+        }
+        catch (Exception ex)
+        {
+            DiagnosticReport = $"Diagnostic failed: {ex.Message}";
+            DiagnosticStatus = "Failed";
+            Logger.Error("Diagnostic run failed", ex);
+        }
+        finally
+        {
+            IsDiagnosticRunning = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RunQuickCheckAsync()
+    {
+        if (IsDiagnosticRunning) return;
+        IsDiagnosticRunning = true;
+        DiagnosticStatus = "Running quick check...";
+        DiagnosticReport = "";
+        try
+        {
+            var report = await _diagnosticService.RunQuickCheckAsync();
+            DiagnosticReport = DiagnosticService.FormatReport(report);
+            DiagnosticStatus = $"Complete ({report.DurationMs / 1000:F1}s)";
+        }
+        catch (Exception ex)
+        {
+            DiagnosticReport = $"Quick check failed: {ex.Message}";
+            DiagnosticStatus = "Failed";
+            Logger.Error("Quick check failed", ex);
+        }
+        finally
+        {
+            IsDiagnosticRunning = false;
+        }
+    }
+
+    [RelayCommand]
+    private void ShowLatestDiagnostic()
+    {
+        var latest = Models.DiagnosticReport.LoadLatest();
+        if (latest != null)
+        {
+            DiagnosticReport = DiagnosticService.FormatReport(latest);
+            DiagnosticStatus = $"Loaded report from {latest.Timestamp:yyyy-MM-dd HH:mm}";
+        }
+        else
+        {
+            DiagnosticReport = "No diagnostic reports found. Run a diagnostic first.";
+            DiagnosticStatus = "";
+        }
+    }
+
+    [RelayCommand]
+    private void CompareDiagnostics()
+    {
+        var reports = Models.DiagnosticReport.LoadAll(2);
+        if (reports.Count >= 2)
+        {
+            DiagnosticReport = DiagnosticService.FormatComparison(reports[0], reports[1]);
+            DiagnosticStatus = "Comparison loaded";
+        }
+        else
+        {
+            DiagnosticReport = "Need at least 2 reports to compare. Run diagnostics multiple times.";
+            DiagnosticStatus = "";
+        }
     }
 
     // ── Periodic Status Check ─────────────────────────────────────

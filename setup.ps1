@@ -618,7 +618,8 @@ function Build-FromSource {
         Step "Updating source..."
         Push-Location $src
         $oldEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-        & git pull --quiet 2>$null
+        & git fetch --all --quiet 2>$null
+        & git reset --hard origin/master --quiet 2>$null
         & git submodule update --init --recursive --quiet 2>$null
         $ErrorActionPreference = $oldEAP
         Pop-Location
@@ -1011,10 +1012,13 @@ network:
   ipv4:
     addr: "${localIP}:$port"
     router_mac: "$routerMAC"
+  tcp:
+    local_flag: ["PA"]
 transport:
   protocol: "kcp"
   kcp:
     mode: "fast"
+    block: "aes"
     key: "$secret"
 "@
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
@@ -1096,10 +1100,14 @@ network:
   ipv4:
     addr: "${localIP}:0"
     router_mac: "$routerMAC"
+  tcp:
+    local_flag: ["PA"]
+    remote_flag: ["PA"]
 transport:
   protocol: "kcp"
   kcp:
     mode: "fast"
+    block: "aes"
     key: "$serverKey"
 "@
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false

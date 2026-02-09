@@ -295,13 +295,13 @@ setup_iptables() {
     iptables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
     iptables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
 
-    # Add NOTRACK rules — paqet uses raw pcap so kernel conntrack must not interfere
-    # UDP: KCP protocol runs over UDP
-    iptables -t raw -A PREROUTING -p udp --dport "$port" -j NOTRACK
-    iptables -t raw -A OUTPUT -p udp --sport "$port" -j NOTRACK
-    # TCP: prevent kernel from tracking raw pcap TCP packets
+    # Add NOTRACK rules — paqet uses raw pcap with crafted TCP packets
+    # TCP: prevent kernel from tracking raw pcap TCP packets (primary — paqet wraps KCP inside TCP)
     iptables -t raw -A PREROUTING -p tcp --dport "$port" -j NOTRACK
     iptables -t raw -A OUTPUT -p tcp --sport "$port" -j NOTRACK
+    # UDP: NOTRACK for completeness (KCP transport layer)
+    iptables -t raw -A PREROUTING -p udp --dport "$port" -j NOTRACK
+    iptables -t raw -A OUTPUT -p udp --sport "$port" -j NOTRACK
     # Drop RST — kernel sends RST for packets it doesn't recognize, making port visible
     iptables -t mangle -A OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP
 
@@ -419,10 +419,13 @@ network:
   ipv4:
     addr: "$local_ip:$port"
     router_mac: "$router_mac"
+  tcp:
+    local_flag: ["PA"]
 transport:
   protocol: "kcp"
   kcp:
     mode: "fast"
+    block: "aes"
     key: "$secret"
 EOF
     chmod 600 "$CONFIG_DIR/server.yaml"

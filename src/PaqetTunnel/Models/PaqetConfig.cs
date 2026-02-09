@@ -99,6 +99,8 @@ public sealed class PaqetConfig
 
         return string.Join("\n",
             $"role: \"{Role}\"",
+            "log:",
+            "  level: \"info\"",
             "",
             "socks5:",
             $"  - listen: \"{SocksListen}\"",
@@ -109,6 +111,9 @@ public sealed class PaqetConfig
             "  ipv4:",
             $"    addr: \"{Ipv4Addr}\"",
             $"    router_mac: \"{RouterMac}\"",
+            "  tcp:",
+            "    local_flag: [\"PA\"]",
+            "    remote_flag: [\"PA\"]",
             "",
             "server:",
             $"  addr: \"{ServerAddr}\"",
@@ -117,6 +122,7 @@ public sealed class PaqetConfig
             "  protocol: \"kcp\"",
             "  kcp:",
             "    mode: \"fast\"",
+            "    block: \"aes\"",
             $"    key: \"{Key}\"",
             "");
     }

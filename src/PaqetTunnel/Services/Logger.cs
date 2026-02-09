@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace PaqetTunnel.Services;
 
@@ -58,6 +60,15 @@ public static class Logger
     {
         var msg = ex != null ? $"{message} | {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}" : message;
         Write("ERROR", msg);
+    }
+
+    /// <summary>Log structured performance data for benchmarking and analysis.</summary>
+    public static void Perf(string category, string message, Dictionary<string, object>? data = null)
+    {
+        var dataStr = "";
+        if (data != null && data.Count > 0)
+            dataStr = " | " + string.Join(", ", data.Select(kv => $"{kv.Key}={kv.Value}"));
+        Write("PERF", $"[{category}] {message}{dataStr}");
     }
 
     private static void Write(string level, string message)

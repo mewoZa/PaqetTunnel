@@ -31,6 +31,9 @@ public static class AppPaths
     /// <summary>Logs folder for debug logs.</summary>
     public static readonly string LogDir = Path.Combine(DataDir, "logs");
 
+    /// <summary>Diagnostics folder for performance reports.</summary>
+    public static readonly string DiagnosticsDir = Path.Combine(DataDir, "diagnostics");
+
     /// <summary>Full path to the paqet binary.</summary>
     public static readonly string BinaryPath = Path.Combine(BinDir, BINARY_NAME);
 
@@ -55,5 +58,6 @@ public static class AppPaths
         Directory.CreateDirectory(DataDir);
         Directory.CreateDirectory(BinDir);
         Directory.CreateDirectory(ConfigDir);
+        Directory.CreateDirectory(DiagnosticsDir);
     }
 }
