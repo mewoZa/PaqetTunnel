@@ -35,14 +35,22 @@
                     CornerRadius="12,12,0,0" MouseLeftButtonDown="TitleBar_MouseDown">
                 <Grid Margin="16,0,6,0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Viewbox Width="14" Height="14" Margin="0,0,7,0" VerticalAlignment="Center">
-                            <Canvas Width="24" Height="24">
-                                <Line X1="12" Y1="2" X2="12" Y2="11"
-                                      Stroke="{DynamicResource AccentBrush}"
-                                      StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                <Path Stroke="{DynamicResource AccentBrush}"
-                                      StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                      Data="M 7.5,8 A 6.5,6.5 0 1 0 16.5,8" />
+                        <Viewbox Width="16" Height="16" Margin="0,0,7,0" VerticalAlignment="Center">
+                            <Canvas Width="32" Height="32">
+                                <!-- Motion dots (increasing opacity) -->
+                                <Ellipse Canvas.Left="1" Canvas.Top="13.5" Width="3" Height="3"
+                                         Fill="{DynamicResource AccentBrush}" Opacity="0.3"/>
+                                <Ellipse Canvas.Left="5" Canvas.Top="13" Width="3.5" Height="3.5"
+                                         Fill="{DynamicResource AccentBrush}" Opacity="0.6"/>
+                                <Ellipse Canvas.Left="9.5" Canvas.Top="12.5" Width="4" Height="4"
+                                         Fill="{DynamicResource AccentBrush}" Opacity="1"/>
+                                <!-- Double chevron >> -->
+                                <Polyline Points="15,6 23,16 15,26"
+                                          Stroke="{DynamicResource AccentBrush}"
+                                          StrokeThickness="2.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                <Polyline Points="22,6 30,16 22,26"
+                                          Stroke="{DynamicResource AccentBrush}"
+                                          StrokeThickness="2.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
                             </Canvas>
                         </Viewbox>
                         <TextBlock Text="Paqet Tunnel" FontSize="12.5" FontWeight="SemiBold" 

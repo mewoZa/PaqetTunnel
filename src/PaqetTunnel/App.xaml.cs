@@ -140,11 +140,22 @@ public partial class App : Application
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         g.Clear(Color.Transparent);
 
-        var accentColor = connected ? Color.FromArgb(63, 185, 80) : Color.FromArgb(88, 166, 255);
-        var dimColor = connected ? Color.FromArgb(63, 185, 80) : Color.FromArgb(139, 148, 158);
+        // Match logo gradient: #4facfe → #00f2fe (blue-cyan)
+        var color1 = connected ? Color.FromArgb(79, 172, 254) : Color.FromArgb(139, 148, 158);
+        var color2 = connected ? Color.FromArgb(0, 242, 254) : Color.FromArgb(110, 118, 128);
 
-        // Double chevron (>>) — data packet in motion
-        using var pen = new Pen(accentColor, 2.5f)
+        // Motion dots (3 dots, increasing opacity like the logo)
+        using var dot1 = new SolidBrush(Color.FromArgb(77, color1));
+        using var dot2 = new SolidBrush(Color.FromArgb(153, color1));
+        using var dot3 = new SolidBrush(Color.FromArgb(255, color1));
+        g.FillEllipse(dot1, 1f, 14f, 3.5f, 3.5f);
+        g.FillEllipse(dot2, 5.5f, 13.5f, 4f, 4f);
+        g.FillEllipse(dot3, 10.5f, 13f, 4.5f, 4.5f);
+
+        // Double chevron (>>) with gradient pen
+        using var gradBrush = new System.Drawing.Drawing2D.LinearGradientBrush(
+            new PointF(14f, 0f), new PointF(30f, 30f), color1, color2);
+        using var pen = new Pen(gradBrush, 2.8f)
         {
             StartCap = System.Drawing.Drawing2D.LineCap.Round,
             EndCap = System.Drawing.Drawing2D.LineCap.Round,
@@ -153,17 +164,13 @@ public partial class App : Application
 
         // First chevron
         g.DrawLines(pen, new PointF[] {
-            new(8f, 7f), new(17f, 16f), new(8f, 25f)
+            new(15f, 6f), new(23f, 16f), new(15f, 26f)
         });
 
         // Second chevron
         g.DrawLines(pen, new PointF[] {
-            new(16f, 7f), new(25f, 16f), new(16f, 25f)
+            new(22f, 6f), new(30f, 16f), new(22f, 26f)
         });
-
-        // Motion dots
-        using var dotBrush = new SolidBrush(Color.FromArgb(140, dimColor));
-        g.FillEllipse(dotBrush, 2f, 14.5f, 3f, 3f);
 
         var hIcon = bmp.GetHicon();
         var icon = (Icon)Icon.FromHandle(hIcon).Clone();

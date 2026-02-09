@@ -1,6 +1,10 @@
 <div align="center">
 
-<img src="assets/logo-dark.png" width="140" alt="Paqet Tunnel" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo.svg" />
+  <img src="assets/logo.svg" width="160" alt="Paqet Tunnel" />
+</picture>
 
 # Paqet Tunnel
 
