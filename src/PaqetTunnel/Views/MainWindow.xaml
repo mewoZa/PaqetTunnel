@@ -35,14 +35,24 @@
                     CornerRadius="12,12,0,0" MouseLeftButtonDown="TitleBar_MouseDown">
                 <Grid Margin="16,0,6,0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="»" FontSize="18" FontWeight="Bold" Margin="0,0,6,1"
-                                   VerticalAlignment="Center">
-                            <TextBlock.Foreground>
-                                <SolidColorBrush Color="{Binding IsConnected, 
-                                    Converter={StaticResource ConnGlowConv}, 
-                                    FallbackValue=#58a6ff}" />
-                            </TextBlock.Foreground>
-                        </TextBlock>
+                        <Viewbox Width="14" Height="14" Margin="0,0,7,0" VerticalAlignment="Center">
+                            <Canvas Width="24" Height="24">
+                                <Line X1="12" Y1="3" X2="12" Y2="12"
+                                      Stroke="{DynamicResource AccentBrush}"
+                                      StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                <Path Stroke="{DynamicResource AccentBrush}"
+                                      StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                                    <Path.Data>
+                                        <PathGeometry>
+                                            <PathFigure StartPoint="7.5,7" IsClosed="False">
+                                                <ArcSegment Point="16.5,7" Size="7,7"
+                                                            SweepDirection="Clockwise" IsLargeArc="True" />
+                                            </PathFigure>
+                                        </PathGeometry>
+                                    </Path.Data>
+                                </Path>
+                            </Canvas>
+                        </Viewbox>
                         <TextBlock Text="Paqet Tunnel" FontSize="12.5" FontWeight="SemiBold" 
                                    Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"
                                    FontFamily="{DynamicResource MainFont}" Opacity="0.9" />
@@ -87,34 +97,100 @@
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── HERO: Connect Button + Status ─────────── -->
                     <!-- ══════════════════════════════════════════════ -->
-                    <Grid HorizontalAlignment="Center" Margin="0,8,0,2">
+                    <Grid HorizontalAlignment="Center" Margin="0,10,0,0">
                         <Button Command="{Binding ToggleConnectionCommand}" Cursor="Hand"
                                 IsEnabled="{Binding IsConnecting, Converter={StaticResource InvBoolConv}}">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
-                                    <Grid Width="96" Height="96">
-                                        <!-- Outer glow -->
-                                        <Ellipse Width="96" Height="96">
+                                    <Grid Width="130" Height="130">
+
+                                        <!-- Layer 1: Ambient glow (breathes continuously — color is transparent when disconnected) -->
+                                        <Ellipse x:Name="AmbientGlow" Width="130" Height="130">
                                             <Ellipse.Fill>
                                                 <RadialGradientBrush>
-                                                    <GradientStop Color="{Binding IsConnected, Converter={StaticResource ConnGlowConv}}" Offset="0.3" />
+                                                    <GradientStop Color="{Binding IsConnected, Converter={StaticResource ConnGlowConv}}" Offset="0.2" />
                                                     <GradientStop Color="Transparent" Offset="1" />
                                                 </RadialGradientBrush>
                                             </Ellipse.Fill>
+                                            <Ellipse.Triggers>
+                                                <EventTrigger RoutedEvent="Loaded">
+                                                    <BeginStoryboard>
+                                                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                            <DoubleAnimation Storyboard.TargetName="AmbientGlow"
+                                                                             Storyboard.TargetProperty="Opacity"
+                                                                             From="0.4" To="1" Duration="0:0:2" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </EventTrigger>
+                                            </Ellipse.Triggers>
                                         </Ellipse>
-                                        <!-- Ring -->
-                                        <Ellipse Width="78" Height="78" StrokeThickness="2"
+
+                                        <!-- Layer 2: Outer orbit ring (decorative dots, always visible) -->
+                                        <Ellipse x:Name="OrbitRing" Width="118" Height="118"
+                                                 StrokeThickness="0.8" StrokeDashArray="1,8"
+                                                 Stroke="{DynamicResource TextDimBrush}" Opacity="0.25"
+                                                 RenderTransformOrigin="0.5,0.5">
+                                            <Ellipse.RenderTransform>
+                                                <RotateTransform x:Name="OrbitRotation" />
+                                            </Ellipse.RenderTransform>
+                                            <Ellipse.Triggers>
+                                                <EventTrigger RoutedEvent="Loaded">
+                                                    <BeginStoryboard>
+                                                        <Storyboard RepeatBehavior="Forever">
+                                                            <DoubleAnimation Storyboard.TargetName="OrbitRotation"
+                                                                             Storyboard.TargetProperty="Angle"
+                                                                             From="0" To="360" Duration="0:0:20" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </EventTrigger>
+                                            </Ellipse.Triggers>
+                                        </Ellipse>
+
+                                        <!-- Layer 3: Outer ring (colored border) -->
+                                        <Ellipse Width="104" Height="104" StrokeThickness="2"
+                                                 Stroke="{Binding IsConnected, Converter={StaticResource ConnColorConv}}"
+                                                 Opacity="0.6" />
+
+                                        <!-- Layer 4: Inner ring (thicker accent) -->
+                                        <Ellipse Width="96" Height="96" StrokeThickness="2.5"
                                                  Stroke="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
-                                        <!-- Fill -->
-                                        <Ellipse Width="72" Height="72" Fill="{DynamicResource SurfaceBrush}" />
-                                        <!-- Icon -->
-                                        <TextBlock Text="»" FontSize="32" FontWeight="Bold"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                   Margin="2,0,0,2"
-                                                   Foreground="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
-                                        <!-- Spinner -->
-                                        <Ellipse x:Name="SpinnerRing" Width="86" Height="86"
-                                                 StrokeThickness="1.5" StrokeDashArray="3,6"
+
+                                        <!-- Layer 5: Button fill with subtle gradient -->
+                                        <Ellipse Width="88" Height="88">
+                                            <Ellipse.Fill>
+                                                <LinearGradientBrush StartPoint="0.3,0" EndPoint="0.7,1">
+                                                    <GradientStop Color="{DynamicResource SurfaceColor}" Offset="0" />
+                                                    <GradientStop Color="{DynamicResource CardColor}" Offset="1" />
+                                                </LinearGradientBrush>
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+
+                                        <!-- Layer 6: Power icon (proper vector) -->
+                                        <Viewbox Width="32" Height="32" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                 Margin="0,1,0,0">
+                                            <Canvas Width="24" Height="24">
+                                                <!-- Power stem -->
+                                                <Line X1="12" Y1="3" X2="12" Y2="12"
+                                                      Stroke="{Binding IsConnected, Converter={StaticResource ConnColorConv}}"
+                                                      StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                <!-- Power arc -->
+                                                <Path Stroke="{Binding IsConnected, Converter={StaticResource ConnColorConv}}"
+                                                      StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                                                    <Path.Data>
+                                                        <PathGeometry>
+                                                            <PathFigure StartPoint="7.5,7" IsClosed="False">
+                                                                <ArcSegment Point="16.5,7" Size="7,7"
+                                                                            SweepDirection="Clockwise" IsLargeArc="True" />
+                                                            </PathFigure>
+                                                        </PathGeometry>
+                                                    </Path.Data>
+                                                </Path>
+                                            </Canvas>
+                                        </Viewbox>
+
+                                        <!-- Layer 7: Connecting spinner (multi-ring) -->
+                                        <Ellipse x:Name="SpinnerRing" Width="110" Height="110"
+                                                 StrokeThickness="1.8" StrokeDashArray="4,6"
                                                  Stroke="{DynamicResource AccentBrush}"
                                                  Visibility="{Binding IsConnecting, Converter={StaticResource BoolToVis}}"
                                                  RenderTransformOrigin="0.5,0.5">
@@ -127,24 +203,105 @@
                                                         <Storyboard RepeatBehavior="Forever">
                                                             <DoubleAnimation Storyboard.TargetName="SpinnerRotation"
                                                                              Storyboard.TargetProperty="Angle"
-                                                                             From="0" To="360" Duration="0:0:1.8" />
+                                                                             From="0" To="360" Duration="0:0:1.5" />
                                                         </Storyboard>
                                                     </BeginStoryboard>
                                                 </EventTrigger>
                                             </Ellipse.Triggers>
                                         </Ellipse>
+
+                                        <!-- Layer 8: Second spinner (counter-rotate, wider dash) -->
+                                        <Ellipse Width="122" Height="122"
+                                                 StrokeThickness="1" StrokeDashArray="2,12"
+                                                 Stroke="{DynamicResource AccentBrush}" Opacity="0.5"
+                                                 Visibility="{Binding IsConnecting, Converter={StaticResource BoolToVis}}"
+                                                 RenderTransformOrigin="0.5,0.5">
+                                            <Ellipse.RenderTransform>
+                                                <RotateTransform x:Name="SpinnerRotation2" />
+                                            </Ellipse.RenderTransform>
+                                            <Ellipse.Triggers>
+                                                <EventTrigger RoutedEvent="Loaded">
+                                                    <BeginStoryboard>
+                                                        <Storyboard RepeatBehavior="Forever">
+                                                            <DoubleAnimation Storyboard.TargetName="SpinnerRotation2"
+                                                                             Storyboard.TargetProperty="Angle"
+                                                                             From="360" To="0" Duration="0:0:2.5" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </EventTrigger>
+                                            </Ellipse.Triggers>
+                                        </Ellipse>
+
+                                        <!-- Hover highlight (inside button fill) -->
+                                        <Ellipse x:Name="HoverOverlay" Width="88" Height="88"
+                                                 Opacity="0" IsHitTestVisible="False">
+                                            <Ellipse.Fill>
+                                                <RadialGradientBrush>
+                                                    <GradientStop Color="#18FFFFFF" Offset="0" />
+                                                    <GradientStop Color="Transparent" Offset="1" />
+                                                </RadialGradientBrush>
+                                            </Ellipse.Fill>
+                                        </Ellipse>
                                     </Grid>
+
+                                    <ControlTemplate.Triggers>
+                                        <!-- Hover: subtle highlight -->
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Trigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay"
+                                                                         Storyboard.TargetProperty="Opacity"
+                                                                         To="1" Duration="0:0:0.2" />
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </Trigger.EnterActions>
+                                            <Trigger.ExitActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetName="HoverOverlay"
+                                                                         Storyboard.TargetProperty="Opacity"
+                                                                         To="0" Duration="0:0:0.3" />
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </Trigger.ExitActions>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
                                 </ControlTemplate>
                             </Button.Template>
                         </Button>
                     </Grid>
 
-                    <!-- Status text -->
-                    <StackPanel HorizontalAlignment="Center" Margin="0,4,0,6">
-                        <TextBlock Text="{Binding ConnectionStatus}" 
-                                   FontSize="13.5" FontWeight="SemiBold"
-                                   HorizontalAlignment="Center"
-                                   Foreground="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
+                    <!-- Status area: pill badge + timer -->
+                    <StackPanel HorizontalAlignment="Center" Margin="0,6,0,6">
+                        <!-- Status pill -->
+                        <Border HorizontalAlignment="Center" CornerRadius="12" Padding="14,4,14,5"
+                                Margin="0,0,0,3">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background">
+                                        <Setter.Value>
+                                            <SolidColorBrush Color="{DynamicResource CardColor}" />
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Setter Property="BorderThickness" Value="1" />
+                                    <Setter Property="BorderBrush">
+                                        <Setter.Value>
+                                            <SolidColorBrush Color="{DynamicResource BorderColor}" />
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <!-- Status dot -->
+                                <Ellipse Width="7" Height="7" Margin="0,1,7,0" VerticalAlignment="Center"
+                                         Fill="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
+                                <TextBlock Text="{Binding ConnectionStatus}" 
+                                           FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{Binding IsConnected, Converter={StaticResource ConnColorConv}}" />
+                            </StackPanel>
+                        </Border>
+                        <!-- Timer -->
                         <TextBlock Text="{Binding ConnectionTime}" 
                                    FontSize="10.5" 
                                    FontFamily="{DynamicResource MonoFont}"
