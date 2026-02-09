@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using PaqetTunnel.Models;
 
@@ -79,8 +80,9 @@ public static class DnsService
     /// <summary>
     /// Benchmark a single DNS server by resolving multiple domains and returning average latency.
     /// Optionally binds to a specific local IP to bypass tunnel.
+    /// Uses CancellationToken for proper timeout (ReceiveAsync ignores socket timeout).
     /// </summary>
-    public static async Task<double> BenchmarkDnsAsync(string dnsServer, string[]? domains = null, string? localBindIp = null)
+    public static async Task<double> BenchmarkDnsAsync(string dnsServer, string[]? domains = null, string? localBindIp = null, int timeoutMs = 3000)
     {
         domains ??= new[] { "google.com", "cloudflare.com", "github.com" };
         var latencies = new List<double>();
@@ -89,10 +91,9 @@ public static class DnsService
         {
             try
             {
+                using var cts = new CancellationTokenSource(timeoutMs);
                 var sw = Stopwatch.StartNew();
                 using var udp = new UdpClient();
-                udp.Client.ReceiveTimeout = 3000;
-                udp.Client.SendTimeout = 1000;
 
                 // Bind to physical adapter to bypass tunnel routing
                 if (!string.IsNullOrEmpty(localBindIp) && IPAddress.TryParse(localBindIp, out var bindAddr))
@@ -102,11 +103,23 @@ public static class DnsService
                 var query = BuildDnsQuery(domain);
                 await udp.SendAsync(query, query.Length, endpoint);
 
-                var result = await udp.ReceiveAsync();
-                sw.Stop();
+                // ReceiveAsync with proper timeout via CancellationToken
+                var receiveTask = udp.ReceiveAsync();
+                var completed = await Task.WhenAny(receiveTask, Task.Delay(timeoutMs, cts.Token));
 
-                if (result.Buffer.Length > 0)
-                    latencies.Add(sw.Elapsed.TotalMilliseconds);
+                if (completed == receiveTask && receiveTask.IsCompletedSuccessfully)
+                {
+                    sw.Stop();
+                    var result = receiveTask.Result;
+                    if (result.Buffer.Length > 0)
+                        latencies.Add(sw.Elapsed.TotalMilliseconds);
+                    else
+                        latencies.Add(9999);
+                }
+                else
+                {
+                    latencies.Add(9999); // Timeout
+                }
             }
             catch
             {
@@ -114,7 +127,9 @@ public static class DnsService
             }
         }
 
-        return latencies.Count > 0 ? latencies.Average() : 9999;
+        // Only average successful results; if all failed return 9999
+        var good = latencies.Where(l => l < 9999).ToList();
+        return good.Count > 0 ? good.Average() : 9999;
     }
 
     /// <summary>

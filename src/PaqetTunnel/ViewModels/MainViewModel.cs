@@ -102,6 +102,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _customDnsSecondary = "";
     [ObservableProperty] private string _dnsStatus = "";
     [ObservableProperty] private string _activeDns = "";
+    [ObservableProperty] private string _dnsBenchmarkResults = "";
+    [ObservableProperty] private bool _isDnsBenchmarking;
 
     // Theme
     [ObservableProperty] private string _selectedTheme = "dark";
@@ -899,13 +901,29 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task BenchmarkDnsAsync()
     {
-        DnsStatus = "Benchmarking DNS...";
+        if (IsDnsBenchmarking) return;
+        IsDnsBenchmarking = true;
+        DnsStatus = "⏳ Benchmarking 18 providers...";
+        DnsBenchmarkResults = "";
         try
         {
-            // Benchmark outside tunnel by binding to physical adapter IP
             var results = await DnsService.BenchmarkAllAsync(LocalIp);
             var best = results.First();
-            DnsStatus = $"Fastest: {best.Name} ({best.AvgLatencyMs:F0}ms)";
+
+            // Build formatted results table
+            var lines = new System.Text.StringBuilder();
+            lines.AppendLine($"{"#",-3} {"Provider",-22} {"Latency",8}  {"Server",-15}");
+            lines.AppendLine(new string('─', 54));
+            int rank = 1;
+            foreach (var r in results)
+            {
+                var latStr = r.AvgLatencyMs >= 9999 ? "timeout" : $"{r.AvgLatencyMs:F0}ms";
+                var marker = rank == 1 ? " ★" : "";
+                lines.AppendLine($"{rank,-3} {r.Name,-22} {latStr,8}  {r.Primary,-15}{marker}");
+                rank++;
+            }
+            DnsBenchmarkResults = lines.ToString();
+            DnsStatus = $"★ Fastest: {best.Name} ({best.AvgLatencyMs:F0}ms)";
             Logger.Info($"DNS benchmark complete. Best: {best.Name} at {best.AvgLatencyMs:F1}ms");
 
             foreach (var r in results.Take(5))
@@ -914,7 +932,12 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             DnsStatus = $"Benchmark failed: {ex.Message}";
+            DnsBenchmarkResults = "";
             Logger.Error("DNS benchmark failed", ex);
+        }
+        finally
+        {
+            IsDnsBenchmarking = false;
         }
     }
 

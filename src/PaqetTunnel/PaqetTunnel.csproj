@@ -9,6 +9,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <RootNamespace>PaqetTunnel</RootNamespace>
     <AssemblyName>PaqetTunnel</AssemblyName>
+    <StartupObject>PaqetTunnel.Program</StartupObject>
     <ApplicationIcon>Assets\paqet.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Version>1.0.0</Version>

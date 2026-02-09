@@ -654,6 +654,7 @@
                                 </ComboBox>
                                 <Button Grid.Column="1" Content="⚡ Benchmark"
                                         Command="{Binding BenchmarkDnsCommand}"
+                                        IsEnabled="{Binding IsDnsBenchmarking, Converter={StaticResource InvBoolConv}}"
                                         Style="{DynamicResource GhostButton}"
                                         FontSize="10" Padding="8,4" Margin="6,0,0,0" />
                             </Grid>
@@ -662,6 +663,15 @@
                             <TextBlock Text="{Binding DnsStatus}" FontSize="9.5" Margin="0,2,0,4"
                                        Foreground="{DynamicResource AccentBrush}"
                                        Visibility="{Binding DnsStatus, Converter={StaticResource StringToVis}}" />
+                            <!-- DNS Benchmark Results Table -->
+                            <Border Background="{DynamicResource CardBg}" CornerRadius="6" Padding="8"
+                                    Margin="0,2,0,4"
+                                    Visibility="{Binding DnsBenchmarkResults, Converter={StaticResource StringToVis}}">
+                                <TextBlock Text="{Binding DnsBenchmarkResults}" 
+                                           FontFamily="Consolas" FontSize="9" 
+                                           Foreground="{DynamicResource TextDimBrush}"
+                                           TextWrapping="NoWrap" />
+                            </Border>
 
                             <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,4,0,10" />
 
