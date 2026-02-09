@@ -74,25 +74,25 @@ Paqet Tunnel has two modes: **SOCKS5 Proxy** (browser/app-level) and **Full Syst
 ```
                              SOCKS5 MODE
                     ┌──────────────────────────┐
-                    │  Browser / App            │
-                    │   ↓ proxy.pac             │
-                    │  SOCKS5 127.0.0.1:10800   │
+                    │  Browser / App           │
+                    │   ↓ proxy.pac            │
+                    │  SOCKS5 127.0.0.1:10800  │
                     └────────────┬─────────────┘
                                  │
                     FULL SYSTEM TUNNEL MODE
         ┌────────────────────────┼────────────────────────┐
         │  All System Traffic    │                        │
-        │   ↓                   │                        │
-        │  ┌──────────────┐     │                        │
-        │  │   WinTun     │     │                        │
-        │  │  10.0.85.2   │     │                        │
-        │  └──────┬───────┘     │                        │
-        │         ↓             │                        │
-        │  ┌──────────────┐     │                        │
-        │  │  tun2socks   │─────┘                        │
-        │  │  TUN→SOCKS5  │                              │
-        │  └──────────────┘                              │
-        └────────────────────────────────────────────────┘
+        │   ↓                    │                        │
+        │  ┌──────────────┐      │                        │
+        │  │   WinTun     │      │                        │
+        │  │  10.0.85.2   │      │                        │
+        │  └──────┬───────┘      │                        │
+        │         ↓              │                        │
+        │  ┌──────────────┐      │                        │
+        │  │  tun2socks   │──────┘                        │
+        │  │  TUN→SOCKS5  │                               │
+        │  └──────────────┘                               │
+        └─────────────────────────────────────────────────┘
                                  │
 ┌────────────────────────────────┼──────────────────────────────┐
 │  Windows Client                │                              │
@@ -117,7 +117,7 @@ Paqet Tunnel has two modes: **SOCKS5 Proxy** (browser/app-level) and **Full Syst
 │                    ┌───────────┴──────────┐                   │
 │                    │   paqet (server)     │                   │
 │                    │   KCP :8443          │──▶ Internet       │
-│                    └─────────────────────┘                    │
+│                    └──────────────────────┘                   │
 │                                                               │
 │   raw pcap (gopacket) — bypasses OS routing table             │
 │   iptables NOTRACK + RST DROP — stealth, no conntrack         │
