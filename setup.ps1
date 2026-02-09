@@ -42,6 +42,26 @@ $Script:LegacyInstallDir = "$env:ProgramFiles\Paqet Tunnel"
 $Script:SourceDir = "$env:USERPROFILE\PaqetTunnel"
 $Script:PaqetBin = 'paqet_windows_amd64.exe'
 
+# Self-update: if running from a local clone that's behind origin, pull and re-exec
+if (-not $env:PAQET_SETUP_REEXEC -and $Command -and (Test-Path "$env:USERPROFILE\PaqetTunnel\.git")) {
+    try {
+        $oldEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        Push-Location "$env:USERPROFILE\PaqetTunnel"
+        $selfHash = (& git hash-object setup.ps1 2>$null)
+        & git fetch --all --quiet 2>$null
+        & git reset --hard origin/master --quiet 2>$null
+        $newHash = (& git hash-object setup.ps1 2>$null)
+        Pop-Location
+        $ErrorActionPreference = $oldEAP
+        if ($selfHash -and $newHash -and ($selfHash -ne $newHash)) {
+            $env:PAQET_SETUP_REEXEC = '1'
+            & "$env:USERPROFILE\PaqetTunnel\setup.ps1" @PSBoundParameters
+            Remove-Item Env:\PAQET_SETUP_REEXEC -ErrorAction SilentlyContinue
+            exit $LASTEXITCODE
+        }
+    } catch {}
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # UI Helpers
 # ═══════════════════════════════════════════════════════════════════
@@ -479,26 +499,6 @@ function Ensure-Go {
     return $false
 }
 
-function Ensure-InnoSetup {
-    $iscc = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
-    if (Test-Path $iscc) { OK "Inno Setup 6"; return $iscc }
-    $iscc2 = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-    if (Test-Path $iscc2) { OK "Inno Setup 6"; return $iscc2 }
-
-    Step "Installing Inno Setup 6..."
-    if (Has-Command 'winget') {
-        & winget install --id JRSoftware.InnoSetup --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
-    } else {
-        $dl = "$env:TEMP\innosetup.exe"
-        if (-not (Download-File 'https://jrsoftware.org/download.php/is.exe' $dl)) { Err "InnoSetup download failed"; return $null }
-        Start-Process $dl -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES' -Wait
-        Remove-Item $dl -Force -ErrorAction SilentlyContinue
-    }
-    foreach ($p in @($iscc, $iscc2)) { if (Test-Path $p) { OK "Inno Setup installed"; return $p } }
-    Err "Inno Setup installation failed"
-    return $null
-}
-
 function Ensure-Npcap {
     # Check if Npcap is installed
     $npcapDll = "$env:SystemRoot\System32\Npcap\wpcap.dll"
@@ -548,11 +548,21 @@ function Ensure-MinGW {
         } catch {}
     }
 
-    # Fallback: download MinGW-w64
+    # Fallback: download MinGW-w64 (auto-detect latest)
     Step "Downloading MinGW-w64..."
-    $mingwUrl = 'https://github.com/niXman/mingw-builds-binaries/releases/download/14.2.0-rt_v12-rev1/x86_64-14.2.0-release-posix-seh-ucrt-rt_v12-rev1.7z'
-    # Try simpler zip approach
-    $mingwZipUrl = 'https://github.com/brechtsanders/winlibs_mingw/releases/download/14.2.0posix-19.1.7-12.0.0-ucrt-r3/winlibs-x86_64-posix-seh-gcc-14.2.0-mingw-w64ucrt-12.0.0-r3.zip'
+    $mingwZipUrl = $null
+    try {
+        $rel = Invoke-RestMethod 'https://api.github.com/repos/brechtsanders/winlibs_mingw/releases/latest' -ErrorAction SilentlyContinue
+        foreach ($a in $rel.assets) {
+            if ($a.name -like 'winlibs-x86_64-posix-seh-gcc-*-mingw-w64*-*.zip' -and $a.name -notlike '*.sha*') {
+                $mingwZipUrl = $a.browser_download_url
+                break
+            }
+        }
+    } catch {}
+    if (-not $mingwZipUrl) {
+        $mingwZipUrl = 'https://github.com/brechtsanders/winlibs_mingw/releases/download/15.2.0posix-13.0.0-msvcrt-r5/winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64msvcrt-13.0.0-r5.zip'
+    }
     $dl = "$env:TEMP\mingw.zip"
     if (-not (Download-File $mingwZipUrl $dl)) {
         Warn "MinGW download failed. Install GCC manually."
@@ -734,21 +744,6 @@ function Build-FromSource {
 
     OK "Build complete"
     return $true
-}
-
-function Build-Installer {
-    $iscc = Ensure-InnoSetup
-    if (-not $iscc) { return $null }
-
-    Step "Building installer..."
-    $issFile = "$Script:SourceDir\installer\PaqetSetup.iss"
-    if (-not (Test-Path $issFile)) { Err "Installer script not found"; return $null }
-
-    & $iscc $issFile 2>&1 | Out-Null
-    $setup = "$Script:SourceDir\installer\Output\PaqetTunnelSetup.exe"
-    if (Test-Path $setup) { OK "Installer built"; return $setup }
-    Err "Installer build failed"
-    return $null
 }
 
 # ═══════════════════════════════════════════════════════════════════
