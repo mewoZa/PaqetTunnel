@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════
 # Paqet Tunnel — Linux Server Setup
-# Usage: curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh -o /tmp/setup.sh && sudo bash /tmp/setup.sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh -o /tmp/pt.sh && sudo bash /tmp/pt.sh
 #    Or: ./setup.sh [install|update|uninstall|status|restart|logs|help] [options]
 #
 # Options:
@@ -618,7 +618,8 @@ show_server_info() {
     # Client one-liner
     if [[ -n "$CFG_KEY" && -n "$public_ip" && -n "$CFG_PORT" ]]; then
         echo ""
-        echo -e "  ${B}Windows client one-liner:${W}"
+        echo -e "  ${B}Windows client — copy & paste into PowerShell (Admin):${W}"
+        echo ""
         echo -e "  ${C}irm https://raw.githubusercontent.com/$REPO/master/setup.ps1 -o \$env:TEMP\\pt.ps1; & \$env:TEMP\\pt.ps1 install -Addr ${public_ip}:${CFG_PORT} -Key \"${CFG_KEY}\" -y${W}"
     fi
     echo ""
@@ -692,10 +693,10 @@ show_help() {
     dim "--yes              Skip confirmations"
     echo ""
     echo -e "  ${B}One-liner (interactive menu):${W}"
-    echo -e "    ${C}curl -fsSL https://raw.githubusercontent.com/$REPO/master/setup.sh -o /tmp/setup.sh && sudo bash /tmp/setup.sh${W}"
+    echo -e "    ${C}curl -fsSL https://raw.githubusercontent.com/$REPO/master/setup.sh -o /tmp/pt.sh && sudo bash /tmp/pt.sh${W}"
     echo ""
     echo -e "  ${B}Auto-install:${W}"
-    echo -e "    ${C}curl -fsSL https://raw.githubusercontent.com/$REPO/master/setup.sh | sudo bash -s -- install --addr 0.0.0.0:8443 --key YOUR_KEY --yes${W}"
+    echo -e "    ${C}curl -fsSL https://raw.githubusercontent.com/$REPO/master/setup.sh | sudo bash -s -- install --key YOUR_KEY --yes${W}"
     echo ""
 }
 

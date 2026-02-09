@@ -18,6 +18,32 @@
 
 ---
 
+## ⚡ Install
+
+### 1. Server (Linux VPS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh -o /tmp/pt.sh && sudo bash /tmp/pt.sh
+```
+
+### 2. Client (Windows — PowerShell as Admin)
+
+```powershell
+irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $env:TEMP\pt.ps1; & $env:TEMP\pt.ps1
+```
+
+### Auto Setup (with server details)
+
+After server install, it prints the exact Windows command with your IP and key — just copy and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $env:TEMP\pt.ps1; & $env:TEMP\pt.ps1 install -Addr YOUR_SERVER:8443 -Key "YOUR_KEY" -y
+```
+
+> **Both scripts show an interactive menu** — install, update, uninstall, status, all from one command.
+
+---
+
 ## ✨ Features
 
 | Feature | Description |
@@ -35,37 +61,6 @@
 | 🔁 **Auto-Reconnect** | Automatically recovers from connection drops |
 | 🩺 **Health Monitoring** | Periodic tunnel health checks with automatic recovery |
 | 🖥️ **System Tray** | Minimal footprint, always accessible from taskbar |
-
-## 🚀 Quick Start
-
-### Windows Client (One-liner)
-
-Open **PowerShell as Administrator** and run:
-
-```powershell
-irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $env:TEMP\pt.ps1; & $env:TEMP\pt.ps1
-```
-
-Or with server details for fully automatic setup:
-
-```powershell
-irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $env:TEMP\pt.ps1; & $env:TEMP\pt.ps1 install -Addr YOUR_SERVER:8443 -Key "YOUR_KEY" -y
-```
-
-### Linux Server
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh -o /tmp/setup.sh
-sudo bash /tmp/setup.sh
-```
-
-With a custom key (fully automatic):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh | sudo bash -s -- install --key "YOUR_KEY" --yes
-```
-
-> After server install, it prints the exact Windows one-liner with your server's IP and key — just copy and paste.
 
 ## 🏗️ Architecture
 
@@ -148,19 +143,17 @@ Built-in smart DNS with auto-benchmark to find the fastest provider:
 
 Use **Auto** mode to benchmark all providers and select the fastest, or pick your favorite manually.
 
-## 📋 CLI Commands
+## 📋 Setup Script Commands
 
-Both setup scripts (`setup.ps1` for Windows, `setup.sh` for Linux) support:
+Both scripts (`setup.ps1` and `setup.sh`) provide an **interactive menu** when run without arguments, or accept commands directly:
 
-### Commands
-
-| Command | Description |
-|---------|-------------|
-| `install` | Full installation with configuration |
-| `update` | Update paqet binary and app to latest version |
-| `uninstall` | Complete removal of all components |
-| `status` | Show current service/process status |
-| `help` | Display all available options |
+| Command | Windows | Linux | Description |
+|---------|---------|-------|-------------|
+| Menu | `& $env:TEMP\pt.ps1` | `sudo bash /tmp/pt.sh` | Interactive menu with all options |
+| Install | `& $env:TEMP\pt.ps1 install` | `sudo bash /tmp/pt.sh install` | Full installation |
+| Update | `& $env:TEMP\pt.ps1 update` | `sudo bash /tmp/pt.sh update` | Update to latest |
+| Uninstall | `& $env:TEMP\pt.ps1 uninstall` | `sudo bash /tmp/pt.sh uninstall` | Complete removal |
+| Status | `& $env:TEMP\pt.ps1 status` | `sudo bash /tmp/pt.sh status` | Show full status + config |
 
 ### Flags
 
@@ -215,10 +208,9 @@ PaqetTunnel/
 │   │   └── ...
 │   ├── Themes/               # 10 theme ResourceDictionaries
 │   └── Models/               # Data models & config
-├── setup.sh                  # Linux server installer
-├── setup.ps1                 # Windows client installer
-├── paqet/                    # Paqet submodule (Go)
-└── installer/                # InnoSetup scripts
+├── setup.sh                  # Linux server setup (interactive menu)
+├── setup.ps1                 # Windows client setup (interactive menu)
+└── paqet/                    # Paqet submodule (Go)
 ```
 
 ## 🔒 Security
