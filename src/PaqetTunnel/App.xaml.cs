@@ -36,7 +36,7 @@ public partial class App : Application
         // ── Ensure data directories exist ──────────────────────────
         AppPaths.EnsureDirectories();
 
-        // ── Initialize logger (read settings to check debug mode) ──
+        // ── Initialize logger (always on; debug mode adds verbose output) ──
         var configService = new ConfigService();
         var appSettings = configService.ReadAppSettings();
         Services.Logger.Initialize(appSettings.DebugMode);

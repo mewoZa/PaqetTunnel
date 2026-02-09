@@ -9,24 +9,31 @@ namespace PaqetTunnel.Services;
 /// </summary>
 public static class Logger
 {
-    private static bool _enabled;
+    private static bool _initialized;
+    private static bool _debugMode;
     private static string _logPath = "";
     private static readonly object _lock = new();
 
-    public static bool IsEnabled => _enabled;
+    public static bool IsEnabled => _initialized;
+    public static bool DebugEnabled => _debugMode;
     public static string LogPath => _logPath;
     public static string LogDir => Path.Combine(AppPaths.DataDir, "logs");
 
-    public static void Initialize(bool enabled)
+    /// <summary>
+    /// Initialize logger. Always logs INFO/WARN/ERROR. Debug messages only when debugMode=true.
+    /// </summary>
+    public static void Initialize(bool debugMode)
     {
-        _enabled = enabled;
-        if (!enabled) return;
+        _debugMode = debugMode;
+
+        if (_initialized) return; // Already initialized, just update debug flag
 
         try
         {
             Directory.CreateDirectory(LogDir);
             _logPath = Path.Combine(LogDir, $"paqettunnel_{DateTime.Now:yyyyMMdd_HHmmss}.log");
-            Write("INFO", $"=== PaqetTunnel Debug Log Started ===");
+            _initialized = true;
+            Write("INFO", $"=== PaqetTunnel Log Started (debug={debugMode}) ===");
             Write("INFO", $"Log file: {_logPath}");
             Write("INFO", $"DataDir: {AppPaths.DataDir}");
             Write("INFO", $"BinaryPath: {AppPaths.BinaryPath}");
@@ -36,12 +43,15 @@ public static class Logger
         }
         catch (Exception ex)
         {
-            _enabled = false;
+            _initialized = false;
             System.Diagnostics.Debug.WriteLine($"Logger init failed: {ex.Message}");
         }
     }
 
-    public static void Debug(string message) => Write("DEBUG", message);
+    /// <summary>Update debug mode at runtime without reinitializing.</summary>
+    public static void SetDebugMode(bool enabled) => _debugMode = enabled;
+
+    public static void Debug(string message) { if (_debugMode) Write("DEBUG", message); }
     public static void Info(string message) => Write("INFO", message);
     public static void Warn(string message) => Write("WARN", message);
     public static void Error(string message, Exception? ex = null)
@@ -52,7 +62,7 @@ public static class Logger
 
     private static void Write(string level, string message)
     {
-        if (!_enabled || string.IsNullOrEmpty(_logPath)) return;
+        if (!_initialized || string.IsNullOrEmpty(_logPath)) return;
         lock (_lock)
         {
             try

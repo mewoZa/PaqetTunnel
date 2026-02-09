@@ -132,21 +132,27 @@ public sealed class PaqetConfig
         return result;
     }
 
-    /// <summary>Replace a YAML value in context of a parent section.</summary>
+    /// <summary>Replace a YAML value in context of a parent section (first occurrence only).</summary>
     private static string ReplaceYamlValue(string yaml, string key, string newValue, string parentSection)
     {
-        // Find the parent section, then find the key within it
         var pattern = $@"({Regex.Escape(key)}\s*:\s*)" + "\"[^\"]*\"";
         var sectionIdx = yaml.IndexOf(parentSection + ":", StringComparison.Ordinal);
         if (sectionIdx < 0)
         {
             // Fallback: replace first occurrence anywhere
-            return Regex.Replace(yaml, pattern, $"$1\"{newValue}\"", RegexOptions.None, TimeSpan.FromSeconds(1));
+            var m = Regex.Match(yaml, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+            if (!m.Success) return yaml;
+            return yaml[..m.Index] + Regex.Replace(m.Value, pattern, $"$1\"{newValue}\"", RegexOptions.None, TimeSpan.FromSeconds(1)) + yaml[(m.Index + m.Length)..];
         }
 
-        // Find the key after the section header
+        // Find the key after the section header — replace only the first match
         var after = yaml[sectionIdx..];
-        var replaced = Regex.Replace(after, pattern, $"$1\"{newValue}\"", RegexOptions.None, TimeSpan.FromSeconds(1));
+        var match = Regex.Match(after, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+        if (!match.Success) return yaml;
+
+        var replaced = after[..match.Index]
+            + Regex.Replace(match.Value, pattern, $"$1\"{newValue}\"", RegexOptions.None, TimeSpan.FromSeconds(1))
+            + after[(match.Index + match.Length)..];
         return yaml[..sectionIdx] + replaced;
     }
 }

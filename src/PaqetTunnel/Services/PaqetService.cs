@@ -20,6 +20,8 @@ public sealed class PaqetService
     private const string GITHUB_API = "https://api.github.com/repos/hanselime/paqet/releases/latest";
     public const int SOCKS_PORT = 10800;
 
+    private Process? _paqetProcess;
+
     public string BinaryPath => AppPaths.BinaryPath;
     public string ConfigPath => AppPaths.PaqetConfigPath;
     public string PaqetDirectory => AppPaths.BinDir;
@@ -152,13 +154,27 @@ public sealed class PaqetService
             return (true, portUp ? "Already connected." : "Process running, waiting for port...");
         }
 
-        // Read config to log it
+        // Read and validate config before starting
         try
         {
             if (File.Exists(AppPaths.PaqetConfigPath))
             {
                 var configContent = File.ReadAllText(AppPaths.PaqetConfigPath);
                 Logger.Debug($"Config content:\n{configContent}");
+
+                // Validate critical config fields
+                var config = Models.PaqetConfig.FromYaml(configContent);
+                if (string.IsNullOrEmpty(config.ServerAddr))
+                    Logger.Warn("Config validation: server.addr is EMPTY — tunnel will fail to connect");
+                if (string.IsNullOrEmpty(config.Key))
+                    Logger.Warn("Config validation: transport.kcp.key is EMPTY — tunnel will fail to authenticate");
+                if (string.IsNullOrEmpty(config.Interface))
+                    Logger.Warn("Config validation: network.interface is EMPTY — tunnel may fail");
+                if (string.IsNullOrEmpty(config.Ipv4Addr))
+                    Logger.Warn("Config validation: network.ipv4.addr is EMPTY — tunnel may fail");
+                if (string.IsNullOrEmpty(config.RouterMac))
+                    Logger.Warn("Config validation: network.ipv4.router_mac is EMPTY — tunnel will fail");
+                Logger.Info($"Config: server={config.ServerAddr}, iface={config.Interface}, socks={config.SocksListen}");
             }
             else
             {
@@ -221,6 +237,7 @@ public sealed class PaqetService
                 return (false, "Failed to start process.");
             }
 
+            _paqetProcess = proc;
             var pid = proc.Id;
             Logger.Info($"Process started with PID {pid}");
 
@@ -309,6 +326,26 @@ public sealed class PaqetService
     public (bool Success, string Message) Stop()
     {
         Logger.Info("Stop() called");
+
+        // Clean up tracked process handle first
+        if (_paqetProcess != null)
+        {
+            try
+            {
+                if (!_paqetProcess.HasExited)
+                {
+                    Logger.Info($"Killing tracked paqet process PID {_paqetProcess.Id}");
+                    _paqetProcess.Kill(entireProcessTree: true);
+                    _paqetProcess.WaitForExit(3000);
+                }
+                _paqetProcess.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug($"Tracked process cleanup: {ex.Message}");
+            }
+            _paqetProcess = null;
+        }
 
         if (!IsRunning())
         {

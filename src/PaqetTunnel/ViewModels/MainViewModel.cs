@@ -29,6 +29,15 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _connectionTime = "";
     private DateTime _connectedSince;
 
+    // ── Reconnection & Health ─────────────────────────────────────
+
+    private bool _userRequestedConnect;   // true if user explicitly connected
+    private int _reconnectAttempts;
+    private const int MAX_RECONNECT_ATTEMPTS = 5;
+    private const int RECONNECT_BASE_DELAY_MS = 3000;
+    private int _healthCheckCounter;
+    private const int HEALTH_CHECK_INTERVAL = 10; // every 10 ticks (30s at 3s/tick)
+
     // ── Speed ─────────────────────────────────────────────────────
 
     [ObservableProperty] private string _downloadSpeed = "0 B/s";
@@ -223,6 +232,8 @@ public partial class MainViewModel : ObservableObject
     private async Task ConnectAsync()
     {
         IsConnecting = true;
+        _userRequestedConnect = true;
+        _reconnectAttempts = 0;
         ConnectionStatus = "Connecting...";
         StatusBarText = "Connecting...";
         Logger.Info($"ConnectAsync started (FullSystemTunnel={IsFullSystemTunnel})");
@@ -273,6 +284,21 @@ public partial class MainViewModel : ObservableObject
                     IsConnecting = false;
                 });
                 return;
+            }
+
+            // Step 1b: Verify actual tunnel connectivity (not just port binding)
+            Application.Current.Dispatcher.Invoke(() => ConnectionStatus = "Verifying tunnel...");
+            var tunnelIp = await PaqetService.CheckTunnelConnectivityAsync(8000);
+            if (tunnelIp == null)
+            {
+                Logger.Warn("Tunnel connectivity check failed — SOCKS5 port open but tunnel not working");
+                // Don't fail — the tunnel may need more time to establish, continue with warning
+                Logger.Info("Proceeding with connection despite connectivity check failure");
+            }
+            else
+            {
+                Logger.Info($"Tunnel verified — exit IP: {tunnelIp}");
+                Application.Current.Dispatcher.Invoke(() => PublicIp = tunnelIp);
             }
 
             // Step 2: If TUN mode, start tun2socks
@@ -338,13 +364,17 @@ public partial class MainViewModel : ObservableObject
             });
             // Flush DNS cache after connecting (clear stale ISP DNS entries)
             _ = Task.Run(() => TunService.FlushDnsCache());
-            _ = FetchPublicIpAsync();
+            // Fetch public IP through tunnel if not already fetched
+            if (tunnelIp == null)
+                _ = FetchPublicIpAsync();
         });
     }
 
     private async Task DisconnectAsync()
     {
         IsConnecting = true;
+        _userRequestedConnect = false; // User explicitly disconnected — no auto-reconnect
+        _reconnectAttempts = 0;
         ConnectionStatus = "Disconnecting...";
         Logger.Info("DisconnectAsync started");
 
@@ -529,8 +559,9 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            var ip = await Task.Run(() => PaqetService.RunCommand("curl", "-s --max-time 5 https://api.ipify.org"));
-            Application.Current.Dispatcher.Invoke(() => PublicIp = ip?.Trim() ?? "—");
+            // Fetch through SOCKS5 proxy to get the tunnel exit IP (not local IP)
+            var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
+            Application.Current.Dispatcher.Invoke(() => PublicIp = ip ?? "—");
         }
         catch { Application.Current.Dispatcher.Invoke(() => PublicIp = "unavailable"); }
     }
@@ -543,13 +574,12 @@ public partial class MainViewModel : ObservableObject
         settings.DebugMode = DebugMode;
         _configService.WriteAppSettings(settings);
 
-        if (DebugMode && !Logger.IsEnabled)
-            Logger.Initialize(true);
+        Logger.SetDebugMode(DebugMode);
 
         Logger.Info($"Debug mode toggled: {DebugMode}");
         StatusBarText = DebugMode
             ? $"Debug ON — {Logger.LogPath}"
-            : "Debug mode disabled (restart to stop logging).";
+            : "Debug mode disabled (verbose logging off).";
     }
 
     [RelayCommand]
@@ -769,6 +799,7 @@ public partial class MainViewModel : ObservableObject
                     if (portReady)
                     {
                         _connectedSince = DateTime.Now;
+                        _reconnectAttempts = 0;
                         _networkMonitor.Start();
                     }
                     else
@@ -777,6 +808,55 @@ public partial class MainViewModel : ObservableObject
                         DownloadSpeed = "0 B/s";
                         UploadSpeed = "0 B/s";
                         ConnectionTime = "";
+
+                        // Auto-reconnect if user had explicitly connected
+                        if (_userRequestedConnect && !IsConnecting && _reconnectAttempts < MAX_RECONNECT_ATTEMPTS)
+                        {
+                            _reconnectAttempts++;
+                            var delay = RECONNECT_BASE_DELAY_MS * _reconnectAttempts;
+                            Logger.Info($"Auto-reconnect attempt {_reconnectAttempts}/{MAX_RECONNECT_ATTEMPTS} in {delay}ms");
+                            ConnectionStatus = $"Reconnecting ({_reconnectAttempts}/{MAX_RECONNECT_ATTEMPTS})...";
+                            StatusBarText = ConnectionStatus;
+                            _ = Task.Run(async () =>
+                            {
+                                await Task.Delay(delay);
+                                if (_userRequestedConnect && !IsConnected && !IsConnecting)
+                                    Application.Current.Dispatcher.Invoke(async () => await ConnectInternalAsync());
+                            });
+                        }
+                        else if (_reconnectAttempts >= MAX_RECONNECT_ATTEMPTS)
+                        {
+                            Logger.Warn("Auto-reconnect exhausted all attempts");
+                            ConnectionStatus = "Disconnected (reconnect failed)";
+                            StatusBarText = "Reconnect failed — click to retry";
+                            _userRequestedConnect = false;
+                        }
+                    }
+                }
+
+                // Periodic health check — verify actual tunnel connectivity
+                if (IsConnected && !IsConnecting)
+                {
+                    _healthCheckCounter++;
+                    if (_healthCheckCounter >= HEALTH_CHECK_INTERVAL)
+                    {
+                        _healthCheckCounter = 0;
+                        _ = Task.Run(async () =>
+                        {
+                            var ip = await PaqetService.CheckTunnelConnectivityAsync(5000);
+                            if (ip == null && IsConnected)
+                            {
+                                Logger.Warn("Health check: tunnel connectivity lost (port open but no traffic)");
+                                Application.Current.Dispatcher.Invoke(() =>
+                                {
+                                    ConnectionStatus = "Connected (tunnel check failed)";
+                                });
+                            }
+                            else if (ip != null)
+                            {
+                                Logger.Debug($"Health check OK — exit IP: {ip}");
+                            }
+                        });
                     }
                 }
 
@@ -845,6 +925,60 @@ public partial class MainViewModel : ObservableObject
             Logger.Info("Reset WinHTTP proxy for TUN mode");
         }
         catch (Exception ex) { Logger.Debug($"WinHTTP reset: {ex.Message}"); }
+    }
+
+    /// <summary>Internal reconnect — doesn't reset user intent or attempt counter.</summary>
+    private async Task ConnectInternalAsync()
+    {
+        if (IsConnecting || IsConnected) return;
+        IsConnecting = true;
+        ConnectionStatus = $"Reconnecting ({_reconnectAttempts}/{MAX_RECONNECT_ATTEMPTS})...";
+        Logger.Info($"ConnectInternalAsync: reconnect attempt {_reconnectAttempts}");
+
+        await Task.Run(async () =>
+        {
+            if (!_paqetService.BinaryExists())
+            {
+                Application.Current.Dispatcher.Invoke(() => { IsConnecting = false; });
+                return;
+            }
+
+            var (success, message) = _paqetService.Start();
+            Logger.Info($"Reconnect Start(): success={success}, message={message}");
+
+            if (!success || !PaqetService.IsPortListening())
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    ConnectionStatus = $"Reconnect failed: {message}";
+                    IsConnecting = false;
+                });
+                return;
+            }
+
+            // If TUN mode was active, restart TUN
+            if (IsFullSystemTunnel && _tunService.AllBinariesExist())
+            {
+                var config = _configService.ReadPaqetConfig();
+                var tunResult = await _tunService.StartAsync(config.ServerHost);
+                if (!tunResult.Success)
+                    Logger.Warn($"TUN reconnect failed: {tunResult.Message}");
+            }
+
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                IsConnected = true;
+                _connectedSince = DateTime.Now;
+                _reconnectAttempts = 0;
+                var tunActive = _tunService.IsRunning();
+                TunnelMode = tunActive ? "Full System (TUN)" : "SOCKS5 Proxy";
+                ConnectionStatus = tunActive ? "Reconnected (Full System)" : "Reconnected";
+                StatusBarText = "Reconnected";
+                _networkMonitor.Start();
+                IsConnecting = false;
+            });
+            _ = Task.Run(() => TunService.FlushDnsCache());
+        });
     }
 
     public void Cleanup()

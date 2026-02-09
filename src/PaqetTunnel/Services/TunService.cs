@@ -68,7 +68,7 @@ public sealed class TunService
     }
 
     /// <summary>
-    /// Start the full system tunnel. Requires paqet SOCKS5 to be running on port 1080.
+    /// Start the full system tunnel. Requires paqet SOCKS5 to be running on port 10800.
     /// Steps: 1) Start tun2socks  2) Configure TUN adapter IP  3) Set routes  4) Set DNS
     /// </summary>
     public async Task<(bool Success, string Message)> StartAsync(string paqetServerIp)
