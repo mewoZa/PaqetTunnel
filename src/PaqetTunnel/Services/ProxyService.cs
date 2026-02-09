@@ -221,6 +221,9 @@ public sealed class ProxyService
                 {
                     RunReg($"add \"{INTERNET_SETTINGS_KEY}\" /v ProxyEnable /t REG_DWORD /d 0 /f");
                 }
+                // Clean up PAC file and AutoConfigURL
+                try { RunReg($"delete \"{INTERNET_SETTINGS_KEY}\" /v AutoConfigURL /f"); } catch { }
+                try { var pacPath = Path.Combine(AppPaths.DataDir, "proxy.pac"); if (File.Exists(pacPath)) File.Delete(pacPath); } catch { }
                 NotifyProxyChange();
             }
         }
@@ -236,10 +239,20 @@ public sealed class ProxyService
     {
         try
         {
+            // Check manual proxy
             var output = PaqetService.RunCommand("reg", $"query \"{INTERNET_SETTINGS_KEY}\" /v ProxyEnable");
-            return output.Contains("0x1");
+            if (output.Contains("0x1")) return true;
+
+            // Check our PAC file (auto-proxy)
+            var pacPath = Path.Combine(AppPaths.DataDir, "proxy.pac");
+            if (File.Exists(pacPath))
+            {
+                var autoUrl = PaqetService.RunCommand("reg", $"query \"{INTERNET_SETTINGS_KEY}\" /v AutoConfigURL");
+                if (autoUrl.Contains("proxy.pac")) return true;
+            }
         }
-        catch { return false; }
+        catch { }
+        return false;
     }
 
     public string? GetCurrentProxyServer()
@@ -261,24 +274,38 @@ public sealed class ProxyService
         {
             if (enable)
             {
-                var addr = $"127.0.0.1:{SOCKS_PORT}";
-                RunReg($"add \"{INTERNET_SETTINGS_KEY}\" /v ProxyEnable /t REG_DWORD /d 1 /f");
-                RunReg($"add \"{INTERNET_SETTINGS_KEY}\" /v ProxyServer /t REG_SZ /d \"socks={addr}\" /f");
-                RunReg($"add \"{INTERNET_SETTINGS_KEY}\" /v ProxyOverride /t REG_SZ /d \"localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.2?.*;172.30.*;172.31.*;192.168.*;<local>\" /f");
+                // Use PAC file for SOCKS5 — WinInet "socks=" is treated as SOCKS4 by Chromium browsers
+                var pacPath = Path.Combine(AppPaths.DataDir, "proxy.pac");
+                var pacContent = $@"function FindProxyForURL(url, host) {{
+    if (isPlainHostName(host) || shExpMatch(host, ""localhost"") ||
+        shExpMatch(host, ""127.*"") || shExpMatch(host, ""10.*"") ||
+        shExpMatch(host, ""192.168.*"") || shExpMatch(host, ""172.16.*"") ||
+        shExpMatch(host, ""*.local"")) return ""DIRECT"";
+    return ""SOCKS5 127.0.0.1:{SOCKS_PORT}; DIRECT"";
+}}";
+                File.WriteAllText(pacPath, pacContent);
+                var pacUrl = "file:///" + pacPath.Replace('\\', '/');
+
+                // Set PAC-based auto-proxy (browsers read this for SOCKS5 support)
+                RunReg($"add \"{INTERNET_SETTINGS_KEY}\" /v AutoConfigURL /t REG_SZ /d \"{pacUrl}\" /f");
+                // Disable manual proxy (PAC takes precedence anyway, but avoid conflict)
+                RunReg($"add \"{INTERNET_SETTINGS_KEY}\" /v ProxyEnable /t REG_DWORD /d 0 /f");
                 _weSetProxy = true;
             }
             else
             {
                 RunReg($"add \"{INTERNET_SETTINGS_KEY}\" /v ProxyEnable /t REG_DWORD /d 0 /f");
-                // Clear proxy server value to prevent stale entries confusing WinHTTP/services
                 try { RunReg($"delete \"{INTERNET_SETTINGS_KEY}\" /v ProxyServer /f"); } catch { }
                 try { RunReg($"delete \"{INTERNET_SETTINGS_KEY}\" /v ProxyOverride /f"); } catch { }
+                try { RunReg($"delete \"{INTERNET_SETTINGS_KEY}\" /v AutoConfigURL /f"); } catch { }
+                // Remove PAC file
+                try { var pacPath = Path.Combine(AppPaths.DataDir, "proxy.pac"); if (File.Exists(pacPath)) File.Delete(pacPath); } catch { }
                 if (_weSetProxy) _weSetProxy = false;
             }
 
             NotifyProxyChange();
             Logger.Info($"SetSystemProxy({enable}): success");
-            return (true, enable ? $"System proxy enabled (SOCKS5 :{SOCKS_PORT})" : "System proxy disabled.");
+            return (true, enable ? $"System proxy enabled (SOCKS5 PAC :{SOCKS_PORT})" : "System proxy disabled.");
         }
         catch (Exception ex)
         {
