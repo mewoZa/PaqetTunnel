@@ -821,7 +821,7 @@ public partial class MainViewModel : ObservableObject
                             {
                                 await Task.Delay(delay);
                                 if (_userRequestedConnect && !IsConnected && !IsConnecting)
-                                    Application.Current.Dispatcher.Invoke(async () => await ConnectInternalAsync());
+                                    await Application.Current.Dispatcher.InvokeAsync(async () => await ConnectInternalAsync());
                             });
                         }
                         else if (_reconnectAttempts >= MAX_RECONNECT_ATTEMPTS)
