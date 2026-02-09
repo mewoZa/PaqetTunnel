@@ -175,6 +175,7 @@ public partial class MainViewModel : ObservableObject
         var appSettings = _configService.ReadAppSettings();
         DebugMode = appSettings.DebugMode;
         IsFullSystemTunnel = appSettings.FullSystemTunnel;
+        TunnelMode = IsFullSystemTunnel ? "TUNNEL" : "SOCKS5";
         IsAutoConnect = appSettings.AutoConnectOnLaunch;
 
         // Check if paqet binary exists
@@ -220,7 +221,9 @@ public partial class MainViewModel : ObservableObject
         if (IsConnected)
         {
             _connectedSince = DateTime.Now;
-            ConnectionStatus = "Connected";
+            var tunActive = _tunService.IsRunning();
+            TunnelMode = tunActive ? "TUNNEL" : "SOCKS5";
+            ConnectionStatus = tunActive ? "Connected (Full System)" : "Connected";
             _networkMonitor.Start();
 
             // Restore LAN sharing if enabled (portproxy is volatile — lost on reboot)
@@ -248,7 +251,7 @@ public partial class MainViewModel : ObservableObject
 
         StatusBarText = NeedsSetup
             ? "Setup required — click Install"
-            : IsConnected ? "Connected" : "Ready";
+            : IsConnected ? (TunnelMode == "TUNNEL" ? "Full system tunnel active" : "Connected") : "Ready";
 
         Logger.Info($"StatusBarText={StatusBarText}");
 
@@ -429,7 +432,7 @@ public partial class MainViewModel : ObservableObject
             {
                 IsConnected = true;
                 _connectedSince = DateTime.Now;
-                TunnelMode = IsFullSystemTunnel ? "Full System (TUN)" : "SOCKS5 Proxy";
+                TunnelMode = IsFullSystemTunnel ? "TUNNEL" : "SOCKS5";
                 ConnectionStatus = IsFullSystemTunnel ? "Connected (Full System)" : "Connected";
                 StatusBarText = IsFullSystemTunnel ? "Full system tunnel active" : "Connected";
                 _networkMonitor.Start();
@@ -752,12 +755,14 @@ public partial class MainViewModel : ObservableObject
                 var config = _configService.ReadPaqetConfig();
                 var serverIp = config.ServerHost;
                 var result = await _tunService.StartAsync(serverIp, _configService.ReadAppSettings());
+                TunnelMode = result.Success ? "TUNNEL" : "SOCKS5";
                 ConnectionStatus = result.Success ? "Connected (Full System)" : $"SOCKS5 only — TUN: {result.Message}";
             }
             else
             {
                 ConnectionStatus = "Stopping TUN tunnel...";
                 await _tunService.StopAsync();
+                TunnelMode = "SOCKS5";
                 ConnectionStatus = "Connected";
             }
         }
@@ -1275,6 +1280,7 @@ public partial class MainViewModel : ObservableObject
                 {
                     IsConnected = portReady;
                     var tunActive = _tunService.IsRunning();
+                    TunnelMode = tunActive ? "TUNNEL" : "SOCKS5";
                     ConnectionStatus = portReady
                         ? (tunActive ? "Connected (Full System)" : "Connected")
                         : running ? "Port not ready" : "Disconnected";
@@ -1477,7 +1483,7 @@ public partial class MainViewModel : ObservableObject
                 _connectedSince = DateTime.Now;
                 _reconnectAttempts = 0;
                 var tunActive = _tunService.IsRunning();
-                TunnelMode = tunActive ? "Full System (TUN)" : "SOCKS5 Proxy";
+                TunnelMode = tunActive ? "TUNNEL" : "SOCKS5";
                 ConnectionStatus = tunActive ? "Reconnected (Full System)" : "Reconnected";
                 StatusBarText = "Reconnected";
                 _networkMonitor.Start();
