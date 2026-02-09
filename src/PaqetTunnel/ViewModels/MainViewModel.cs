@@ -178,6 +178,17 @@ public partial class MainViewModel : ObservableObject
             _connectedSince = DateTime.Now;
             ConnectionStatus = "Connected";
             _networkMonitor.Start();
+
+            // Restore LAN sharing if enabled (portproxy is volatile — lost on reboot)
+            if (IsProxySharingEnabled)
+            {
+                Logger.Info("Already connected — restoring LAN sharing...");
+                _ = Task.Run(() =>
+                {
+                    _proxyService.RestoreSharingIfEnabled();
+                    Logger.Info($"LAN sharing restored: portproxy={_proxyService.IsPortproxyActive()}");
+                });
+            }
         }
         else if (running)
         {
