@@ -37,20 +37,12 @@
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Viewbox Width="14" Height="14" Margin="0,0,7,0" VerticalAlignment="Center">
                             <Canvas Width="24" Height="24">
-                                <Line X1="12" Y1="3" X2="12" Y2="12"
+                                <Line X1="12" Y1="2" X2="12" Y2="11"
                                       Stroke="{DynamicResource AccentBrush}"
                                       StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
                                 <Path Stroke="{DynamicResource AccentBrush}"
-                                      StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
-                                    <Path.Data>
-                                        <PathGeometry>
-                                            <PathFigure StartPoint="7.5,7" IsClosed="False">
-                                                <ArcSegment Point="16.5,7" Size="7,7"
-                                                            SweepDirection="Clockwise" IsLargeArc="True" />
-                                            </PathFigure>
-                                        </PathGeometry>
-                                    </Path.Data>
-                                </Path>
+                                      StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M 7.5,8 A 6.5,6.5 0 1 0 16.5,8" />
                             </Canvas>
                         </Viewbox>
                         <TextBlock Text="Paqet Tunnel" FontSize="12.5" FontWeight="SemiBold" 
@@ -166,25 +158,16 @@
                                         </Ellipse>
 
                                         <!-- Layer 6: Power icon (proper vector) -->
-                                        <Viewbox Width="32" Height="32" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                 Margin="0,1,0,0">
+                                        <Viewbox Width="32" Height="32" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <Canvas Width="24" Height="24">
-                                                <!-- Power stem -->
-                                                <Line X1="12" Y1="3" X2="12" Y2="12"
+                                                <!-- Power stem (vertical line at top center) -->
+                                                <Line X1="12" Y1="2" X2="12" Y2="11"
                                                       Stroke="{Binding IsConnected, Converter={StaticResource ConnColorConv}}"
                                                       StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                                <!-- Power arc -->
+                                                <!-- Power arc (gap at top, opens upward) -->
                                                 <Path Stroke="{Binding IsConnected, Converter={StaticResource ConnColorConv}}"
-                                                      StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
-                                                    <Path.Data>
-                                                        <PathGeometry>
-                                                            <PathFigure StartPoint="7.5,7" IsClosed="False">
-                                                                <ArcSegment Point="16.5,7" Size="7,7"
-                                                                            SweepDirection="Clockwise" IsLargeArc="True" />
-                                                            </PathFigure>
-                                                        </PathGeometry>
-                                                    </Path.Data>
-                                                </Path>
+                                                      StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Data="M 7.5,8 A 6.5,6.5 0 1 0 16.5,8" />
                                             </Canvas>
                                         </Viewbox>
 
