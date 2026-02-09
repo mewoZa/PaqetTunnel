@@ -60,20 +60,33 @@ public static class DnsService
 
     /// <summary>
     /// Benchmark all DNS providers and return sorted by latency (fastest first).
-    /// Runs benchmarks in parallel for speed. Uses direct network (bypasses tunnel).
+    /// Tries UDP first; falls back to TCP DNS if all UDP results time out (TUN mode).
     /// </summary>
     public static async Task<List<DnsBenchmarkResult>> BenchmarkAllAsync(string? localBindIp = null)
     {
         var testDomains = new[] { "google.com", "cloudflare.com", "microsoft.com" };
 
-        // Run all benchmarks in parallel for speed
+        // Run all benchmarks in parallel (UDP)
         var tasks = Providers.Select(async kvp =>
         {
             var latency = await BenchmarkDnsAsync(kvp.Value.Primary, testDomains, localBindIp);
             return new DnsBenchmarkResult(kvp.Key, kvp.Value.Name, kvp.Value.Primary, kvp.Value.Secondary, latency);
         });
 
-        var results = await Task.WhenAll(tasks);
+        var results = (await Task.WhenAll(tasks)).ToList();
+
+        // If all UDP timed out (likely TUN mode routing UDP away), fall back to DNS-over-TCP
+        if (results.All(r => r.AvgLatencyMs >= 9999))
+        {
+            Logger.Info("DNS benchmark: all UDP timed out, falling back to TCP DNS...");
+            var tcpTasks = Providers.Select(async kvp =>
+            {
+                var latency = await BenchmarkDnsTcpAsync(kvp.Value.Primary, testDomains);
+                return new DnsBenchmarkResult(kvp.Key, kvp.Value.Name, kvp.Value.Primary, kvp.Value.Secondary, latency);
+            });
+            results = (await Task.WhenAll(tcpTasks)).ToList();
+        }
+
         return results.OrderBy(r => r.AvgLatencyMs).ToList();
     }
 
@@ -82,7 +95,7 @@ public static class DnsService
     /// Optionally binds to a specific local IP to bypass tunnel.
     /// Uses CancellationToken for proper timeout (ReceiveAsync ignores socket timeout).
     /// </summary>
-    public static async Task<double> BenchmarkDnsAsync(string dnsServer, string[]? domains = null, string? localBindIp = null, int timeoutMs = 3000)
+    public static async Task<double> BenchmarkDnsAsync(string dnsServer, string[]? domains = null, string? localBindIp = null, int timeoutMs = 5000)
     {
         domains ??= new[] { "google.com", "cloudflare.com", "github.com" };
         var latencies = new List<double>();
@@ -91,9 +104,9 @@ public static class DnsService
         {
             try
             {
-                using var cts = new CancellationTokenSource(timeoutMs);
                 var sw = Stopwatch.StartNew();
                 using var udp = new UdpClient();
+                udp.Client.ReceiveTimeout = timeoutMs;
 
                 // Bind to physical adapter to bypass tunnel routing
                 if (!string.IsNullOrEmpty(localBindIp) && IPAddress.TryParse(localBindIp, out var bindAddr))
@@ -103,9 +116,9 @@ public static class DnsService
                 var query = BuildDnsQuery(domain);
                 await udp.SendAsync(query, query.Length, endpoint);
 
-                // ReceiveAsync with proper timeout via CancellationToken
+                // ReceiveAsync with proper timeout via Task.Delay
                 var receiveTask = udp.ReceiveAsync();
-                var completed = await Task.WhenAny(receiveTask, Task.Delay(timeoutMs, cts.Token));
+                var completed = await Task.WhenAny(receiveTask, Task.Delay(timeoutMs));
 
                 if (completed == receiveTask && receiveTask.IsCompletedSuccessfully)
                 {
@@ -128,6 +141,81 @@ public static class DnsService
         }
 
         // Only average successful results; if all failed return 9999
+        var good = latencies.Where(l => l < 9999).ToList();
+        return good.Count > 0 ? good.Average() : 9999;
+    }
+
+    /// <summary>
+    /// Benchmark DNS server using TCP (port 53). Works through TUN/SOCKS tunnels
+    /// where UDP may be dropped or misrouted. DNS over TCP uses length-prefixed messages.
+    /// </summary>
+    public static async Task<double> BenchmarkDnsTcpAsync(string dnsServer, string[]? domains = null, int timeoutMs = 5000)
+    {
+        domains ??= new[] { "google.com", "cloudflare.com", "github.com" };
+        var latencies = new List<double>();
+
+        foreach (var domain in domains)
+        {
+            try
+            {
+                var sw = Stopwatch.StartNew();
+                using var tcp = new System.Net.Sockets.TcpClient();
+                var connectTask = tcp.ConnectAsync(IPAddress.Parse(dnsServer), 53);
+
+                if (await Task.WhenAny(connectTask, Task.Delay(timeoutMs)) != connectTask || !tcp.Connected)
+                {
+                    latencies.Add(9999);
+                    continue;
+                }
+
+                var stream = tcp.GetStream();
+                stream.ReadTimeout = timeoutMs;
+                stream.WriteTimeout = timeoutMs;
+
+                var query = BuildDnsQuery(domain);
+                // TCP DNS uses 2-byte length prefix
+                var lenPrefix = new byte[] { (byte)(query.Length >> 8), (byte)(query.Length & 0xFF) };
+                await stream.WriteAsync(lenPrefix, 0, 2);
+                await stream.WriteAsync(query, 0, query.Length);
+
+                // Read 2-byte response length
+                var respLen = new byte[2];
+                var readTask = stream.ReadAsync(respLen, 0, 2);
+                if (await Task.WhenAny(readTask, Task.Delay(timeoutMs)) == readTask && readTask.Result == 2)
+                {
+                    int responseLen = (respLen[0] << 8) | respLen[1];
+                    if (responseLen > 0 && responseLen < 65536)
+                    {
+                        var respBuf = new byte[responseLen];
+                        int totalRead = 0;
+                        while (totalRead < responseLen)
+                        {
+                            var readChunk = await stream.ReadAsync(respBuf, totalRead, responseLen - totalRead);
+                            if (readChunk == 0) break;
+                            totalRead += readChunk;
+                        }
+                        sw.Stop();
+                        if (totalRead == responseLen)
+                            latencies.Add(sw.Elapsed.TotalMilliseconds);
+                        else
+                            latencies.Add(9999);
+                    }
+                    else
+                    {
+                        latencies.Add(9999);
+                    }
+                }
+                else
+                {
+                    latencies.Add(9999);
+                }
+            }
+            catch
+            {
+                latencies.Add(9999);
+            }
+        }
+
         var good = latencies.Where(l => l < 9999).ToList();
         return good.Count > 0 ? good.Average() : 9999;
     }

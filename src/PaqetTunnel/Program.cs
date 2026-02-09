@@ -8,19 +8,11 @@ namespace PaqetTunnel;
 
 /// <summary>
 /// Custom entry point that supports CLI diagnostics mode.
-/// Usage:
-///   PaqetTunnel.exe                    — Start GUI (default)
-///   PaqetTunnel.exe --diag             — Run full diagnostic suite
-///   PaqetTunnel.exe --dns              — Benchmark all DNS providers
-///   PaqetTunnel.exe --ping             — Test tunnel connectivity
-///   PaqetTunnel.exe --speed            — Test download speed
-///   PaqetTunnel.exe --info             — Show system/config info
-///   PaqetTunnel.exe --help             — Show CLI help
+/// Built as Exe subsystem so stdout works from SSH/pipes.
+/// FreeConsole() is called immediately in GUI mode to hide the console.
 /// </summary>
 public static class Program
 {
-    [DllImport("kernel32.dll")] private static extern bool AttachConsole(int pid);
-    [DllImport("kernel32.dll")] private static extern bool AllocConsole();
     [DllImport("kernel32.dll")] private static extern bool FreeConsole();
 
     [STAThread]
@@ -32,7 +24,8 @@ public static class Program
             return;
         }
 
-        // Normal WPF startup
+        // GUI mode — detach from console immediately to avoid flash
+        FreeConsole();
         var app = new App();
         app.InitializeComponent();
         app.Run();
@@ -40,13 +33,9 @@ public static class Program
 
     private static void RunCli(string[] args)
     {
-        // Attach to parent console (if launched from cmd/powershell) or allocate new
-        if (!AttachConsole(-1))
-            AllocConsole();
-
         Console.WriteLine();
         Console.WriteLine("PaqetTunnel Diagnostics");
-        Console.WriteLine("═══════════════════════");
+        Console.WriteLine("=======================");
 
         AppPaths.EnsureDirectories();
         Logger.Initialize(true);
@@ -101,7 +90,7 @@ public static class Program
         await RunSpeed();
         Console.WriteLine("\n[4/4] System Info...");
         RunInfo();
-        Console.WriteLine("\n✓ Full diagnostic complete.");
+        Console.WriteLine("\n[OK] Full diagnostic complete.");
     }
 
     private static async Task RunDnsBenchmark()
@@ -118,7 +107,7 @@ public static class Program
         }
 
         Console.WriteLine($"{"#",-3} {"Provider",-24} {"Latency",8}  {"Server",-15}");
-        Console.WriteLine(new string('─', 56));
+        Console.WriteLine(new string('-', 56));
 
         var results = await DnsService.BenchmarkAllAsync(localIp);
         int rank = 1;
@@ -128,7 +117,7 @@ public static class Program
             var color = r.AvgLatencyMs < 50 ? ConsoleColor.Green :
                         r.AvgLatencyMs < 200 ? ConsoleColor.Yellow :
                         r.AvgLatencyMs < 9999 ? ConsoleColor.White : ConsoleColor.DarkGray;
-            var marker = rank == 1 ? " ★ FASTEST" : "";
+            var marker = rank == 1 ? " * FASTEST" : "";
 
             Console.ForegroundColor = color;
             Console.WriteLine($"{rank,-3} {r.Name,-24} {latStr,8}  {r.Primary,-15}{marker}");
@@ -152,40 +141,9 @@ public static class Program
 
         var serverAddr = config.ServerAddr ?? "";
         var host = serverAddr.Split(':')[0];
-        var port = serverAddr.Contains(':') ? int.Parse(serverAddr.Split(':')[1]) : 8443;
-
-        Console.WriteLine($"Pinging {host}:{port}...");
-
-        // TCP connect test
-        for (int i = 0; i < 5; i++)
-        {
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            try
-            {
-                using var tcp = new System.Net.Sockets.TcpClient();
-                var connectTask = tcp.ConnectAsync(host, port);
-                if (await Task.WhenAny(connectTask, Task.Delay(3000)) == connectTask && tcp.Connected)
-                {
-                    sw.Stop();
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine($"  [{i + 1}] TCP connect: {sw.ElapsedMilliseconds}ms");
-                }
-                else
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine($"  [{i + 1}] TCP connect: timeout");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"  [{i + 1}] TCP connect: {ex.Message}");
-            }
-            Console.ResetColor();
-        }
 
         // SOCKS5 proxy check
-        Console.Write("\nSOCKS5 proxy (127.0.0.1:10800): ");
+        Console.Write("SOCKS5 proxy (127.0.0.1:10800): ");
         try
         {
             using var tcp = new System.Net.Sockets.TcpClient();
@@ -193,20 +151,82 @@ public static class Program
             if (await Task.WhenAny(connectTask, Task.Delay(2000)) == connectTask && tcp.Connected)
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("listening ✓");
+                Console.WriteLine("listening [OK]");
             }
             else
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("not listening ✗");
+                Console.WriteLine("not listening [FAIL]");
             }
         }
         catch
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("not listening ✗");
+            Console.WriteLine("not listening [FAIL]");
         }
         Console.ResetColor();
+
+        // HTTP connectivity through tunnel (SOCKS5 proxy)
+        Console.WriteLine($"\nTunnel connectivity to {host}:");
+        var testUrls = new[]
+        {
+            ("HTTP via tunnel", "http://httpbin.org/ip"),
+            ("HTTPS via tunnel", "https://api.ipify.org?format=json"),
+        };
+
+        foreach (var (name, url) in testUrls)
+        {
+            Console.Write($"  {name}: ");
+            try
+            {
+                var handler = new System.Net.Http.HttpClientHandler
+                {
+                    Proxy = new System.Net.WebProxy("socks5://127.0.0.1:10800"),
+                    UseProxy = true
+                };
+                using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var resp = await http.GetStringAsync(url);
+                sw.Stop();
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"{sw.ElapsedMilliseconds}ms - {resp.Trim().Substring(0, Math.Min(resp.Trim().Length, 60))}");
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                var msg = ex.InnerException?.Message ?? ex.Message;
+                Console.WriteLine($"failed - {msg}");
+            }
+            Console.ResetColor();
+        }
+
+        // ICMP ping to server
+        Console.WriteLine($"\nICMP ping to {host}:");
+        try
+        {
+            using var ping = new System.Net.NetworkInformation.Ping();
+            for (int i = 0; i < 5; i++)
+            {
+                var reply = await ping.SendPingAsync(host, 3000);
+                if (reply.Status == System.Net.NetworkInformation.IPStatus.Success)
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  [{i + 1}] {reply.RoundtripTime}ms");
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"  [{i + 1}] {reply.Status}");
+                }
+                Console.ResetColor();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"  ICMP failed: {ex.Message}");
+            Console.ResetColor();
+        }
     }
 
     private static async Task RunSpeed()
@@ -217,6 +237,37 @@ public static class Program
             ("Cloudflare 1MB", "https://speed.cloudflare.com/__down?bytes=1000000"),
         };
 
+        // Test through SOCKS5 proxy (tunnel)
+        Console.WriteLine("Through tunnel (SOCKS5):");
+        foreach (var (name, url) in urls)
+        {
+            Console.Write($"  {name}: ");
+            try
+            {
+                var handler = new System.Net.Http.HttpClientHandler
+                {
+                    Proxy = new System.Net.WebProxy("socks5://127.0.0.1:10800"),
+                    UseProxy = true
+                };
+                using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var data = await http.GetByteArrayAsync(url);
+                sw.Stop();
+
+                double mbps = (data.Length * 8.0 / 1_000_000) / sw.Elapsed.TotalSeconds;
+                Console.ForegroundColor = mbps > 10 ? ConsoleColor.Green : mbps > 2 ? ConsoleColor.Yellow : ConsoleColor.Red;
+                Console.WriteLine($"{mbps:F1} Mbps ({data.Length / 1024}KB in {sw.ElapsedMilliseconds}ms)");
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"failed: {ex.InnerException?.Message ?? ex.Message}");
+            }
+            Console.ResetColor();
+        }
+
+        // Test direct (no proxy)
+        Console.WriteLine("\nDirect (no tunnel):");
         foreach (var (name, url) in urls)
         {
             Console.Write($"  {name}: ");
@@ -234,7 +285,7 @@ public static class Program
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"failed: {ex.Message}");
+                Console.WriteLine($"failed: {ex.InnerException?.Message ?? ex.Message}");
             }
             Console.ResetColor();
         }
@@ -247,10 +298,10 @@ public static class Program
         var settings = configService.ReadAppSettings();
 
         Console.WriteLine($"\n  Install:    {AppPaths.DataDir}");
-        Console.WriteLine($"  Binary:     {(System.IO.File.Exists(AppPaths.BinaryPath) ? "✓" : "✗")} {AppPaths.BinaryPath}");
-        Console.WriteLine($"  Config:     {(System.IO.File.Exists(AppPaths.PaqetConfigPath) ? "✓" : "✗")} {AppPaths.PaqetConfigPath}");
-        Console.WriteLine($"  Tun2socks:  {(System.IO.File.Exists(AppPaths.Tun2SocksPath) ? "✓" : "✗")} {AppPaths.Tun2SocksPath}");
-        Console.WriteLine($"  WinTun:     {(System.IO.File.Exists(AppPaths.WintunDllPath) ? "✓" : "✗")} {AppPaths.WintunDllPath}");
+        Console.WriteLine($"  Binary:     {(System.IO.File.Exists(AppPaths.BinaryPath) ? "[OK]" : "[--]")} {AppPaths.BinaryPath}");
+        Console.WriteLine($"  Config:     {(System.IO.File.Exists(AppPaths.PaqetConfigPath) ? "[OK]" : "[--]")} {AppPaths.PaqetConfigPath}");
+        Console.WriteLine($"  Tun2socks:  {(System.IO.File.Exists(AppPaths.Tun2SocksPath) ? "[OK]" : "[--]")} {AppPaths.Tun2SocksPath}");
+        Console.WriteLine($"  WinTun:     {(System.IO.File.Exists(AppPaths.WintunDllPath) ? "[OK]" : "[--]")} {AppPaths.WintunDllPath}");
 
         if (config != null)
         {
@@ -272,7 +323,7 @@ public static class Program
         if (System.IO.Directory.Exists(legacyDir))
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"\n  ⚠ Legacy install found: {legacyDir}");
+            Console.WriteLine($"\n  [!] Legacy install found: {legacyDir}");
             Console.WriteLine("    Run 'setup.ps1 update' to clean up.");
             Console.ResetColor();
         }
