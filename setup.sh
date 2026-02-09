@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════
 # Paqet Tunnel — Linux Server Setup
-# Usage: curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh | sudo bash
-#    Or: ./setup.sh [install|update|uninstall|status] [options]
+# Usage: curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh -o /tmp/setup.sh && sudo bash /tmp/setup.sh
+#    Or: ./setup.sh [install|update|uninstall|status|restart|logs|help] [options]
 #
 # Options:
 #   --addr <ip:port>   Bind address (default: 0.0.0.0:8443)
@@ -682,10 +682,10 @@ show_help() {
     dim "--build            Build from source (default: download release)"
     dim "--yes              Skip confirmations"
     echo ""
-    echo -e "  ${B}One-liner:${W}"
-    echo -e "    ${C}curl -fsSL https://raw.githubusercontent.com/$REPO/master/setup.sh | sudo bash -s -- install${W}"
+    echo -e "  ${B}One-liner (interactive menu):${W}"
+    echo -e "    ${C}curl -fsSL https://raw.githubusercontent.com/$REPO/master/setup.sh -o /tmp/setup.sh && sudo bash /tmp/setup.sh${W}"
     echo ""
-    echo -e "  ${B}Auto-configure:${W}"
+    echo -e "  ${B}Auto-install:${W}"
     echo -e "    ${C}curl -fsSL https://raw.githubusercontent.com/$REPO/master/setup.sh | sudo bash -s -- install --addr 0.0.0.0:8443 --key YOUR_KEY --yes${W}"
     echo ""
 }

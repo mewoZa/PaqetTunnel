@@ -55,13 +55,14 @@ irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $en
 ### Linux Server
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh | sudo bash -s install
+curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh -o /tmp/setup.sh
+sudo bash /tmp/setup.sh
 ```
 
-With a custom key:
+With a custom key (fully automatic):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh | sudo bash -s install --key "YOUR_KEY" --yes
+curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh | sudo bash -s -- install --key "YOUR_KEY" --yes
 ```
 
 > After server install, it prints the exact Windows one-liner with your server's IP and key — just copy and paste.
