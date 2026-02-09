@@ -148,7 +148,10 @@ function Menu {
 # ═══════════════════════════════════════════════════════════════════
 
 function Get-Arch {
-    $a = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
+    try {
+        $a = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
+    } catch { $a = $env:PROCESSOR_ARCHITECTURE }
+    if (-not $a) { $a = 'x64' }
     switch -Wildcard ($a) {
         '*arm64*' { 'arm64' }
         '*arm*'   { 'arm' }
@@ -850,11 +853,14 @@ function Do-Update {
     Pop-Location
 
     if ($local -eq $remote -and -not $Force) {
-        OK "Already up to date ($($local.Substring(0,7)))"
+        $tag = if ($local) { $local.Substring(0,7) } else { '?' }
+        OK "Already up to date ($tag)"
         return
     }
 
-    Step "Updating $($local.Substring(0,7)) → $($remote.Substring(0,7))..."
+    $localTag = if ($local) { $local.Substring(0,7) } else { '?' }
+    $remoteTag = if ($remote) { $remote.Substring(0,7) } else { '?' }
+    Step "Updating $localTag → $remoteTag..."
     WL ""
 
     if (-not (Build-FromSource)) { return }
@@ -869,7 +875,8 @@ function Do-Update {
         $src = "$pubDir\$f"
         if (Test-Path $src) { Copy-Item $src "$Script:InstallDir\bin\$f" -Force }
     }
-    OK "Updated to $($remote.Substring(0,7))"
+    $updTag = if ($remote) { $remote.Substring(0,7) } else { 'latest' }
+    OK "Updated to $updTag"
 
     $Script:AppVersion | Out-File "$Script:InstallDir\.version" -NoNewline
     WL ""
@@ -949,7 +956,8 @@ function Do-Status {
 
     if (Test-Path "$Script:DataDir\.commit") {
         $sha = (Get-Content "$Script:DataDir\.commit" -Raw).Trim()
-        W "  Build     "; WL $sha.Substring(0, [Math]::Min(7, $sha.Length)) DarkGray
+        $shaTag = if ($sha -and $sha.Length -ge 7) { $sha.Substring(0,7) } else { $sha }
+        W "  Build     "; WL $shaTag DarkGray
     }
 
     # Check processes
