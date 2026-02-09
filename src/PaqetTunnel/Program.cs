@@ -412,9 +412,24 @@ public static class Program
         }
 
         var subCmd = args.Length > 0 ? args[0].ToLower().TrimStart('-') : "status";
-
         var sshService = new SshService();
-        Console.WriteLine($"\n  Connecting to {settings.ServerSshUser}@{settings.ServerSshHost}...");
+
+        Console.WriteLine($"\n  Host: {settings.ServerSshUser}@{settings.ServerSshHost}:{settings.ServerSshPort}");
+        Console.WriteLine($"  Auth: {(string.IsNullOrEmpty(settings.ServerSshKeyPath) ? "password" : "key (" + settings.ServerSshKeyPath + ")")}");
+
+        // Test connection uses a separate path
+        if (subCmd == "test")
+        {
+            Console.WriteLine("  Testing SSH connection...\n");
+            var (ok, msg) = await sshService.TestConnectionAsync(settings);
+            Console.ForegroundColor = ok ? ConsoleColor.Green : ConsoleColor.Red;
+            Console.Write(ok ? "  [OK] " : "  [ERR] ");
+            Console.ResetColor();
+            Console.WriteLine(msg.Replace("\n", "\n  "));
+            return;
+        }
+
+        Console.WriteLine($"  Command: {subCmd}\n");
 
         var (success, output) = await sshService.RunServerCommandAsync(settings, subCmd, p =>
         {
@@ -460,6 +475,7 @@ Client Commands:
   --update      Check and install client update
 
 Server Commands:
+  --server test        Test SSH connection
   --server status      Show server status
   --server install     Install paqet server
   --server update      Update paqet server

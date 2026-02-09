@@ -1574,6 +1574,7 @@ public partial class MainViewModel : ObservableObject
     public void Cleanup()
     {
         Logger.LogAdded -= OnLogAdded;
+        _networkMonitor.SpeedUpdated -= OnSpeedUpdated;
         _statusTimer.Stop();
         _statusTimer.Dispose();
         _networkMonitor.Stop();
@@ -1676,7 +1677,8 @@ public partial class MainViewModel : ObservableObject
         {
             var (ok, output) = await _sshService.RunServerCommandAsync(
                 GetServerSettings(), command,
-                msg => Application.Current?.Dispatcher?.Invoke(() => ServerOutput = msg));
+                msg => Application.Current?.Dispatcher?.BeginInvoke(
+                    new Action(() => { ServerStatus = msg; })));
             ServerStatus = ok ? "Done" : "Failed";
             ServerOutput = output;
         }

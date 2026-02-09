@@ -1114,9 +1114,25 @@
                                 </Grid>
 
                                 <!-- Server Output -->
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,4"
+                                            Visibility="{Binding IsServerBusy, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="⏳" FontSize="10" Margin="0,0,4,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding ServerStatus}" FontSize="10"
+                                               Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                                </StackPanel>
                                 <TextBlock Text="{Binding ServerStatus}" FontSize="10" Margin="0,0,0,4"
                                            Foreground="{DynamicResource AccentBrush}"
-                                           Visibility="{Binding ServerStatus, Converter={StaticResource StringToVis}}" />
+                                           Visibility="{Binding IsServerBusy, Converter={StaticResource InvBoolToVis}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ServerStatus}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                                 <Border Background="#0d1117" CornerRadius="4" Padding="8" Margin="0,0,0,4"
                                         MaxHeight="150"
                                         Visibility="{Binding ServerOutput, Converter={StaticResource StringToVis}}">
