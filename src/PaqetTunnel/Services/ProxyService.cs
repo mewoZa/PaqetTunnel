@@ -459,7 +459,14 @@ public sealed class ProxyService
         {
             if (enable)
             {
-                var exePath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
+                // Always use the canonical AppData path (not current process path)
+                // to ensure auto-start works regardless of where the exe was launched from
+                var exePath = Path.Combine(AppPaths.DataDir, "PaqetTunnel.exe");
+                if (!File.Exists(exePath))
+                {
+                    // Fallback to current process path if canonical doesn't exist
+                    exePath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
+                }
                 if (string.IsNullOrEmpty(exePath))
                     return (false, "Cannot determine executable path.");
 

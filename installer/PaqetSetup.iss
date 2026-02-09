@@ -25,7 +25,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={autopf}\{#MyAppName}
+DefaultDirName={localappdata}\PaqetTunnel
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 LicenseFile=..\LICENSE
@@ -49,20 +49,19 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "autostart"; Description: "Start automatically with Windows"; GroupDescription: "Other options:"
 
 [Files]
-; Main application binary
+; Main application binary — installed to {app} = %LOCALAPPDATA%\PaqetTunnel
 Source: "..\publish\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 ; Bundle paqet binary if present (optional — app will auto-download if missing)
-Source: "..\publish\{#PaqetBinary}"; DestDir: "{localappdata}\PaqetTunnel\bin"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\publish\{#PaqetBinary}"; DestDir: "{app}\bin"; Flags: ignoreversion skipifsourcedoesntexist
 ; TUN binaries (optional — app will auto-download if missing)
-Source: "..\publish\{#Tun2Socks}"; DestDir: "{localappdata}\PaqetTunnel\bin"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\publish\{#WintunDll}"; DestDir: "{localappdata}\PaqetTunnel\bin"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\publish\{#Tun2Socks}"; DestDir: "{app}\bin"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\publish\{#WintunDll}"; DestDir: "{app}\bin"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Dirs]
-; Create data directories under %LOCALAPPDATA%\PaqetTunnel
-Name: "{localappdata}\PaqetTunnel"
-Name: "{localappdata}\PaqetTunnel\bin"
-Name: "{localappdata}\PaqetTunnel\config"
-Name: "{localappdata}\PaqetTunnel\logs"
+; Create subdirectories under {app} = %LOCALAPPDATA%\PaqetTunnel
+Name: "{app}\bin"
+Name: "{app}\config"
+Name: "{app}\logs"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -70,7 +69,8 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "PaqetTunnel"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: autostart
+; Clean legacy registry autostart if present (app uses Task Scheduler instead)
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "PaqetTunnel"; Flags: deletevalue
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
@@ -85,8 +85,8 @@ Filename: "taskkill"; Parameters: "/IM {#MyAppExeName} /F"; Flags: runhidden; Ru
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
-; Clean up data directory on uninstall
-Type: filesandordirs; Name: "{localappdata}\PaqetTunnel"
+; Also clean legacy Program Files install (pre-v1.1)
+Type: filesandordirs; Name: "{autopf}\Paqet Tunnel"
 ; Also clean old pre-rename data directory
 Type: filesandordirs; Name: "{localappdata}\PaqetManager"
 
@@ -95,6 +95,7 @@ Type: filesandordirs; Name: "{localappdata}\PaqetManager"
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
+  LegacyDir: String;
 begin
   if CurStep = ssInstall then
   begin
@@ -106,6 +107,15 @@ begin
     Sleep(500);
     // Clean old autostart registry entry from pre-rename
     RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', 'PaqetManager');
+    // Clean legacy Program Files installation (pre-v1.1)
+    LegacyDir := ExpandConstant('{autopf}\Paqet Tunnel');
+    if DirExists(LegacyDir) then
+    begin
+      // Run legacy uninstaller if present
+      if FileExists(LegacyDir + '\unins000.exe') then
+        Exec(LegacyDir + '\unins000.exe', '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      DelTree(LegacyDir, True, True, True);
+    end;
   end;
   if CurStep = ssPostInstall then
   begin

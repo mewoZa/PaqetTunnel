@@ -36,8 +36,9 @@ $Script:ApiUrl = "https://api.github.com/repos/$($Script:Repo)"
 $Script:UpstreamApiUrl = "https://api.github.com/repos/$($Script:UpstreamRepo)"
 $Script:AppName = 'Paqet Tunnel'
 $Script:ExeName = 'PaqetTunnel.exe'
-$Script:InstallDir = "$env:ProgramFiles\Paqet Tunnel"
+$Script:InstallDir = "$env:LOCALAPPDATA\PaqetTunnel"
 $Script:DataDir = "$env:LOCALAPPDATA\PaqetTunnel"
+$Script:LegacyInstallDir = "$env:ProgramFiles\Paqet Tunnel"
 $Script:SourceDir = "$env:USERPROFILE\PaqetTunnel"
 $Script:PaqetBin = 'paqet_windows_amd64.exe'
 
@@ -157,6 +158,23 @@ function Get-InstalledVersion {
     if (Test-Path $vf) { return (Get-Content $vf -Raw).Trim() }
     if (Is-Installed) { return "unknown" }
     return $null
+}
+
+function Clean-LegacyInstall {
+    # Remove old Program Files installation (pre-v1.1 installed there)
+    if (Test-Path $Script:LegacyInstallDir) {
+        Step "Removing legacy install from $Script:LegacyInstallDir..."
+        # Run InnoSetup uninstaller if present
+        $uninst = "$Script:LegacyInstallDir\unins000.exe"
+        if (Test-Path $uninst) {
+            Start-Process $uninst -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -ErrorAction SilentlyContinue
+        }
+        Remove-Item $Script:LegacyInstallDir -Recurse -Force -ErrorAction SilentlyContinue
+        OK "Legacy install removed"
+    }
+    # Clean legacy registry autostart (InnoSetup used HKCU\Run)
+    $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+    Remove-ItemProperty -Path $regPath -Name 'PaqetTunnel' -ErrorAction SilentlyContinue
 }
 
 function Has-Command($name) {
@@ -748,6 +766,9 @@ function Do-Install {
     Add-DefenderExclusions
     WL ""
 
+    # Clean legacy Program Files installation if present
+    Clean-LegacyInstall
+
     # Check and install dependencies
     Step "Checking dependencies..."
     WL ""
@@ -775,28 +796,27 @@ function Do-Install {
         return
     }
 
-    # Build and run installer
-    $setup = Build-Installer
-    if ($setup) {
-        Step "Installing..."
-        Stop-App
-        Start-Process $setup -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MERGETASKS=desktopicon' -Wait
-        OK "Installed to $Script:InstallDir"
-    } else {
-        # Fallback: manual install
-        Step "Installing manually (no InnoSetup)..."
-        Stop-App
-        New-Item -Path $Script:InstallDir -ItemType Directory -Force | Out-Null
-        Copy-Item "$Script:SourceDir\publish\*" $Script:InstallDir -Recurse -Force
-        OK "Installed to $Script:InstallDir"
-
-        # Create shortcuts
-        Create-Shortcuts
+    # Install directly to AppData (single unified location)
+    Step "Installing..."
+    Stop-App
+    New-Item -Path $Script:InstallDir -ItemType Directory -Force | Out-Null
+    # Copy exe to install root, helper binaries to bin/
+    $pubDir = "$Script:SourceDir\publish"
+    Copy-Item "$pubDir\$Script:ExeName" "$Script:InstallDir\$Script:ExeName" -Force
+    New-Item -Path "$Script:InstallDir\bin" -ItemType Directory -Force | Out-Null
+    foreach ($f in @($Script:PaqetBin, 'tun2socks.exe', 'wintun.dll')) {
+        $src = "$pubDir\$f"
+        if (Test-Path $src) { Copy-Item $src "$Script:InstallDir\bin\$f" -Force }
     }
+    OK "Installed to $Script:InstallDir"
+    Create-Shortcuts
 
     # Save version
-    New-Item -Path $Script:DataDir -ItemType Directory -Force | Out-Null
-    $Script:AppVersion | Out-File "$Script:DataDir\.version" -NoNewline
+    $Script:AppVersion | Out-File "$Script:InstallDir\.version" -NoNewline
+
+    # Reserve SOCKS5 port (same as InnoSetup post-install)
+    & netsh int ipv4 add excludedportrange protocol=tcp startport=$SocksPort numberofports=1 2>&1 | Out-Null
+    & netsh int ipv4 add excludedportrange protocol=udp startport=$SocksPort numberofports=1 2>&1 | Out-Null
 
     # Configure if args provided
     if ($Addr -or $Key) { Do-Configure }
@@ -821,8 +841,11 @@ function Do-Update {
 
     Require-Admin
 
+    # Clean legacy Program Files installation if present
+    Clean-LegacyInstall
+
     Push-Location $Script:SourceDir
-    & git fetch --quiet 2>&1 | Out-Null
+    & git fetch --all --quiet 2>&1 | Out-Null
     $local = & git rev-parse HEAD 2>$null
     $remote = & git rev-parse origin/master 2>$null
     Pop-Location
@@ -838,19 +861,18 @@ function Do-Update {
     if (-not (Build-FromSource)) { return }
     WL ""
 
-    $setup = Build-Installer
-    if ($setup) {
-        Step "Upgrading..."
-        Stop-App
-        Start-Process $setup -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait
-        OK "Updated successfully"
-    } else {
-        Stop-App
-        Copy-Item "$Script:SourceDir\publish\*" $Script:InstallDir -Recurse -Force
-        OK "Updated (manual copy)"
+    # Install directly to AppData
+    Stop-App
+    $pubDir = "$Script:SourceDir\publish"
+    Copy-Item "$pubDir\$Script:ExeName" "$Script:InstallDir\$Script:ExeName" -Force
+    New-Item -Path "$Script:InstallDir\bin" -ItemType Directory -Force | Out-Null
+    foreach ($f in @($Script:PaqetBin, 'tun2socks.exe', 'wintun.dll')) {
+        $src = "$pubDir\$f"
+        if (Test-Path $src) { Copy-Item $src "$Script:InstallDir\bin\$f" -Force }
     }
+    OK "Updated to $($remote.Substring(0,7))"
 
-    $Script:AppVersion | Out-File "$Script:DataDir\.version" -NoNewline
+    $Script:AppVersion | Out-File "$Script:InstallDir\.version" -NoNewline
     WL ""
     OK "Update complete!"
 
@@ -859,7 +881,7 @@ function Do-Update {
 
 function Do-Uninstall {
     Banner
-    if (-not (Is-Installed) -and -not (Test-Path $Script:DataDir) -and -not (Test-Path $Script:SourceDir)) {
+    if (-not (Is-Installed) -and -not (Test-Path $Script:DataDir) -and -not (Test-Path $Script:SourceDir) -and -not (Test-Path $Script:LegacyInstallDir)) {
         Warn "$Script:AppName is not installed"
         return
     }
@@ -869,23 +891,14 @@ function Do-Uninstall {
 
     Stop-App
 
-    # Run InnoSetup uninstaller if exists
-    $uninst = "$Script:InstallDir\unins000.exe"
-    if (Test-Path $uninst) {
-        Step "Running uninstaller..."
-        Start-Process $uninst -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait
-        OK "Uninstaller completed"
-    } elseif (Test-Path $Script:InstallDir) {
+    # Remove legacy Program Files installation
+    Clean-LegacyInstall
+
+    # Remove AppData installation
+    if (Test-Path $Script:InstallDir) {
         Step "Removing files..."
         Remove-Item $Script:InstallDir -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
-    # Clean data
-    if (Test-Path $Script:DataDir) {
-        if (Confirm "Remove app data ($($Script:DataDir))?") {
-            Remove-Item $Script:DataDir -Recurse -Force -ErrorAction SilentlyContinue
-            OK "Data removed"
-        }
+        OK "App data removed"
     }
 
     # Clean autostart (scheduled task + legacy registry entry)
@@ -903,7 +916,7 @@ function Do-Uninstall {
     Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Paqet Tunnel.lnk" -Force -ErrorAction SilentlyContinue
 
     # Remove Defender exclusions
-    foreach ($p in @($Script:InstallDir, $Script:DataDir, $Script:SourceDir)) {
+    foreach ($p in @($Script:InstallDir, $Script:LegacyInstallDir, $Script:SourceDir)) {
         try { Remove-MpPreference -ExclusionPath $p -ErrorAction SilentlyContinue } catch {}
     }
 
@@ -930,8 +943,10 @@ function Do-Status {
     W "  Running   "; if ($running) { WL "Yes ●" Green } else { WL "No" DarkGray }
     W "  Arch      "; WL (Get-OsInfo) White
     W "  Install   "; WL "$(if($installed){$Script:InstallDir}else{'—'})" DarkGray
-    W "  Data      "; WL "$(if(Test-Path $Script:DataDir){$Script:DataDir}else{'—'})" DarkGray
     W "  Source    "; WL "$(if(Test-Path "$Script:SourceDir\.git"){'Yes'}else{'No'})" DarkGray
+    if (Test-Path $Script:LegacyInstallDir) {
+        W "  "; Warn "Legacy install found at $Script:LegacyInstallDir (run 'update' to clean)"
+    }
 
     if (Test-Path "$Script:DataDir\.commit") {
         $sha = (Get-Content "$Script:DataDir\.commit" -Raw).Trim()
