@@ -367,21 +367,35 @@ do_install() {
     ln -sf "$INSTALL_DIR/$BINARY" /usr/local/bin/paqet
     ok "Binary installed"
 
-    # Generate key
-    local secret
+    # Generate key — preserve existing config if present
+    local secret="" existing_config=0
+    if [[ -f "$CONFIG_DIR/server.yaml" ]]; then
+        existing_config=1
+        secret=$(sed -n '/kcp:/,/^[^ ]/{ s/.*key:.*"\(.*\)".*/\1/p; }' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+    fi
+
     if [[ -n "${KEY:-}" ]]; then
         secret="$KEY"
-    else
+    elif [[ -z "$secret" ]]; then
         secret=$("$INSTALL_DIR/$BINARY" secret 2>/dev/null || openssl rand -base64 32)
         secret=$(echo "$secret" | tr -d '\n')
     fi
 
-    # Server address
-    local addr="${ADDR:-0.0.0.0:8443}"
+    # Server address — preserve from existing config or use provided/default
+    local addr="${ADDR:-}"
+    if [[ -z "$addr" && $existing_config -eq 1 ]]; then
+        local existing_port
+        existing_port=$(sed -n '/^listen:/,/^[^ ]/{ s/.*addr:.*:\([0-9]*\)".*/\1/p; }' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+        [[ -n "$existing_port" ]] && addr="0.0.0.0:$existing_port"
+    fi
+    addr="${addr:-0.0.0.0:8443}"
     local port="${addr##*:}"
 
-    # Auto-detect network
+    # Auto-detect network (preserve from existing config when possible)
     local iface="${IFACE:-}"
+    if [[ -z "$iface" && $existing_config -eq 1 ]]; then
+        iface=$(sed -n 's/.*interface:.*"\(.*\)".*/\1/p' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+    fi
     if [[ -z "$iface" ]]; then
         iface=$(detect_interface)
     fi
@@ -413,6 +427,9 @@ do_install() {
     dim "Router MAC: $router_mac"
 
     # Write config
+    if [[ $existing_config -eq 1 ]]; then
+        dim "Preserving existing key"
+    fi
     cat > "$CONFIG_DIR/server.yaml" <<EOF
 role: "server"
 log:
@@ -753,6 +770,12 @@ case "$COMMAND" in
     restart)   do_restart ;;
     logs)      do_logs ;;
     help|-h|--help) show_help ;;
-    "")        show_menu ;;
+    "")
+        if [[ -t 0 ]]; then
+            show_menu
+        else
+            show_help
+        fi
+        ;;
     *)         err "Unknown: $COMMAND"; show_help ;;
 esac
