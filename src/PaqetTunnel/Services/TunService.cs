@@ -393,6 +393,19 @@ public sealed class TunService
             // Set IP address on TUN adapter
             var output = RunNetsh($"interface ip set address \"{TUN_ADAPTER_NAME}\" static {TUN_IP} {TUN_SUBNET} {TUN_GATEWAY}");
             Logger.Debug($"netsh set address: {output}");
+
+            // Disable IPv6 on TUN adapter — browsers prefer IPv6 and our tunnel only handles IPv4,
+            // causing connections to hang when IPv6 is enabled but has no routes through the tunnel.
+            try
+            {
+                RunPowerShell($"Disable-NetAdapterBinding -Name '{TUN_ADAPTER_NAME}' -ComponentId ms_tcpip6");
+                Logger.Info("Disabled IPv6 on TUN adapter");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Could not disable IPv6 on TUN: {ex.Message}");
+            }
+
             return (true, "TUN adapter configured.");
         }
         catch (Exception ex)
@@ -406,13 +419,14 @@ public sealed class TunService
     {
         try
         {
-            // Route paqet server traffic through original gateway (prevent circular routing)
+            // Note: paqet uses raw pcap (gopacket) to send/receive KCP packets directly
+            // on the physical NIC, bypassing the OS routing table entirely.
+            // Therefore NO server bypass route is needed — adding one would cause websites
+            // hosted on the same IP as the tunnel server to be sent directly to the ISP.
+
+            // Exclude local/LAN networks from TUN (keep SSH, local services, etc.)
             if (!string.IsNullOrEmpty(_originalGateway))
             {
-                RunRoute($"add {serverIp} mask 255.255.255.255 {_originalGateway} metric 5");
-                Logger.Info($"Added server route: {serverIp} via {_originalGateway}");
-
-                // Exclude local/LAN networks from TUN (keep SSH, local services, etc.)
                 RunRoute($"add 10.0.0.0 mask 255.0.0.0 {_originalGateway} metric 5");
                 RunRoute($"add 172.16.0.0 mask 255.240.0.0 {_originalGateway} metric 5");
                 RunRoute($"add 192.168.0.0 mask 255.255.0.0 {_originalGateway} metric 5");
@@ -452,7 +466,6 @@ public sealed class TunService
         {
             RunRoute($"delete 0.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
             RunRoute($"delete 128.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
-            RunRoute($"delete {serverIp} mask 255.255.255.255");
             // Remove LAN exclusion routes
             if (!string.IsNullOrEmpty(_originalGateway))
             {
@@ -582,5 +595,10 @@ public sealed class TunService
     private static string RunRoute(string arguments)
     {
         return PaqetService.RunCommand("route", arguments, timeout: 5000);
+    }
+
+    private static string RunPowerShell(string command)
+    {
+        return PaqetService.RunCommand("powershell", $"-NoProfile -Command \"{command}\"", timeout: 15000);
     }
 }
