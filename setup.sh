@@ -13,7 +13,7 @@
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 REPO="mewoZa/PaqetTunnel"
 REPO_URL="https://github.com/$REPO.git"
 UPSTREAM_REPO="hanselime/paqet"
@@ -21,6 +21,10 @@ INSTALL_DIR="/opt/paqet"
 CONFIG_DIR="/etc/paqet"
 SERVICE_NAME="paqet"
 BINARY="paqet"
+
+# Clean up temp files on exit
+cleanup() { rm -rf /tmp/paqet-extract /tmp/paqet-release.tar.gz /tmp/go.tar.gz 2>/dev/null || true; }
+trap cleanup EXIT
 
 # Colors
 C='\033[0;36m' G='\033[0;32m' R='\033[0;31m' Y='\033[0;33m' D='\033[0;90m' W='\033[0m' B='\033[1m'
@@ -73,7 +77,7 @@ has_cmd() { command -v "$1" &>/dev/null; }
 # ── Dependencies ───────────────────────────────────────────────
 
 ensure_packages() {
-    local os
+    local os build_deps="${1:-0}"
     os=$(detect_os)
     step "Installing system packages..."
 
@@ -81,20 +85,27 @@ ensure_packages() {
         ubuntu|debian|pop)
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
-            apt-get install -y -qq git curl wget build-essential libpcap-dev >/dev/null 2>&1
+            local pkgs="git curl wget"
+            [[ "$build_deps" == "1" ]] && pkgs="$pkgs build-essential libpcap-dev"
+            apt-get install -y -qq $pkgs >/dev/null 2>&1
             ;;
         centos|rhel|rocky|alma|fedora)
+            local pkgs="git curl wget"
+            [[ "$build_deps" == "1" ]] && pkgs="$pkgs gcc make libpcap-devel"
             if has_cmd dnf; then
-                dnf install -y -q git curl wget gcc make libpcap-devel >/dev/null 2>&1
+                dnf install -y -q $pkgs >/dev/null 2>&1
             else
-                yum install -y -q git curl wget gcc make libpcap-devel >/dev/null 2>&1
+                yum install -y -q $pkgs >/dev/null 2>&1
             fi
             ;;
         arch|manjaro)
-            pacman -Sy --noconfirm git curl wget base-devel libpcap >/dev/null 2>&1
+            local pkgs="git curl wget"
+            [[ "$build_deps" == "1" ]] && pkgs="$pkgs base-devel libpcap"
+            pacman -Sy --noconfirm $pkgs >/dev/null 2>&1
             ;;
         *)
-            warn "Unknown distro ($os). Ensure git, curl, wget, gcc, libpcap-dev are installed."
+            warn "Unknown distro ($os). Ensure git, curl, wget are installed."
+            [[ "$build_deps" == "1" ]] && warn "Also need: gcc, make, libpcap-dev"
             ;;
     esac
     ok "System packages ready"
@@ -112,8 +123,8 @@ ensure_go() {
     local arch
     arch=$(detect_arch)
 
-    # Detect latest stable Go version
-    local go_ver="1.25.0"
+    # Detect latest stable Go version (fallback to known stable)
+    local go_ver="1.23.5"
     local latest
     latest=$(curl -fsSL 'https://go.dev/dl/?mode=json' 2>/dev/null | sed -n 's/.*"version":"\(go[^"]*\)".*/\1/p' | head -1)
     if [[ -n "$latest" ]]; then
@@ -193,7 +204,8 @@ build_paqet() {
 
     if [[ -d "$src/.git" ]]; then
         step "Updating source..."
-        cd "$src" && git pull --quiet && git submodule update --init --recursive --quiet
+        cd "$src" && git fetch --all --quiet && git reset --hard origin/master --quiet
+        git submodule update --init --recursive --quiet
     else
         step "Cloning repository..."
         rm -rf "$src"
@@ -219,6 +231,7 @@ get_paqet() {
     BUILT_BIN=""
     if [[ "${BUILD:-0}" == "1" ]]; then
         step "Mode: build from source"
+        ensure_packages 1
         ensure_go
         echo ""
         build_paqet
@@ -226,6 +239,7 @@ get_paqet() {
         step "Mode: download pre-built release"
         if ! download_paqet; then
             warn "Download failed, falling back to build from source..."
+            ensure_packages 1
             ensure_go
             echo ""
             build_paqet
@@ -275,22 +289,55 @@ setup_iptables() {
     step "Configuring iptables for raw packet handling (port $port)..."
 
     # Remove existing rules first (ignore errors)
+    iptables -t raw -D PREROUTING -p udp --dport "$port" -j NOTRACK 2>/dev/null || true
+    iptables -t raw -D OUTPUT -p udp --sport "$port" -j NOTRACK 2>/dev/null || true
     iptables -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
     iptables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
     iptables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
 
-    # Add rules
+    # Add NOTRACK rules — paqet uses raw pcap so kernel conntrack must not interfere
+    # UDP: KCP protocol runs over UDP
+    iptables -t raw -A PREROUTING -p udp --dport "$port" -j NOTRACK
+    iptables -t raw -A OUTPUT -p udp --sport "$port" -j NOTRACK
+    # TCP: prevent kernel from tracking raw pcap TCP packets
     iptables -t raw -A PREROUTING -p tcp --dport "$port" -j NOTRACK
     iptables -t raw -A OUTPUT -p tcp --sport "$port" -j NOTRACK
+    # Drop RST — kernel sends RST for packets it doesn't recognize, making port visible
     iptables -t mangle -A OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP
 
-    ok "iptables rules configured"
+    ok "iptables rules configured (UDP + TCP NOTRACK, RST DROP)"
 
-    # Persist iptables rules if possible
+    # Persist iptables rules
     if has_cmd netfilter-persistent; then
         netfilter-persistent save >/dev/null 2>&1 || true
+        ok "iptables rules persisted (netfilter-persistent)"
     elif has_cmd iptables-save; then
+        mkdir -p /etc/iptables
+        iptables-save > /etc/iptables/rules.v4 2>/dev/null || \
         iptables-save > /etc/iptables.rules 2>/dev/null || true
+
+        # Create restore service if it doesn't exist
+        if [[ ! -f /etc/systemd/system/iptables-restore.service ]]; then
+            local rules_path="/etc/iptables/rules.v4"
+            [[ ! -f "$rules_path" ]] && rules_path="/etc/iptables.rules"
+            cat > /etc/systemd/system/iptables-restore.service <<IPTEOF
+[Unit]
+Description=Restore iptables rules
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/iptables-restore $rules_path
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+IPTEOF
+            systemctl daemon-reload
+            systemctl enable iptables-restore --quiet 2>/dev/null || true
+            ok "iptables restore service created"
+        fi
     fi
 }
 
@@ -300,7 +347,7 @@ do_install() {
     banner
     [[ $EUID -ne 0 ]] && { err "Run as root: sudo $0 install"; exit 1; }
 
-    ensure_packages
+    ensure_packages "${BUILD:-0}"
     echo ""
 
     BUILT_BIN=""
@@ -391,6 +438,7 @@ EOF
 Description=Paqet Tunnel Server
 After=network-online.target
 Wants=network-online.target
+Documentation=https://github.com/$REPO
 
 [Service]
 Type=simple
@@ -398,6 +446,23 @@ ExecStart=$INSTALL_DIR/$BINARY run --config $CONFIG_DIR/server.yaml
 Restart=always
 RestartSec=5
 LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=paqet
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+
+# paqet needs raw network access via pcap
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
 
 [Install]
 WantedBy=multi-user.target
@@ -486,6 +551,8 @@ do_uninstall() {
     # Clean iptables rules
     if [[ -n "$port" ]]; then
         step "Removing iptables rules..."
+        iptables -t raw -D PREROUTING -p udp --dport "$port" -j NOTRACK 2>/dev/null || true
+        iptables -t raw -D OUTPUT -p udp --sport "$port" -j NOTRACK 2>/dev/null || true
         iptables -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
         iptables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
         iptables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
@@ -528,8 +595,45 @@ do_status() {
         [[ -n "$listen_addr" ]] && echo -e "  Listen    $listen_addr"
         [[ -n "$iface" ]] && echo -e "  Interface $iface"
         [[ -n "$key" ]] && echo -e "  Key       ${D}${key:0:8}...${W}"
+
+        # Show iptables rule status
+        local port
+        port=$(echo "$listen_addr" | grep -oP ':\K[0-9]+$' 2>/dev/null || echo "")
+        if [[ -n "$port" ]]; then
+            local fw_ok=1
+            iptables -t raw -C PREROUTING -p udp --dport "$port" -j NOTRACK 2>/dev/null || fw_ok=0
+            if [[ $fw_ok -eq 1 ]]; then
+                echo -e "  Firewall  ${G}Configured${W}"
+            else
+                echo -e "  Firewall  ${R}Rules missing${W}"
+            fi
+        fi
     fi
     echo ""
+}
+
+do_restart() {
+    [[ $EUID -ne 0 ]] && { err "Run as root: sudo $0 restart"; exit 1; }
+    if ! systemctl is-active --quiet paqet 2>/dev/null; then
+        err "paqet service is not running"
+        exit 1
+    fi
+    step "Restarting paqet service..."
+    systemctl restart paqet
+    sleep 2
+    if systemctl is-active --quiet paqet 2>/dev/null; then
+        ok "paqet service restarted"
+    else
+        err "paqet service failed to restart"
+        journalctl -u paqet --no-pager -n 10
+        exit 1
+    fi
+}
+
+do_logs() {
+    echo -e "${C}Showing paqet logs (Ctrl+C to stop)...${W}"
+    echo ""
+    journalctl -u paqet -f --no-pager
 }
 
 show_help() {
@@ -542,6 +646,8 @@ show_help() {
     dim "update       Update to latest"
     dim "uninstall    Remove paqet server"
     dim "status       Show status"
+    dim "restart      Restart paqet service"
+    dim "logs         Show live service logs"
     dim "help         Show this help"
     echo ""
     echo -e "  ${B}Options:${W}"
@@ -578,6 +684,8 @@ show_menu() {
         echo -e "  ${C}2${W}  Reinstall"
         echo -e "  ${C}3${W}  Uninstall"
         echo -e "  ${C}4${W}  Status"
+        echo -e "  ${C}5${W}  Restart"
+        echo -e "  ${C}6${W}  Logs"
         echo -e "  ${D}0${W}  ${D}Exit${W}"
     else
         echo -e "  ${C}1${W}  Install Server"
@@ -596,6 +704,8 @@ show_menu() {
             2) do_install ;;
             3) do_uninstall ;;
             4) do_status ;;
+            5) do_restart ;;
+            6) do_logs ;;
             0) exit 0 ;;
             *) warn "Invalid" ;;
         esac
@@ -632,6 +742,8 @@ case "$COMMAND" in
     update)    do_update ;;
     uninstall) do_uninstall ;;
     status)    do_status ;;
+    restart)   do_restart ;;
+    logs)      do_logs ;;
     help|-h|--help) show_help ;;
     "")        show_menu ;;
     *)         err "Unknown: $COMMAND"; show_help ;;
