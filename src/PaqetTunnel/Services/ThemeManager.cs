@@ -10,7 +10,11 @@ namespace PaqetTunnel.Services;
 /// </summary>
 public static class ThemeManager
 {
-    public static readonly string[] AvailableThemes = { "dark", "light", "nord" };
+    public static readonly string[] AvailableThemes =
+    {
+        "dark", "light", "nord", "cyberpunk", "sakura",
+        "ocean", "sunset", "dracula", "monokai", "rose"
+    };
 
     private static string _currentTheme = "dark";
 

@@ -481,9 +481,16 @@
                                       SelectedValuePath="Tag"
                                       SelectionChanged="ThemeChanged"
                                       FontSize="11" Padding="6,4" Margin="0,0,0,10">
-                                <ComboBoxItem Content="Dark" Tag="dark" />
-                                <ComboBoxItem Content="Light" Tag="light" />
-                                <ComboBoxItem Content="Nord" Tag="nord" />
+                                <ComboBoxItem Content="🌑 Dark" Tag="dark" />
+                                <ComboBoxItem Content="☀️ Light" Tag="light" />
+                                <ComboBoxItem Content="❄️ Nord" Tag="nord" />
+                                <ComboBoxItem Content="🌸 Sakura" Tag="sakura" />
+                                <ComboBoxItem Content="🌊 Ocean" Tag="ocean" />
+                                <ComboBoxItem Content="🌅 Sunset" Tag="sunset" />
+                                <ComboBoxItem Content="🔮 Cyberpunk" Tag="cyberpunk" />
+                                <ComboBoxItem Content="🧛 Dracula" Tag="dracula" />
+                                <ComboBoxItem Content="🖥️ Monokai" Tag="monokai" />
+                                <ComboBoxItem Content="🌹 Rose" Tag="rose" />
                             </ComboBox>
 
                             <!-- Debug Logging -->
