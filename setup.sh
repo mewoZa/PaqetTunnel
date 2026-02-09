@@ -517,19 +517,7 @@ EOF
     echo ""
     line
     ok "Server running!"
-    echo ""
-    echo -e "  ${B}Server details:${W}"
-    dim "Interface: $iface"
-    dim "Listen:    :$port"
-    dim "Public IP: $public_ip"
-    dim "Key:       $secret"
-    echo ""
-    dim "Service: systemctl status paqet"
-    dim "Logs:    journalctl -u paqet -f"
-    echo ""
-    echo -e "  ${B}Windows client one-liner:${W}"
-    echo -e "  ${C}irm https://raw.githubusercontent.com/$REPO/master/setup.ps1 -o \$env:TEMP\\pt.ps1; & \$env:TEMP\\pt.ps1 install -Addr ${public_ip}:${port} -Key \"${secret}\" -y${W}"
-    echo ""
+    show_server_info
 }
 
 do_update() {
@@ -548,7 +536,7 @@ do_update() {
     echo "$VERSION" > "$INSTALL_DIR/.version"
 
     ok "Updated and restarted"
-    echo ""
+    show_server_info
 }
 
 do_uninstall() {
@@ -593,6 +581,49 @@ do_uninstall() {
     echo ""
 }
 
+# Helper: read config values
+read_config() {
+    if [[ ! -f "$CONFIG_DIR/server.yaml" ]]; then return 1; fi
+    CFG_KEY=$(grep -A5 'kcp:' "$CONFIG_DIR/server.yaml" | sed -n 's/.*key: *"\([^"]*\)".*/\1/p' | head -1)
+    CFG_LISTEN=$(grep -A2 'listen:' "$CONFIG_DIR/server.yaml" | sed -n 's/.*addr: *"\([^"]*\)".*/\1/p' | head -1)
+    CFG_IFACE=$(sed -n 's/.*interface: *"\([^"]*\)".*/\1/p' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
+    CFG_PORT=$(echo "$CFG_LISTEN" | grep -oE '[0-9]+$' 2>/dev/null || echo "8443")
+    CFG_IP=$(sed -n 's/.*addr: *"\([0-9.]*\):.*/\1/p' "$CONFIG_DIR/server.yaml" 2>/dev/null | tail -1)
+}
+
+# Helper: show server info block
+show_server_info() {
+    read_config || return
+    local public_ip="${CFG_IP:-$(detect_public_ip "${CFG_IFACE:-eth0}")}"
+    echo ""
+    echo -e "  ${B}Server Info${W}"
+    line
+    [[ -n "$CFG_IFACE" ]]  && echo -e "  Interface ${D}$CFG_IFACE${W}"
+    [[ -n "$CFG_LISTEN" ]] && echo -e "  Listen    ${D}$CFG_LISTEN${W}"
+    [[ -n "$public_ip" ]]  && echo -e "  Public IP ${W}$public_ip${W}"
+    [[ -n "$CFG_KEY" ]]    && echo -e "  Key       ${W}$CFG_KEY${W}"
+    echo ""
+
+    # Show iptables status
+    if [[ -n "$CFG_PORT" ]]; then
+        local fw_ok=1
+        iptables -t raw -C PREROUTING -p tcp --dport "$CFG_PORT" -j NOTRACK 2>/dev/null || fw_ok=0
+        if [[ $fw_ok -eq 1 ]]; then
+            echo -e "  Firewall  ${G}OK${W}"
+        else
+            echo -e "  Firewall  ${R}Rules missing (run install to fix)${W}"
+        fi
+    fi
+
+    # Client one-liner
+    if [[ -n "$CFG_KEY" && -n "$public_ip" && -n "$CFG_PORT" ]]; then
+        echo ""
+        echo -e "  ${B}Windows client one-liner:${W}"
+        echo -e "  ${C}irm https://raw.githubusercontent.com/$REPO/master/setup.ps1 -o \$env:TEMP\\pt.ps1; & \$env:TEMP\\pt.ps1 install -Addr ${public_ip}:${CFG_PORT} -Key \"${CFG_KEY}\" -y${W}"
+    fi
+    echo ""
+}
+
 do_status() {
     banner
     if [[ -f "$INSTALL_DIR/$BINARY" ]]; then
@@ -612,29 +643,7 @@ do_status() {
         echo -e "  Service   ${R}Stopped${W}"
     fi
 
-    if [[ -f "$CONFIG_DIR/server.yaml" ]]; then
-        local listen_addr key iface
-        listen_addr=$(grep -A2 'listen:' "$CONFIG_DIR/server.yaml" | sed -n 's/.*addr: *"\([^"]*\)".*/\1/p' | head -1)
-        key=$(grep -A5 'kcp:' "$CONFIG_DIR/server.yaml" | sed -n 's/.*key: *"\([^"]*\)".*/\1/p' | head -1)
-        iface=$(sed -n 's/.*interface: *"\([^"]*\)".*/\1/p' "$CONFIG_DIR/server.yaml" 2>/dev/null | head -1)
-        [[ -n "$listen_addr" ]] && echo -e "  Listen    $listen_addr"
-        [[ -n "$iface" ]] && echo -e "  Interface $iface"
-        [[ -n "$key" ]] && echo -e "  Key       ${D}${key:0:8}...${W}"
-
-        # Show iptables rule status
-        local port
-        port=$(echo "$listen_addr" | grep -oP ':\K[0-9]+$' 2>/dev/null || echo "")
-        if [[ -n "$port" ]]; then
-            local fw_ok=1
-            iptables -t raw -C PREROUTING -p udp --dport "$port" -j NOTRACK 2>/dev/null || fw_ok=0
-            if [[ $fw_ok -eq 1 ]]; then
-                echo -e "  Firewall  ${G}Configured${W}"
-            else
-                echo -e "  Firewall  ${R}Rules missing${W}"
-            fi
-        fi
-    fi
-    echo ""
+    show_server_info
 }
 
 do_restart() {
@@ -698,24 +707,35 @@ show_menu() {
     if systemctl is-active --quiet paqet 2>/dev/null; then
         echo -e "  Status    ${G}Running ●${W}"
     elif [[ $installed -eq 1 ]]; then
-        echo -e "  Status    ${C}Installed${W}"
+        echo -e "  Status    ${C}Installed (stopped)${W}"
     else
         echo -e "  Status    ${D}Not installed${W}"
     fi
 
+    # Show server info in menu when installed
+    if [[ $installed -eq 1 ]]; then
+        read_config 2>/dev/null
+        local public_ip="${CFG_IP:-}"
+        [[ -n "$CFG_IFACE" ]]  && echo -e "  Interface ${D}$CFG_IFACE${W}"
+        [[ -n "$CFG_LISTEN" ]] && echo -e "  Listen    ${D}$CFG_LISTEN${W}"
+        [[ -n "$public_ip" ]]  && echo -e "  Public IP ${D}$public_ip${W}"
+        [[ -n "$CFG_KEY" ]]    && echo -e "  Key       ${W}$CFG_KEY${W}"
+    fi
+
     echo ""
+    line
     if [[ $installed -eq 1 ]]; then
         echo -e "  ${C}1${W}  Update"
         echo -e "  ${C}2${W}  Reinstall"
         echo -e "  ${C}3${W}  Uninstall"
-        echo -e "  ${C}4${W}  Status"
+        echo -e "  ${C}4${W}  Status (detailed)"
         echo -e "  ${C}5${W}  Restart"
         echo -e "  ${C}6${W}  Logs"
+        echo -e "  ${C}7${W}  Help"
         echo -e "  ${D}0${W}  ${D}Exit${W}"
     else
         echo -e "  ${C}1${W}  Install Server"
-        echo -e "  ${C}2${W}  Status"
-        echo -e "  ${C}3${W}  Help"
+        echo -e "  ${C}2${W}  Help"
         echo -e "  ${D}0${W}  ${D}Exit${W}"
     fi
 
@@ -731,16 +751,16 @@ show_menu() {
             4) do_status ;;
             5) do_restart ;;
             6) do_logs ;;
+            7) show_help ;;
             0) exit 0 ;;
-            *) warn "Invalid" ;;
+            *) warn "Invalid selection" ;;
         esac
     else
         case "$sel" in
             1) do_install ;;
-            2) do_status ;;
-            3) show_help ;;
+            2) show_help ;;
             0) exit 0 ;;
-            *) warn "Invalid" ;;
+            *) warn "Invalid selection" ;;
         esac
     fi
 }
