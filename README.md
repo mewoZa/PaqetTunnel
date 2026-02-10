@@ -81,6 +81,19 @@ Management: & $env:TEMP\pt.ps1 {status|update|uninstall}
 
 ---
 
+## 🚀 Getting Started
+
+1. **Install the server** on your Linux VPS using the command above
+2. **Copy the Windows command** printed at the end of server install (contains your IP + key)
+3. **Run the Windows command** in PowerShell as Admin — it installs everything automatically
+4. **Launch Paqet Tunnel** from the desktop shortcut or Start Menu
+5. **Click the power button** to connect — status changes to "Connected" with a green indicator
+6. **Verify** — visit [whatismyipaddress.com](https://whatismyipaddress.com) — it should show your VPS IP
+
+> **Note:** The Windows installer auto-downloads Git and .NET 8 SDK if not present (~250 MB total). First install takes 2–5 minutes depending on your connection.
+
+---
+
 ## ✨ Features
 
 | Feature | Description |
@@ -88,7 +101,7 @@ Management: & $env:TEMP\pt.ps1 {status|update|uninstall}
 | 🔒 **Full System Tunnel** | Routes all traffic through a TUN virtual adapter via WinTun + tun2socks |
 | 🌐 **SOCKS5 Proxy** | Lightweight browser-only mode on `127.0.0.1:10800` |
 | ⚡ **KCP Protocol** | UDP-based encrypted transport — faster than TCP in lossy networks |
-| 🎯 **Smart DNS** | 18 DNS providers with auto-benchmark to find the fastest |
+| 🎯 **Smart DNS** | 17 DNS providers with auto-benchmark to find the fastest |
 | 🛡️ **DNS Leak Prevention** | Forces DNS on all network adapters to prevent leaks |
 | 📡 **LAN Sharing** | Share the tunnel with other devices on your network via port `10801` |
 | 🎨 **10 Themes** | Dark, Light, Nord, Sakura, Ocean, Sunset, Cyberpunk, Dracula, Monokai, Rose |
@@ -105,57 +118,46 @@ Management: & $env:TEMP\pt.ps1 {status|update|uninstall}
 Paqet Tunnel has two modes: **SOCKS5 Proxy** (browser/app-level) and **Full System Tunnel** (all traffic).
 
 ```
-                             SOCKS5 MODE
-                    ┌──────────────────────────┐
-                    │  Browser / App           │
-                    │   ↓ proxy.pac            │
-                    │  SOCKS5 127.0.0.1:10800  │
-                    └────────────┬─────────────┘
-                                 │
-                    FULL SYSTEM TUNNEL MODE
-        ┌────────────────────────┼────────────────────────┐
-        │  All System Traffic    │                        │
-        │   ↓                    │                        │
-        │  ┌──────────────┐      │                        │
-        │  │   WinTun     │      │                        │
-        │  │  10.0.85.2   │      │                        │
-        │  └──────┬───────┘      │                        │
-        │         ↓              │                        │
-        │  ┌──────────────┐      │                        │
-        │  │  tun2socks   │──────┘                        │
-        │  │  TUN→SOCKS5  │                               │
-        │  └──────────────┘                               │
-        └─────────────────────────────────────────────────┘
-                                 │
-┌────────────────────────────────┼──────────────────────────────┐
-│  Windows Client                │                              │
-│                    ┌───────────┴──────────┐                   │
-│                    │   paqet (client)     │                   │
-│                    │   SOCKS5 :10800      │                   │
-│                    │   KCP encrypted      │                   │
-│                    └───────────┬──────────┘                   │
-│                                │ raw pcap (gopacket)          │
-│                                │ bypasses OS routing          │
-│   ┌────────────┐               │                              │
-│   │ PaqetTunnel│ manages ──────┤                              │
-│   │  WPF GUI   │ all services  │                              │
-│   └────────────┘               │                              │
-│                                │ UDP/KCP encrypted            │
-└────────────────────────────────┼──────────────────────────────┘
-                                 │
-              ═══════════════════╪═══════════ Internet ══════════
-                                 │
-┌────────────────────────────────┼──────────────────────────────┐
-│  Linux Server (VPS)            │                              │
-│                    ┌───────────┴──────────┐                   │
-│                    │   paqet (server)     │                   │
-│                    │   KCP :8443          │──▶ Internet       │
-│                    └──────────────────────┘                   │
-│                                                               │
-│   raw pcap (gopacket) — bypasses OS routing table             │
-│   iptables NOTRACK + RST DROP — stealth, no conntrack         │
-│   systemd hardened service (NoNewPrivileges, ProtectHome)     │
-└───────────────────────────────────────────────────────────────┘
+  MODE 1: SOCKS5 PROXY              MODE 2: FULL SYSTEM TUNNEL
+  (browser/app only)                (all system traffic)
+
+  ┌─────────────────┐              ┌─────────────────────────┐
+  │  Browser / App  │              │  All System Traffic     │
+  │   ↓ proxy.pac   │              │   ↓                     │
+  └────────┬────────┘              │  ┌───────────────┐      │
+           │                       │  │ WinTun 10.0.85│      │
+           │                       │  └───────┬───────┘      │
+           │                       │  ┌───────┴───────┐      │
+           │                       │  │   tun2socks   │      │
+           │                       │  │  TUN → SOCKS5 │      │
+           │                       │  └───────┬───────┘      │
+           │                       └──────────┼──────────────┘
+           │                                  │
+           └──────────┬───────────────────────┘
+                      ↓
+┌─────────────────────────────────────────────────────────────┐
+│  Windows Client (PaqetTunnel.exe manages everything)        │
+│                                                             │
+│            ┌──────────────────────┐                         │
+│            │   paqet (client)     │                         │
+│            │   SOCKS5 :10800     │                         │
+│            │   KCP encrypted     │                         │
+│            └──────────┬──────────┘                         │
+│                       │ raw pcap — bypasses OS routing      │
+│                       │ UDP/KCP encrypted                   │
+└───────────────────────┼─────────────────────────────────────┘
+                        │
+         ══════════════ Internet ═══════════════
+                        │
+┌───────────────────────┼─────────────────────────────────────┐
+│  Linux Server (VPS)   │                                     │
+│            ┌──────────┴──────────┐                         │
+│            │   paqet (server)    │──▶ Internet              │
+│            │   KCP :8443         │                         │
+│            └─────────────────────┘                         │
+│   raw pcap — bypasses OS routing ∙ iptables NOTRACK+RST    │
+│   systemd hardened (NoNewPrivileges, ProtectHome)          │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### How It Works
@@ -164,7 +166,7 @@ Paqet Tunnel has two modes: **SOCKS5 Proxy** (browser/app-level) and **Full Syst
 2. **Client** — paqet connects via KCP and exposes a local SOCKS5 proxy on `127.0.0.1:10800`
 3. **SOCKS5 mode** — browsers and apps use the proxy via a PAC file; lightweight, per-app control
 4. **TUN mode** — WinTun creates a virtual adapter (`10.0.85.2`), tun2socks translates all system packets to SOCKS5 → forces *everything* through the tunnel
-5. **DNS** — forced on all adapters (not just the default) to prevent leaks; 18 providers with auto-benchmark
+5. **DNS** — forced on all adapters (not just the default) to prevent leaks; 17 providers with auto-benchmark
 6. **LAN sharing** — portproxy forwards `0.0.0.0:10801` → `127.0.0.1:10800` so other devices on your network can use the tunnel
 7. **No server bypass route needed** — paqet uses raw pcap on both sides, so the tunnel traffic doesn't hit the OS routing table
 
@@ -213,14 +215,15 @@ Built-in smart DNS with auto-benchmark to find the fastest provider:
 | OpenDNS | `208.67.222.222` | `208.67.220.220` |
 | AdGuard | `94.140.14.14` | `94.140.15.15` |
 | AdGuard Family | `94.140.14.15` | `94.140.15.16` |
-| NextDNS | `45.90.28.167` | `45.90.30.167` |
+| NextDNS | `45.90.28.0` | `45.90.30.0` |
 | CleanBrowsing Security | `185.228.168.9` | `185.228.169.9` |
 | CleanBrowsing Family | `185.228.168.168` | `185.228.169.168` |
 | DNS.SB | `185.222.222.222` | `45.11.45.11` |
 | Comodo Secure | `8.26.56.26` | `8.20.247.20` |
 | Verisign | `64.6.64.6` | `64.6.65.6` |
 | Control D | `76.76.2.0` | `76.76.10.0` |
-| Mullvad | `194.242.2.2` | `194.242.2.3` |
+| Level3/Lumen | `4.2.2.1` | `4.2.2.2` |
+| Mullvad | `194.242.2.2` | `193.19.108.2` |
 
 Use **Auto** mode to benchmark all providers and select the fastest, or pick manually from Settings.
 
@@ -271,7 +274,7 @@ Both scripts provide an **interactive menu** when run without arguments, or acce
 ### Requirements
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (Windows)
-- [Go 1.21+](https://go.dev/dl/) with CGO enabled (for building paqet from source)
+- [Go 1.23+](https://go.dev/dl/) with CGO enabled (for building paqet from source)
 - Linux server: `build-essential`, `libpcap-dev`
 
 ### Build the GUI
@@ -303,12 +306,14 @@ PaqetTunnel/
 │   ├── Services/                # Core services
 │   │   ├── PaqetService.cs      # paqet binary: start, stop, download, health check
 │   │   ├── TunService.cs        # TUN adapter: WinTun + tun2socks + routing
-│   │   ├── DnsService.cs        # DNS: 18 providers, benchmark, leak prevention
+│   │   ├── DnsService.cs        # DNS: 17 providers, benchmark, leak prevention
 │   │   ├── ProxyService.cs      # System proxy (PAC), LAN sharing (portproxy), auto-start
 │   │   ├── ConfigService.cs     # YAML config + app settings management
+│   │   ├── SshService.cs        # SSH server management (install, update, logs)
 │   │   ├── DiagnosticService.cs # Latency/throughput benchmarks + reports
-│   │   ├── NetworkMonitor.cs    # Real-time speed tracking
+│   │   ├── NetworkMonitorService.cs  # Real-time speed tracking
 │   │   ├── UpdateService.cs     # App update checker
+│   │   ├── CredentialHelper.cs  # AES encryption for stored credentials
 │   │   ├── ThemeManager.cs      # Runtime theme switching (10 themes)
 │   │   └── Logger.cs            # Centralized file logging
 │   ├── Models/                  # PaqetConfig, DiagnosticReport
@@ -316,6 +321,7 @@ PaqetTunnel/
 │   └── Program.cs               # CLI entry point (--diag, --dns, --ping, --speed, --info)
 ├── setup.sh                     # Linux server installer (interactive menu)
 ├── setup.ps1                    # Windows client installer (interactive menu)
+├── installer/                   # InnoSetup script (optional .exe installer builder)
 ├── paqet/                       # paqet submodule (Go, KCP engine)
 └── assets/                      # Logo, screenshots
 ```

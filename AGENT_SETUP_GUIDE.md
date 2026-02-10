@@ -235,8 +235,8 @@ sudo firewall-cmd --permanent --add-port=8443/udp && sudo firewall-cmd --reload
 - Windows 10/11 (x64)
 - PowerShell 5.1+ (built-in on Windows 10+)
 - Administrator privileges (for WinTun driver, routes, proxy settings)
-- .NET 8 SDK (auto-installed if building from source)
-- Git (auto-installed if building from source)
+- Git (auto-installed if not present — ~50 MB)
+- .NET 8 SDK (auto-installed if not present — ~200 MB)
 
 **What the install script does:**
 
@@ -332,7 +332,7 @@ irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $en
 | **Auto-Connect** | Connects automatically when app starts |
 | **Start with Windows** | Launches at logon via Task Scheduler |
 | **Start Before Logon** | Runs paqet as SYSTEM service (tunnel active even at login screen) |
-| **DNS Provider** | Choose from 18 providers or use Auto benchmark to find fastest |
+| **DNS Provider** | Choose from 17 providers or use Auto benchmark to find fastest |
 | **Theme** | 10 themes: Dark, Light, Nord, Sakura, Ocean, Sunset, Cyberpunk, Dracula, Monokai, Rose |
 | **Debug Mode** | Verbose logging for troubleshooting |
 
@@ -344,7 +344,7 @@ Run from command line or PowerShell:
 # Full diagnostic suite (DNS + ping + speed + system info)
 & "$env:LOCALAPPDATA\PaqetTunnel\PaqetTunnel.exe" --diag
 
-# Benchmark all 18 DNS providers
+# Benchmark all 17 DNS providers
 & "$env:LOCALAPPDATA\PaqetTunnel\PaqetTunnel.exe" --dns
 
 # Test connectivity through tunnel

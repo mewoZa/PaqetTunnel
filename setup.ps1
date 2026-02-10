@@ -45,7 +45,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$Script:AppVersion = '1.0.0'
+$Script:AppVersion = '1.1.0'
 $Script:Repo = 'mewoZa/PaqetTunnel'
 $Script:UpstreamRepo = 'hanselime/paqet'
 $Script:RepoUrl = "https://github.com/$($Script:Repo).git"
