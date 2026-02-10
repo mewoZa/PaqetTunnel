@@ -1501,9 +1501,9 @@ public partial class MainViewModel : ObservableObject
                     if (hist.Count >= 2)
                     {
                         var first = hist[0];
-                        var latest = hist[^1];
-                        double totalDl = Math.Max(0, latest.BytesReceived - first.BytesReceived);
-                        double totalUl = Math.Max(0, latest.BytesSent - first.BytesSent);
+                        var last = hist[^1];
+                        double totalDl = Math.Max(0, last.BytesReceived - first.BytesReceived);
+                        double totalUl = Math.Max(0, last.BytesSent - first.BytesSent);
                         TotalTransferred = NetworkMonitorService.FormatBytes(totalDl + totalUl);
                     }
                     else
