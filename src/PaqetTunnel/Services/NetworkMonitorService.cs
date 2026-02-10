@@ -1,8 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Text.RegularExpressions;
+using System.Net.NetworkInformation;
 using System.Timers;
 using PaqetTunnel.Models;
 
@@ -23,6 +22,12 @@ public sealed class NetworkMonitorService : IDisposable
 
     public List<SpeedSnapshot> History { get; } = new(HISTORY_SIZE);
     public SpeedSnapshot Latest { get; private set; } = new(0, 0, 0, 0, DateTime.Now);
+
+    /// <summary>BUG-07 fix: return a thread-safe copy of History under lock.</summary>
+    public List<SpeedSnapshot> GetHistorySnapshot()
+    {
+        lock (_lock) { return new List<SpeedSnapshot>(History); }
+    }
 
     public event Action? SpeedUpdated;
 
@@ -78,31 +83,23 @@ public sealed class NetworkMonitorService : IDisposable
         catch { /* Swallow monitoring errors */ }
     }
 
-    /// <summary>Parse netstat -e output for total bytes.</summary>
+    /// <summary>BUG-24 fix: use .NET NetworkInterface API instead of spawning netstat.</summary>
     private static bool SampleNetstat(out long received, out long sent)
     {
         received = 0;
         sent = 0;
         try
         {
-            var psi = new ProcessStartInfo("netstat", "-e")
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
             {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden
-            };
-            using var proc = Process.Start(psi);
-            if (proc == null) return false;
-            var output = proc.StandardOutput.ReadToEnd();
-            proc.WaitForExit(3000);
-
-            var match = Regex.Match(output, @"Bytes\s+(\d+)\s+(\d+)", RegexOptions.IgnoreCase);
-            if (!match.Success) return false;
-
-            received = long.Parse(match.Groups[1].Value);
-            sent = long.Parse(match.Groups[2].Value);
-            return true;
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                if (ni.Name.Contains("PaqetTun", StringComparison.OrdinalIgnoreCase)) continue;
+                var stats = ni.GetIPv4Statistics();
+                received += stats.BytesReceived;
+                sent += stats.BytesSent;
+            }
+            return received > 0 || sent > 0;
         }
         catch
         {

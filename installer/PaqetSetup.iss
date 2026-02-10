@@ -37,7 +37,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#MyAppExeName}
 MinVersion=10.0
 
@@ -84,10 +84,11 @@ Filename: "taskkill"; Parameters: "/IM {#PaqetBinary} /F"; Flags: runhidden; Run
 Filename: "taskkill"; Parameters: "/IM {#MyAppExeName} /F"; Flags: runhidden; RunOnceId: "KillPaqetTunnel"
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}"
-; Also clean legacy Program Files install (pre-v1.1)
+; BUG-29 fix: only delete app binary and bin/, preserve config/logs/settings
+Type: files; Name: "{app}\PaqetTunnel.exe"
+Type: filesandordirs; Name: "{app}\bin"
+; Clean legacy installs
 Type: filesandordirs; Name: "{autopf}\Paqet Tunnel"
-; Also clean old pre-rename data directory
 Type: filesandordirs; Name: "{localappdata}\PaqetManager"
 
 [Code]

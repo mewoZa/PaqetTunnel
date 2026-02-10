@@ -81,7 +81,40 @@ public sealed class SshService
     {
         var connInfo = BuildConnection(settings);
         var client = new SshClient(connInfo);
-        client.HostKeyReceived += (_, e) => e.CanTrust = true;
+        // BUG-02 fix: verify host key against known fingerprints
+        var knownHostsPath = System.IO.Path.Combine(AppPaths.DataDir, "known_hosts");
+        client.HostKeyReceived += (_, e) =>
+        {
+            var fingerprint = Convert.ToHexString(e.FingerPrint).ToLowerInvariant();
+            var hostKey = $"{settings.ServerSshHost}:{(settings.ServerSshPort > 0 ? settings.ServerSshPort : 22)}";
+            try
+            {
+                if (System.IO.File.Exists(knownHostsPath))
+                {
+                    foreach (var line in System.IO.File.ReadAllLines(knownHostsPath))
+                    {
+                        var parts = line.Split(' ', 2);
+                        if (parts.Length == 2 && parts[0] == hostKey)
+                        {
+                            e.CanTrust = parts[1] == fingerprint;
+                            if (!e.CanTrust)
+                                Logger.Warn($"SSH host key CHANGED for {hostKey}! Expected {parts[1]}, got {fingerprint}");
+                            return;
+                        }
+                    }
+                }
+            }
+            catch { }
+            // First connection — trust and save fingerprint
+            e.CanTrust = true;
+            try
+            {
+                System.IO.Directory.CreateDirectory(AppPaths.DataDir);
+                System.IO.File.AppendAllText(knownHostsPath, $"{hostKey} {fingerprint}\n");
+                Logger.Info($"SSH: saved host key for {hostKey}: {fingerprint}");
+            }
+            catch (Exception ex) { Logger.Debug($"SSH: failed to save host key: {ex.Message}"); }
+        };
         return client;
     }
 

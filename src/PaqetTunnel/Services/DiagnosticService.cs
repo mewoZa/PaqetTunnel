@@ -94,15 +94,16 @@ public sealed class DiagnosticService
         int failed = 0;
         var proxy = new WebProxy($"socks5://127.0.0.1:{PaqetService.SOCKS_PORT}");
 
+        // BUG-21 fix: reuse HttpClient/handler across samples to prevent socket exhaustion
+        using var handler = new HttpClientHandler { Proxy = proxy, UseProxy = true };
+        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel-Diag/1.0");
+
         for (int i = 0; i < samples && !ct.IsCancellationRequested; i++)
         {
             var sw = Stopwatch.StartNew();
             try
             {
-                using var handler = new HttpClientHandler { Proxy = proxy, UseProxy = true };
-                using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
-                http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel-Diag/1.0");
-                // HEAD request to minimize data transfer — measures pure latency
                 var req = new HttpRequestMessage(HttpMethod.Head, "http://httpbin.org/status/200");
                 var resp = await http.SendAsync(req, ct);
                 sw.Stop();

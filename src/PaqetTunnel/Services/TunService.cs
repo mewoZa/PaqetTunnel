@@ -230,8 +230,8 @@ public sealed class TunService
             if (!Tun2SocksExists())
             {
                 progress?.Report("Downloading tun2socks...");
-                const string tun2socksUrl = "https://github.com/xjasonlyu/tun2socks/releases/download/v2.6.0/tun2socks-windows-amd64.zip";
-                Logger.Info($"Downloading tun2socks from {tun2socksUrl}");
+                const string tun2socksUrl = "https://github.com/xjasonlyu/tun2socks/releases/download/v2.6.0/tun2socks-windows-amd64.zip"; // BUG-25: version tracked here
+                Logger.Info($"Downloading tun2socks v2.6.0 from {tun2socksUrl}");
 
                 var bytes = await http.GetByteArrayAsync(tun2socksUrl);
                 var zipPath = Path.Combine(AppPaths.BinDir, "tun2socks_latest.zip");
@@ -255,8 +255,8 @@ public sealed class TunService
             if (!WintunExists())
             {
                 progress?.Report("Downloading wintun.dll...");
-                const string wintunUrl = "https://www.wintun.net/builds/wintun-0.14.1.zip";
-                Logger.Info($"Downloading wintun from {wintunUrl}");
+                const string wintunUrl = "https://www.wintun.net/builds/wintun-0.14.1.zip"; // BUG-25: version tracked here
+                Logger.Info($"Downloading wintun v0.14.1 from {wintunUrl}");
 
                 var bytes = await http.GetByteArrayAsync(wintunUrl);
                 var zipPath = Path.Combine(AppPaths.BinDir, "wintun_latest.zip");
@@ -417,20 +417,23 @@ public sealed class TunService
 
     private (bool Success, string Message) SetRoutes(string serverIp)
     {
+        var addedRoutes = new List<string>(); // BUG-16 fix: track routes for rollback
         try
         {
-            // Note: paqet uses raw pcap (gopacket) to send/receive KCP packets directly
-            // on the physical NIC, bypassing the OS routing table entirely.
-            // Therefore NO server bypass route is needed — adding one would cause websites
-            // hosted on the same IP as the tunnel server to be sent directly to the ISP.
-
-            // Exclude local/LAN networks from TUN (keep SSH, local services, etc.)
             if (!string.IsNullOrEmpty(_originalGateway))
             {
-                RunRoute($"add 10.0.0.0 mask 255.0.0.0 {_originalGateway} metric 5");
-                RunRoute($"add 172.16.0.0 mask 255.240.0.0 {_originalGateway} metric 5");
-                RunRoute($"add 192.168.0.0 mask 255.255.0.0 {_originalGateway} metric 5");
-                RunRoute($"add 169.254.0.0 mask 255.255.0.0 {_originalGateway} metric 5");
+                var lanRoutes = new[]
+                {
+                    $"add 10.0.0.0 mask 255.0.0.0 {_originalGateway} metric 5",
+                    $"add 172.16.0.0 mask 255.240.0.0 {_originalGateway} metric 5",
+                    $"add 192.168.0.0 mask 255.255.0.0 {_originalGateway} metric 5",
+                    $"add 169.254.0.0 mask 255.255.0.0 {_originalGateway} metric 5",
+                };
+                foreach (var route in lanRoutes)
+                {
+                    RunRoute(route);
+                    addedRoutes.Add(route.Replace("add ", "delete "));
+                }
                 Logger.Info("Added LAN exclusion routes (10/8, 172.16/12, 192.168/16, 169.254/16)");
             }
 
@@ -440,14 +443,17 @@ public sealed class TunService
             {
                 Logger.Warn("Could not find TUN interface index, using gateway-based routing");
                 RunRoute($"add 0.0.0.0 mask 128.0.0.0 {TUN_GATEWAY} metric {TUN_METRIC}");
+                addedRoutes.Add($"delete 0.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
                 RunRoute($"add 128.0.0.0 mask 128.0.0.0 {TUN_GATEWAY} metric {TUN_METRIC}");
+                addedRoutes.Add($"delete 128.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
             }
             else
             {
                 Logger.Info($"TUN interface index: {tunIndex}");
-                // Split default route into two halves to override existing default route
                 RunRoute($"add 0.0.0.0 mask 128.0.0.0 {TUN_GATEWAY} metric {TUN_METRIC} if {tunIndex}");
+                addedRoutes.Add($"delete 0.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
                 RunRoute($"add 128.0.0.0 mask 128.0.0.0 {TUN_GATEWAY} metric {TUN_METRIC} if {tunIndex}");
+                addedRoutes.Add($"delete 128.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
             }
 
             Logger.Info("Routes set for full system tunnel");
@@ -455,7 +461,12 @@ public sealed class TunService
         }
         catch (Exception ex)
         {
-            Logger.Error("SetRoutes exception", ex);
+            // BUG-16 fix: rollback partially added routes on failure
+            Logger.Error("SetRoutes exception — rolling back", ex);
+            foreach (var rollback in addedRoutes)
+            {
+                try { RunRoute(rollback); } catch { }
+            }
             return (false, $"Route setup failed: {ex.Message}");
         }
     }

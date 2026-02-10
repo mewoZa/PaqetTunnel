@@ -366,7 +366,7 @@ public static class DnsService
     /// <summary>Build a minimal DNS query packet for A record lookup.</summary>
     private static byte[] BuildDnsQuery(string domain)
     {
-        var rng = new Random();
+        var rng = Random.Shared; // BUG-17 fix: reuse static instance
         var id = (ushort)rng.Next(0, 65535);
 
         var parts = domain.Split('.');

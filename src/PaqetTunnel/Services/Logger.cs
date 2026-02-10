@@ -86,6 +86,8 @@ public static class Logger
             Message = message,
             Formatted = $"[{DateTime.Now:HH:mm:ss.fff}] [{level}] {message}"
         };
+        // BUG-09 fix: capture delegate ref inside lock for thread safety
+        Action<LogEntry>? handler;
         lock (_lock)
         {
             try
@@ -96,8 +98,9 @@ public static class Logger
                     _buffer.RemoveAt(0);
             }
             catch { /* Best-effort logging */ }
+            handler = LogAdded;
         }
-        try { LogAdded?.Invoke(entry); } catch { }
+        try { handler?.Invoke(entry); } catch { }
     }
 
     /// <summary>Get recent log entries from in-memory buffer.</summary>

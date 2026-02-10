@@ -20,6 +20,22 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // BUG-19 fix: wrap async void in try-catch to prevent silent crash
+        try
+        {
+            await OnStartupCoreAsync(e);
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Error("Fatal error during startup", ex);
+            MessageBox.Show($"PaqetTunnel failed to start:\n{ex.Message}", "Startup Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+        }
+    }
+
+    private async Task OnStartupCoreAsync(StartupEventArgs e)
+    {
         // ── Single instance check ──────────────────────────────────
         _mutex = new Mutex(true, "Global\\PaqetTunnel_SingleInstance", out bool isNew);
         if (!isNew)

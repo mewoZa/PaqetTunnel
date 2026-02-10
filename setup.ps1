@@ -4,6 +4,22 @@
 .DESCRIPTION
     One-liner:  irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $env:TEMP\pt.ps1; & $env:TEMP\pt.ps1
     With args:  .\setup.ps1 install | update | uninstall | status | server | help
+
+    ─── 🤖 AI AGENT QUICK REFERENCE ───────────────────────────────
+    Copy this block to your AI agent for automated client setup:
+
+      irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $env:TEMP\pt.ps1; & $env:TEMP\pt.ps1 install -Addr SERVER_IP:8443 -Key "SECRET_KEY" -y
+
+    What it does: clones repo, builds WPF GUI, downloads paqet + tun2socks + WinTun,
+    detects network (interface, IP, MAC, GUID), creates config, adds Defender exclusions,
+    creates desktop shortcut, sets auto-start via Task Scheduler.
+
+    Install path: %LOCALAPPDATA%\PaqetTunnel\ | SOCKS5: 127.0.0.1:10800
+    Commands: & $env:TEMP\pt.ps1 {install|update|uninstall|status}
+    Flags: -Addr ip:port | -Key "secret" | -Iface name | -SocksPort 10800 | -Build | -Force | -y
+
+    Full guide: https://github.com/mewoZa/PaqetTunnel/blob/master/AGENT_SETUP_GUIDE.md
+    ────────────────────────────────────────────────────────────────
 .EXAMPLE
     .\setup.ps1                        # Interactive menu
     .\setup.ps1 install                # Install client
@@ -44,8 +60,21 @@ $Script:LegacyInstallDir = "$env:ProgramFiles\Paqet Tunnel"
 $Script:SourceDir = "$env:USERPROFILE\PaqetTunnel"
 $Script:PaqetBin = 'paqet_windows_amd64.exe'
 
+# BUG-40 fix: add lockfile to prevent self-update race condition
+$Script:LockFile = "$env:TEMP\paqet-setup.lock"
+
 # Self-update: if running from a local clone that's behind origin, pull and re-exec
 if (-not $env:PAQET_SETUP_REEXEC -and $Command -and (Test-Path "$env:USERPROFILE\PaqetTunnel\.git")) {
+    $lockTaken = $false
+    $lockStream = $null
+    try {
+        $lockStream = [System.IO.File]::Open($Script:LockFile, 'OpenOrCreate', 'ReadWrite', 'None')
+        $lockTaken = $true
+    } catch {
+        # Another instance has the lock — skip self-update
+        $lockTaken = $false
+    }
+    if ($lockTaken) {
     try {
         $oldEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
         Push-Location "$env:USERPROFILE\PaqetTunnel"
@@ -62,6 +91,11 @@ if (-not $env:PAQET_SETUP_REEXEC -and $Command -and (Test-Path "$env:USERPROFILE
             exit $LASTEXITCODE
         }
     } catch {}
+    finally {
+        try { if ($lockStream) { $lockStream.Close(); $lockStream.Dispose() } } catch {}
+        try { Remove-Item $Script:LockFile -Force -ErrorAction SilentlyContinue } catch {}
+    }
+    }
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -151,9 +185,12 @@ function Menu {
 # ═══════════════════════════════════════════════════════════════════
 
 function Get-Arch {
+    # BUG-36 fix: use environment variable for PS 5.1 compatibility
+    $a = $env:PROCESSOR_ARCHITECTURE
     try {
-        $a = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
-    } catch { $a = $env:PROCESSOR_ARCHITECTURE }
+        $ri = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
+        if ($ri) { $a = $ri }
+    } catch {}
     if (-not $a) { $a = 'x64' }
     switch -Wildcard ($a) {
         '*arm64*' { 'arm64' }
@@ -166,8 +203,8 @@ function Get-OsInfo {
     $os = [System.Environment]::OSVersion
     $ver = $os.Version
     $arch = Get-Arch
-    if ($IsLinux) { return "Linux $arch" }
-    if ($IsMacOS) { return "macOS $arch" }
+    # BUG-36 fix: don't use $IsLinux/$IsMacOS (PS 5.1 incompatible)
+    if ($os.Platform -eq [System.PlatformID]::Unix) { return "Linux $arch" }
     return "Windows $($ver.Major).$($ver.Minor) $arch"
 }
 
@@ -448,7 +485,7 @@ function Ensure-Go {
 
     # Fallback: detect latest Go version from go.dev and download zip (works in more regions than MSI)
     Step "Installing Go..."
-    $latest = 'go1.25.0'
+    $latest = 'go1.23.5' # BUG-37 fix: use known stable version as fallback
     try {
         $json = Download-String 'https://go.dev/dl/?mode=json'
         if ($json) {
@@ -521,7 +558,17 @@ function Ensure-Npcap {
     }
 
     # Fallback: download and install
-    $npcapUrl = 'https://npcap.com/dist/npcap-1.80.exe'
+    # BUG-37 fix: try to detect latest Npcap version from API
+    $npcapUrl = $null
+    try {
+        $npcapPage = Download-String 'https://api.github.com/repos/nmap/npcap/releases/latest'
+        if ($npcapPage) {
+            $npcapRel = $npcapPage | ConvertFrom-Json
+            $npcapAsset = $npcapRel.assets | Where-Object { $_.name -match '\.exe$' } | Select-Object -First 1
+            if ($npcapAsset) { $npcapUrl = $npcapAsset.browser_download_url }
+        }
+    } catch {}
+    if (-not $npcapUrl) { $npcapUrl = 'https://npcap.com/dist/npcap-1.80.exe' }
     $dl = "$env:TEMP\npcap-setup.exe"
     if (-not (Download-File $npcapUrl $dl)) { Err "Npcap download failed"; return $false }
     Start-Process $dl -ArgumentList '/S /winpcap_mode=yes' -Wait
@@ -1031,9 +1078,15 @@ function Do-ServerInstall {
     $paqetExe = "$binDir\$Script:PaqetBin"
     if (-not (Test-Path $paqetExe)) { Err "paqet binary not found"; return }
 
-    # Generate secret
+    # Generate secret — BUG-38 fix: use cryptographic RNG
     $secret = & $paqetExe secret 2>$null
-    if (-not $secret) { $secret = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Max 256 })) }
+    if (-not $secret) {
+        $rngBytes = New-Object byte[] 32
+        $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+        $rng.GetBytes($rngBytes)
+        $rng.Dispose()
+        $secret = [Convert]::ToBase64String($rngBytes)
+    }
     $secret = $secret.Trim()
 
     # Determine server address

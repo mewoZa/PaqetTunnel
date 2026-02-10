@@ -1,8 +1,12 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Win32;
 
 namespace PaqetTunnel.Services;
@@ -20,6 +24,9 @@ public sealed class ProxyService
     // ── STATIC PORTS — NEVER CHANGE THESE ────────────────────────
     private const int SOCKS_PORT = PaqetService.SOCKS_PORT;       // 10800 — paqet SOCKS5
     public const int SHARING_PORT = SOCKS_PORT + 1;               // 10801 — LAN sharing portproxy
+    private const int PAC_HTTP_PORT = SOCKS_PORT + 2;              // 10802 — localhost PAC server
+    private static TcpListener? _pacServer;
+    private static CancellationTokenSource? _pacCts;
 
     // Saved state for restore on shutdown
     private bool _hadProxyBefore;
@@ -179,15 +186,20 @@ public sealed class ProxyService
                     if (name.Contains("paqet") || name.Contains("tun2socks") || name.Contains("paqettunnel"))
                         continue;
 
-                    // svchost = iphlpsvc serving a stale portproxy rule.
-                    // Don't kill svchost — it hosts critical services including the portproxy
-                    // we need. Instead, remove the stale portproxy rule.
-                    if (name == "svchost")
+                    // BUG-15 fix: only kill processes that are clearly not system services
+                    if (name == "svchost" || name == "system" || name == "services" ||
+                        name == "lsass" || name == "csrss" || name == "smss" || name == "wininit")
                     {
-                        Logger.Warn($"Port {port} held by svchost (PID {pid}) — removing stale portproxy rule");
-                        try { PaqetService.RunAdmin("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={port}"); } catch { }
-                        // Give iphlpsvc a moment to release the port
-                        Thread.Sleep(1000);
+                        if (name == "svchost")
+                        {
+                            Logger.Warn($"Port {port} held by svchost (PID {pid}) — removing stale portproxy rule");
+                            try { PaqetService.RunAdmin("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={port}"); } catch { }
+                            Thread.Sleep(1000);
+                        }
+                        else
+                        {
+                            Logger.Warn($"Port {port} held by system process {name} (PID {pid}) — skipping");
+                        }
                         continue;
                     }
 
@@ -221,7 +233,8 @@ public sealed class ProxyService
                 {
                     RunReg($"add \"{INTERNET_SETTINGS_KEY}\" /v ProxyEnable /t REG_DWORD /d 0 /f");
                 }
-                // Clean up PAC file and AutoConfigURL
+                // Clean up PAC file/server and AutoConfigURL
+                StopPacServer();
                 try { RunReg($"delete \"{INTERNET_SETTINGS_KEY}\" /v AutoConfigURL /f"); } catch { }
                 try { var pacPath = Path.Combine(AppPaths.DataDir, "proxy.pac"); if (File.Exists(pacPath)) File.Delete(pacPath); } catch { }
                 NotifyProxyChange();
@@ -284,7 +297,8 @@ public sealed class ProxyService
     return ""SOCKS5 127.0.0.1:{SOCKS_PORT}; DIRECT"";
 }}";
                 File.WriteAllText(pacPath, pacContent);
-                var pacUrl = "file:///" + pacPath.Replace('\\', '/');
+                var pacUrl = $"http://127.0.0.1:{PAC_HTTP_PORT}/proxy.pac"; // BUG-18 fix: serve PAC over HTTP
+                StartPacServer(pacContent);
 
                 // Set PAC-based auto-proxy (browsers read this for SOCKS5 support)
                 RunReg($"add \"{INTERNET_SETTINGS_KEY}\" /v AutoConfigURL /t REG_SZ /d \"{pacUrl}\" /f");
@@ -298,7 +312,8 @@ public sealed class ProxyService
                 try { RunReg($"delete \"{INTERNET_SETTINGS_KEY}\" /v ProxyServer /f"); } catch { }
                 try { RunReg($"delete \"{INTERNET_SETTINGS_KEY}\" /v ProxyOverride /f"); } catch { }
                 try { RunReg($"delete \"{INTERNET_SETTINGS_KEY}\" /v AutoConfigURL /f"); } catch { }
-                // Remove PAC file
+                // Remove PAC file and stop PAC server
+                StopPacServer();
                 try { var pacPath = Path.Combine(AppPaths.DataDir, "proxy.pac"); if (File.Exists(pacPath)) File.Delete(pacPath); } catch { }
                 if (_weSetProxy) _weSetProxy = false;
             }
@@ -573,4 +588,64 @@ public sealed class ProxyService
 
     [DllImport("wininet.dll", SetLastError = true)]
     private static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
+
+    // ── BUG-18 fix: Localhost PAC HTTP server ────────────────────
+
+    private static void StartPacServer(string pacContent)
+    {
+        StopPacServer();
+        try
+        {
+            _pacCts = new CancellationTokenSource();
+            var ct = _pacCts.Token;
+            _pacServer = new TcpListener(IPAddress.Loopback, PAC_HTTP_PORT);
+            _pacServer.Start();
+            _ = Task.Run(async () =>
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    try
+                    {
+                        var client = await _pacServer.AcceptTcpClientAsync();
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                using (client)
+                                {
+                                    client.ReceiveTimeout = 5000;
+                                    using var stream = client.GetStream();
+                                    var buffer = new byte[1024];
+                                    await stream.ReadAsync(buffer, 0, buffer.Length);
+                                    var body = Encoding.UTF8.GetBytes(pacContent);
+                                    var header = Encoding.UTF8.GetBytes(
+                                        "HTTP/1.1 200 OK\r\n" +
+                                        "Content-Type: application/x-ns-proxy-autoconfig\r\n" +
+                                        $"Content-Length: {body.Length}\r\n" +
+                                        "Connection: close\r\n\r\n");
+                                    await stream.WriteAsync(header, 0, header.Length);
+                                    await stream.WriteAsync(body, 0, body.Length);
+                                }
+                            }
+                            catch { }
+                        });
+                    }
+                    catch { if (ct.IsCancellationRequested) break; }
+                }
+            });
+            Logger.Info($"PAC server started on http://127.0.0.1:{PAC_HTTP_PORT}/");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("PAC server failed to start", ex);
+        }
+    }
+
+    private static void StopPacServer()
+    {
+        try { _pacCts?.Cancel(); } catch { }
+        try { _pacServer?.Stop(); } catch { }
+        _pacServer = null;
+        _pacCts = null;
+    }
 }

@@ -9,7 +9,24 @@
 #   --key <secret>     Pre-shared key (auto-generated if omitted)
 #   --iface <name>     Network interface (auto-detected if omitted)
 #   --build            Build from source instead of downloading release
-#   --yes              Skip confirmations
+#   --yes              Skip all confirmations
+#
+# ─── 🤖 AI AGENT QUICK REFERENCE ─────────────────────────────────
+# Copy this block to your AI agent for automated server setup:
+#
+#   curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh -o /tmp/pt.sh && sudo bash /tmp/pt.sh install --yes
+#
+#   What it does: downloads paqet binary, detects network (interface, IP, MAC),
+#   generates encryption key, configures iptables (NOTRACK + RST DROP),
+#   creates systemd service, starts paqet on port 8443/UDP.
+#
+#   After install it prints the Windows client command with IP + key — save it!
+#   Config: /etc/paqet/server.yaml | Service: systemctl {status|restart|stop} paqet
+#   Logs: journalctl -u paqet -f | Firewall: ensure UDP 8443 is open
+#   Commands: sudo bash /tmp/pt.sh {install|update|uninstall|status|restart|logs}
+#   Flags: --addr ip:port | --key "secret" | --iface eth0 | --build | --yes
+#
+#   Full guide: https://github.com/mewoZa/PaqetTunnel/blob/master/AGENT_SETUP_GUIDE.md
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -126,7 +143,12 @@ ensure_go() {
     # Detect latest stable Go version (fallback to known stable)
     local go_ver="1.23.5"
     local latest
-    latest=$(curl -fsSL 'https://go.dev/dl/?mode=json' 2>/dev/null | sed -n 's/.*"version":"\(go[^"]*\)".*/\1/p' | head -1)
+    # BUG-32 fix: prefer jq for reliable JSON parsing
+    if has_cmd jq; then
+        latest=$(curl -fsSL 'https://go.dev/dl/?mode=json' 2>/dev/null | jq -r '.[0].version // empty' 2>/dev/null)
+    else
+        latest=$(curl -fsSL 'https://go.dev/dl/?mode=json' 2>/dev/null | sed -n 's/.*"version":"\(go[^"]*\)".*/\1/p' | head -1)
+    fi
     if [[ -n "$latest" ]]; then
         go_ver="${latest#go}"
     fi
@@ -162,8 +184,14 @@ download_paqet() {
     local json
     json=$(curl -fsSL "$api_url" 2>/dev/null || true)
     if [[ -n "$json" ]]; then
-        tag=$(echo "$json" | sed -n 's/.*"tag_name":\s*"\([^"]*\)".*/\1/p' | head -1)
-        dl_url=$(echo "$json" | sed -n "s|.*\"browser_download_url\":\s*\"\([^\"]*paqet-linux-${arch}[^\"]*\.tar\.gz\)\".*|\1|p" | head -1)
+        # BUG-32 fix: prefer jq for reliable JSON parsing, fallback to sed
+        if has_cmd jq; then
+            tag=$(echo "$json" | jq -r '.tag_name // empty' 2>/dev/null)
+            dl_url=$(echo "$json" | jq -r ".assets[]?.browser_download_url // empty" 2>/dev/null | grep "paqet-linux-${arch}.*\.tar\.gz" | head -1)
+        else
+            tag=$(echo "$json" | sed -n 's/.*"tag_name":\s*"\([^"]*\)".*/\1/p' | head -1)
+            dl_url=$(echo "$json" | sed -n "s|.*\"browser_download_url\":\s*\"\([^\"]*paqet-linux-${arch}[^\"]*\.tar\.gz\)\".*|\1|p" | head -1)
+        fi
     fi
 
     if [[ -z "$dl_url" ]]; then
@@ -175,8 +203,8 @@ download_paqet() {
     step "Downloading paqet ($arch)..."
     local tmp="/tmp/paqet-release.tar.gz"
     curl -fsSL "$dl_url" -o "$tmp"
-    if [[ ! -f "$tmp" ]]; then
-        err "Download failed"
+    if [[ ! -f "$tmp" ]] || [[ ! -s "$tmp" ]]; then
+        err "Download failed or file is empty"
         return 1
     fi
 
@@ -289,21 +317,21 @@ setup_iptables() {
     step "Configuring iptables for raw packet handling (port $port)..."
 
     # Remove existing rules first (ignore errors)
-    iptables -t raw -D PREROUTING -p udp --dport "$port" -j NOTRACK 2>/dev/null || true
-    iptables -t raw -D OUTPUT -p udp --sport "$port" -j NOTRACK 2>/dev/null || true
-    iptables -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
-    iptables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
-    iptables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
+    iptables -w 5 -t raw -D PREROUTING -p udp --dport "$port" -j NOTRACK 2>/dev/null || true
+    iptables -w 5 -t raw -D OUTPUT -p udp --sport "$port" -j NOTRACK 2>/dev/null || true
+    iptables -w 5 -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
+    iptables -w 5 -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
+    iptables -w 5 -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
 
     # Add NOTRACK rules — paqet uses raw pcap with crafted TCP packets
     # TCP: prevent kernel from tracking raw pcap TCP packets (primary — paqet wraps KCP inside TCP)
-    iptables -t raw -A PREROUTING -p tcp --dport "$port" -j NOTRACK
-    iptables -t raw -A OUTPUT -p tcp --sport "$port" -j NOTRACK
+    iptables -w 5 -t raw -A PREROUTING -p tcp --dport "$port" -j NOTRACK
+    iptables -w 5 -t raw -A OUTPUT -p tcp --sport "$port" -j NOTRACK
     # UDP: NOTRACK for completeness (KCP transport layer)
-    iptables -t raw -A PREROUTING -p udp --dport "$port" -j NOTRACK
-    iptables -t raw -A OUTPUT -p udp --sport "$port" -j NOTRACK
+    iptables -w 5 -t raw -A PREROUTING -p udp --dport "$port" -j NOTRACK
+    iptables -w 5 -t raw -A OUTPUT -p udp --sport "$port" -j NOTRACK
     # Drop RST — kernel sends RST for packets it doesn't recognize, making port visible
-    iptables -t mangle -A OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP
+    iptables -w 5 -t mangle -A OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP
 
     ok "iptables rules configured (UDP + TCP NOTRACK, RST DROP)"
 
@@ -426,6 +454,12 @@ do_install() {
     dim "Public IP: $public_ip"
     dim "Router MAC: $router_mac"
 
+    # BUG-34 fix: escape YAML special characters in variables
+    local safe_secret safe_iface safe_router_mac
+    safe_secret=$(printf '%s' "$secret" | sed 's/["\]/\\&/g; s/#/\\#/g')
+    safe_iface=$(printf '%s' "$iface" | sed 's/["\]/\\&/g')
+    safe_router_mac=$(printf '%s' "$router_mac" | sed 's/["\]/\\&/g')
+
     # Write config
     if [[ $existing_config -eq 1 ]]; then
         dim "Preserving existing key"
@@ -437,10 +471,10 @@ log:
 listen:
   addr: ":$port"
 network:
-  interface: "$iface"
+  interface: "$safe_iface"
   ipv4:
     addr: "$local_ip:$port"
-    router_mac: "$router_mac"
+    router_mac: "$safe_router_mac"
   tcp:
     local_flag: ["PA"]
 transport:
@@ -448,7 +482,7 @@ transport:
   kcp:
     mode: "fast"
     block: "aes"
-    key: "$secret"
+    key: "$safe_secret"
 EOF
     chmod 600 "$CONFIG_DIR/server.yaml"
     ok "Config created"
@@ -564,12 +598,22 @@ do_uninstall() {
     # Clean iptables rules
     if [[ -n "$port" ]]; then
         step "Removing iptables rules..."
-        iptables -t raw -D PREROUTING -p udp --dport "$port" -j NOTRACK 2>/dev/null || true
-        iptables -t raw -D OUTPUT -p udp --sport "$port" -j NOTRACK 2>/dev/null || true
-        iptables -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
-        iptables -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
-        iptables -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
+        iptables -w 5 -t raw -D PREROUTING -p udp --dport "$port" -j NOTRACK 2>/dev/null || true
+        iptables -w 5 -t raw -D OUTPUT -p udp --sport "$port" -j NOTRACK 2>/dev/null || true
+        iptables -w 5 -t raw -D PREROUTING -p tcp --dport "$port" -j NOTRACK 2>/dev/null || true
+        iptables -w 5 -t raw -D OUTPUT -p tcp --sport "$port" -j NOTRACK 2>/dev/null || true
+        iptables -w 5 -t mangle -D OUTPUT -p tcp --sport "$port" --tcp-flags RST RST -j DROP 2>/dev/null || true
         ok "iptables rules removed"
+    fi
+
+    # BUG-35 fix: remove iptables-restore service created during install
+    if [[ -f /etc/systemd/system/iptables-restore.service ]]; then
+        step "Removing iptables-restore service..."
+        systemctl stop iptables-restore 2>/dev/null || true
+        systemctl disable iptables-restore 2>/dev/null || true
+        rm -f /etc/systemd/system/iptables-restore.service
+        systemctl daemon-reload 2>/dev/null || true
+        ok "iptables-restore service removed"
     fi
 
     if confirm "Remove configuration ($CONFIG_DIR)?"; then

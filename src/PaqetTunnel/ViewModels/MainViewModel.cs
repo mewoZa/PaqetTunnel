@@ -41,6 +41,7 @@ public partial class MainViewModel : ObservableObject
     private int _consecutiveHealthFailures;
     private const int HEALTH_CHECK_INTERVAL = 10; // every 10 ticks (30s at 3s/tick)
     private const int HEALTH_FAIL_THRESHOLD = 2;  // require 2 consecutive failures before warning
+    private List<(string Name, string? OriginalDns)>? _savedAdapterDns; // BUG-05: saved DNS for restore
 
     // ── Speed ─────────────────────────────────────────────────────
 
@@ -473,7 +474,7 @@ public partial class MainViewModel : ObservableObject
                     var appSett = _configService.ReadAppSettings();
                     var (p, s) = DnsService.Resolve(appSett);
                     Logger.Info($"SOCKS5 mode: forcing DNS to {p}, {s} for leak prevention");
-                    DnsService.ForceAllAdaptersDns(p, s);
+                    _savedAdapterDns = DnsService.ForceAllAdaptersDns(p, s); // BUG-05: save original DNS
                 }
             });
             // Fetch public IP through tunnel if not already fetched
@@ -515,20 +516,30 @@ public partial class MainViewModel : ObservableObject
             var (success, message) = _paqetService.Stop();
             Logger.Info($"Stop() returned: success={success}, message={message}");
 
-            // Flush DNS cache and restore DNS to DHCP after disconnect
+            // Flush DNS cache and restore original DNS after disconnect
             DnsService.FlushCache();
-            // Restore all adapters to DHCP (undo SOCKS5-mode DNS forcing)
-            try
+            // BUG-05 fix: restore saved DNS instead of blindly resetting to DHCP
+            if (_savedAdapterDns != null && _savedAdapterDns.Count > 0)
             {
-                var output = PaqetService.RunCommand("powershell", "-NoProfile -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -ExpandProperty Name\"");
-                foreach (var adapter in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-                {
-                    var name = adapter.Trim();
-                    if (!string.IsNullOrEmpty(name) && name != "PaqetTun")
-                        DnsService.RestoreAdapterDns(name, null);
-                }
+                foreach (var (name, originalDns) in _savedAdapterDns)
+                    DnsService.RestoreAdapterDns(name, originalDns);
+                _savedAdapterDns = null;
             }
-            catch { }
+            else
+            {
+                // Fallback: restore to DHCP if we don't have saved DNS
+                try
+                {
+                    var output = PaqetService.RunCommand("powershell", "-NoProfile -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -ExpandProperty Name\"");
+                    foreach (var adapter in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var name = adapter.Trim();
+                        if (!string.IsNullOrEmpty(name) && name != "PaqetTun")
+                            DnsService.RestoreAdapterDns(name, null);
+                    }
+                }
+                catch { }
+            }
             DnsService.FlushCache();
 
             Application.Current.Dispatcher.Invoke(() =>
@@ -1413,9 +1424,9 @@ public partial class MainViewModel : ObservableObject
                             var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
                             if (ip == null && IsConnected)
                             {
-                                _consecutiveHealthFailures++;
-                                Logger.Warn($"Health check failed ({_consecutiveHealthFailures}/{HEALTH_FAIL_THRESHOLD})");
-                                if (_consecutiveHealthFailures >= HEALTH_FAIL_THRESHOLD)
+                                var failures = System.Threading.Interlocked.Increment(ref _consecutiveHealthFailures);
+                                Logger.Warn($"Health check failed ({failures}/{HEALTH_FAIL_THRESHOLD})");
+                                if (failures >= HEALTH_FAIL_THRESHOLD)
                                 {
                                     Application.Current.Dispatcher.Invoke(() =>
                                     {
@@ -1425,9 +1436,9 @@ public partial class MainViewModel : ObservableObject
                             }
                             else if (ip != null)
                             {
-                                if (_consecutiveHealthFailures > 0)
-                                    Logger.Info($"Health check recovered after {_consecutiveHealthFailures} failure(s)");
-                                _consecutiveHealthFailures = 0;
+                                var prevFailures = System.Threading.Interlocked.Exchange(ref _consecutiveHealthFailures, 0);
+                                if (prevFailures > 0)
+                                    Logger.Info($"Health check recovered after {prevFailures} failure(s)");
                                 Application.Current.Dispatcher.Invoke(() =>
                                 {
                                     // Restore normal status if it was degraded
@@ -1478,7 +1489,7 @@ public partial class MainViewModel : ObservableObject
 
                 lock (_networkMonitor)
                 {
-                    var hist = _networkMonitor.History;
+                    var hist = _networkMonitor.GetHistorySnapshot(); // BUG-07 fix: thread-safe copy
                     DownloadHistory = new List<double>(hist.ConvertAll(s => s.DownloadSpeed));
                     UploadHistory = new List<double>(hist.ConvertAll(s => s.UploadSpeed));
                     SpeedHistory = new List<double>(hist.ConvertAll(s => s.DownloadSpeed + s.UploadSpeed));
@@ -1486,9 +1497,19 @@ public partial class MainViewModel : ObservableObject
                     var peak = hist.Count > 0 ? hist.Max(s => s.DownloadSpeed + s.UploadSpeed) : 0;
                     PeakSpeed = peak;
 
-                    double totalDl = hist.Sum(s => s.DownloadSpeed);
-                    double totalUl = hist.Sum(s => s.UploadSpeed);
-                    TotalTransferred = NetworkMonitorService.FormatBytes(totalDl + totalUl);
+                    // BUG-11 fix: calculate total from byte counters, not speed sums
+                    if (hist.Count >= 2)
+                    {
+                        var first = hist[0];
+                        var latest = hist[^1];
+                        double totalDl = Math.Max(0, latest.BytesReceived - first.BytesReceived);
+                        double totalUl = Math.Max(0, latest.BytesSent - first.BytesSent);
+                        TotalTransferred = NetworkMonitorService.FormatBytes(totalDl + totalUl);
+                    }
+                    else
+                    {
+                        TotalTransferred = "0 B";
+                    }
                 }
             });
         }
@@ -1579,6 +1600,12 @@ public partial class MainViewModel : ObservableObject
         _statusTimer.Dispose();
         _networkMonitor.Stop();
         _networkMonitor.Dispose();
+
+        // BUG-20 fix: stop SOCKS5 tunnel if connected
+        if (IsConnected)
+        {
+            try { _paqetService.Stop(); } catch { }
+        }
 
         // Stop TUN if running
         if (_tunService.IsRunning())

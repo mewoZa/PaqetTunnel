@@ -32,7 +32,6 @@ public sealed class PaqetConfig
     {
         var config = new PaqetConfig { RawConfig = yaml };
         var sectionPath = new List<string>();
-        int prevIndent = 0;
 
         foreach (var rawLine in yaml.Split('\n'))
         {
@@ -63,7 +62,6 @@ public sealed class PaqetConfig
             {
                 // Section header — push onto path
                 sectionPath.Add(key);
-                prevIndent = indent;
                 continue;
             }
 
@@ -81,8 +79,6 @@ public sealed class PaqetConfig
                 case "network.ipv4.router_mac": config.RouterMac = value; break;
                 case "socks5.listen": config.SocksListen = value; break;
             }
-
-            prevIndent = indent;
         }
 
         return config;
@@ -135,6 +131,10 @@ public sealed class PaqetConfig
         result = ReplaceYamlValue(result, "key", Key, "kcp");
         result = ReplaceYamlValue(result, "interface", Interface, "network");
         result = ReplaceYamlValue(result, "listen", SocksListen, "socks5");
+        // BUG-12 fix: persist guid, ipv4.addr, router_mac too
+        result = ReplaceYamlValue(result, "guid", DeviceGuid, "network");
+        result = ReplaceYamlValue(result, "addr", Ipv4Addr, "ipv4");
+        result = ReplaceYamlValue(result, "router_mac", RouterMac, "ipv4");
         return result;
     }
 
@@ -198,4 +198,6 @@ public sealed class AppSettings
     public string ServerSshUser { get; set; } = "root";
     public string ServerSshKeyPath { get; set; } = "";
     public string ServerSshPassword { get; set; } = "";
+    /// <summary>DPAPI-encrypted form of ServerSshPassword for safe on-disk storage.</summary>
+    public string ServerSshPasswordProtected { get; set; } = "";
 }

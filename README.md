@@ -46,6 +46,39 @@ irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $en
 
 > **Both scripts show an interactive menu** — install, update, uninstall, status, all from one command.
 
+### 🤖 AI Agent Setup
+
+Want your AI assistant (ChatGPT, Claude, Copilot, etc.) to set it up for you? Copy the block below and paste it to your AI agent:
+
+<details>
+<summary><b>📋 Copy this to your AI agent for server setup (click to expand)</b></summary>
+
+```
+Install Paqet Tunnel VPN server on this Linux VPS.
+Run: curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh -o /tmp/pt.sh && sudo bash /tmp/pt.sh install --yes
+It auto-detects everything. After install, save the printed Windows client command (has IP + key).
+Port 8443/UDP must be open. Service: systemctl {status|restart|stop} paqet. Logs: journalctl -u paqet -f
+Management: sudo bash /tmp/pt.sh {status|update|restart|uninstall|logs}
+```
+
+</details>
+
+<details>
+<summary><b>📋 Copy this to your AI agent for client setup (click to expand)</b></summary>
+
+```
+Install Paqet Tunnel VPN client on this Windows machine.
+Run in PowerShell as Admin: irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $env:TEMP\pt.ps1; & $env:TEMP\pt.ps1 install -Addr SERVER_IP:8443 -Key "SECRET_KEY" -y
+Replace SERVER_IP and SECRET_KEY with values from server setup.
+It downloads binaries, builds GUI, detects network, creates config, adds shortcuts, sets auto-start.
+Install path: %LOCALAPPDATA%\PaqetTunnel\. SOCKS5 proxy: 127.0.0.1:10800.
+Management: & $env:TEMP\pt.ps1 {status|update|uninstall}
+```
+
+</details>
+
+> 📖 For a comprehensive agent guide with troubleshooting and full technical details, see [**AGENT_SETUP_GUIDE.md**](AGENT_SETUP_GUIDE.md).
+
 ---
 
 ## ✨ Features
@@ -308,6 +341,134 @@ PaqetTunnel/
 - TUN adapter uses IP `10.0.85.2` with gateway `10.0.85.1`.
 - SOCKS5 port is `10800` (not 1080 — avoids Windows ICS conflicts).
 - LAN sharing port is `10801` (portproxy is volatile — re-created each startup).
+
+---
+
+## 📚 Complete Technical Reference
+
+<details>
+<summary><b>Server Configuration</b></summary>
+
+**Config file**: `/etc/paqet/server.yaml`
+
+```yaml
+role: "server"
+log:
+  level: "info"
+listen:
+  addr: ":8443"                       # Listen port
+network:
+  interface: "eth0"                   # Physical NIC name
+  ipv4:
+    addr: "10.0.0.5:8443"            # Local IP:port (for raw pcap)
+    router_mac: "aa:bb:cc:dd:ee:ff"  # Gateway MAC address
+  tcp:
+    local_flag: ["PA"]               # TCP flags for packet crafting
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"                     # KCP mode: fast, fast2, normal
+    block: "aes"                     # Encryption cipher
+    key: "base64_secret_key"         # Pre-shared key (must match client)
+```
+
+**File layout:**
+```
+/opt/paqet/paqet              ← binary
+/usr/local/bin/paqet          ← symlink
+/etc/paqet/server.yaml        ← config
+/etc/systemd/system/paqet.service
+```
+
+**iptables rules** (auto-configured by setup.sh):
+- `NOTRACK` on server port — disables conntrack for raw pcap
+- `RST DROP` on server port — hides port from scanners (nmap sees "filtered")
+- All rules use `-w 5` (waits for xtables lock to prevent race conditions)
+
+</details>
+
+<details>
+<summary><b>Client Configuration</b></summary>
+
+**Config file**: `%LOCALAPPDATA%\PaqetTunnel\config\client.yaml`
+
+```yaml
+role: "client"
+log:
+  level: "info"
+socks5:
+  - listen: "127.0.0.1:10800"           # SOCKS5 proxy address
+server:
+  addr: "VPS_IP:8443"                   # Server address
+network:
+  interface: "Ethernet"                  # Physical NIC name
+  guid: "\Device\NPF_{ADAPTER-GUID}"    # WinPcap device GUID
+  ipv4:
+    addr: "192.168.1.100:0"             # Local IP (for raw pcap)
+    router_mac: "aa:bb:cc:dd:ee:ff"     # Gateway MAC address
+  tcp:
+    local_flag: ["PA"]
+    remote_flag: ["PA"]
+transport:
+  protocol: "kcp"
+  kcp:
+    mode: "fast"
+    block: "aes"
+    key: "same_key_as_server"            # Must match server
+```
+
+**File layout:**
+```
+%LOCALAPPDATA%\PaqetTunnel\
+├── PaqetTunnel.exe          ← GUI app
+├── bin\
+│   ├── paqet_windows_amd64.exe
+│   ├── tun2socks.exe
+│   └── wintun.dll
+├── config\client.yaml       ← paqet config
+├── logs\                    ← log files
+├── diagnostics\             ← saved reports
+├── settings.json            ← app preferences
+├── .version                 ← version tag
+└── .commit                  ← git commit SHA
+```
+
+</details>
+
+<details>
+<summary><b>Ports & Networking</b></summary>
+
+| Port | Protocol | Side | Purpose |
+|------|----------|------|---------|
+| **8443** | UDP | Server | KCP tunnel listener (configurable) |
+| **10800** | TCP | Client | SOCKS5 proxy (localhost) |
+| **10801** | TCP | Client | LAN sharing portproxy (optional) |
+| **10802** | TCP | Client | PAC HTTP server (localhost, for Chrome) |
+
+**TUN adapter** (full system tunnel mode):
+- Name: `PaqetTun`
+- IP: `10.0.85.2`, Gateway: `10.0.85.1`, Mask: `255.255.255.0`
+- Routes: `0.0.0.0/1` + `128.0.0.0/1` → `10.0.85.1` (captures all traffic)
+- LAN exclusions: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` → original gateway
+
+</details>
+
+<details>
+<summary><b>Troubleshooting</b></summary>
+
+| Problem | Solution |
+|---------|----------|
+| **Won't connect** | Check VPS firewall (UDP 8443). Check `journalctl -u paqet -f`. Verify key matches. |
+| **Connected but no internet** | Set DNS in Settings (Cloudflare recommended). Run Auto benchmark. |
+| **DNS leaks** | Enable DNS provider in Settings. Use Full System Tunnel for max protection. |
+| **Slow speed** | Run `--speed` diagnostic. Check server bandwidth. Try KCP mode "fast2". |
+| **Connection drops** | Auto-reconnects (5 attempts). Check server resources (`free -h`, `top`). |
+| **Defender blocks paqet** | Exclusions added by installer. Manual: Settings → Exclusions → add install path. |
+| **Port 10800 in use** | Run `netstat -ano \| findstr 10800`. Kill the process or reboot. |
+| **TUN not working** | Check `wintun.dll` exists. Disable other VPN software. |
+| **Server port in use** | Run `ss -tlnup \| grep 8443`. Change port in config or kill the process. |
+
+</details>
 
 ## 🙏 Credits
 

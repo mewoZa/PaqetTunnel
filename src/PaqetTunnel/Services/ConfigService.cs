@@ -64,7 +64,11 @@ public sealed class ConfigService
                 return new AppSettings();
 
             var json = File.ReadAllText(AppPaths.SettingsPath);
-            return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            // BUG-01 fix: decrypt protected password, or keep plaintext for backward compat
+            if (!string.IsNullOrEmpty(settings.ServerSshPasswordProtected))
+                settings.ServerSshPassword = CredentialHelper.Unprotect(settings.ServerSshPasswordProtected);
+            return settings;
         }
         catch
         {
@@ -77,9 +81,15 @@ public sealed class ConfigService
         try
         {
             AppPaths.EnsureDirectories();
+            // BUG-01 fix: encrypt SSH password before persisting
+            if (!string.IsNullOrEmpty(settings.ServerSshPassword))
+                settings.ServerSshPasswordProtected = CredentialHelper.Protect(settings.ServerSshPassword);
+            var savedPlain = settings.ServerSshPassword;
+            settings.ServerSshPassword = ""; // Don't write plaintext to disk
             var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(AppPaths.SettingsPath, json);
+            settings.ServerSshPassword = savedPlain; // Restore in-memory value
         }
-        catch { /* Best-effort */ }
+        catch (Exception ex) { Logger.Error("Failed to save app settings", ex); }
     }
 }

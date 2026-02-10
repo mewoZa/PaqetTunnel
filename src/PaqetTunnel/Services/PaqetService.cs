@@ -21,6 +21,7 @@ public sealed class PaqetService
     public const int SOCKS_PORT = 10800;
 
     private Process? _paqetProcess;
+    private readonly object _processLock = new(); // BUG-06: synchronize _paqetProcess access
 
     public string BinaryPath => AppPaths.BinaryPath;
     public string ConfigPath => AppPaths.PaqetConfigPath;
@@ -55,7 +56,18 @@ public sealed class PaqetService
             }
             var output = proc.StandardOutput.ReadToEnd();
             proc.WaitForExit(3000);
-            var found = output.Contains(AppPaths.BINARY_NAME, StringComparison.OrdinalIgnoreCase);
+            // BUG-14 fix: parse CSV rows and exact-match image name to avoid partial matches
+            var found = false;
+            foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var trimmed = line.Trim().Trim('"');
+                var firstField = trimmed.Split('"')[0];
+                if (firstField.Equals(AppPaths.BINARY_NAME, StringComparison.OrdinalIgnoreCase))
+                {
+                    found = true;
+                    break;
+                }
+            }
             Logger.Debug($"IsRunning: {found} — tasklist output: {output.Trim().Replace("\r\n", " | ")}");
             return found;
         }
@@ -254,7 +266,7 @@ public sealed class PaqetService
                 return (false, "Failed to start process.");
             }
 
-            _paqetProcess = proc;
+            lock (_processLock) { _paqetProcess = proc; }
             var pid = proc.Id;
             Logger.Info($"Process started with PID {pid}");
 
@@ -344,24 +356,27 @@ public sealed class PaqetService
     {
         Logger.Info("Stop() called");
 
-        // Clean up tracked process handle first
-        if (_paqetProcess != null)
+        // BUG-06 fix: synchronize _paqetProcess access
+        lock (_processLock)
         {
-            try
+            if (_paqetProcess != null)
             {
-                if (!_paqetProcess.HasExited)
+                try
                 {
-                    Logger.Info($"Killing tracked paqet process PID {_paqetProcess.Id}");
-                    _paqetProcess.Kill(entireProcessTree: true);
-                    _paqetProcess.WaitForExit(3000);
+                    if (!_paqetProcess.HasExited)
+                    {
+                        Logger.Info($"Killing tracked paqet process PID {_paqetProcess.Id}");
+                        _paqetProcess.Kill(entireProcessTree: true);
+                        _paqetProcess.WaitForExit(3000);
+                    }
+                    _paqetProcess.Dispose();
                 }
-                _paqetProcess.Dispose();
+                catch (Exception ex)
+                {
+                    Logger.Debug($"Tracked process cleanup: {ex.Message}");
+                }
+                _paqetProcess = null;
             }
-            catch (Exception ex)
-            {
-                Logger.Debug($"Tracked process cleanup: {ex.Message}");
-            }
-            _paqetProcess = null;
         }
 
         if (!IsRunning())
@@ -448,6 +463,11 @@ public sealed class PaqetService
             progress?.Report($"Downloading: {Path.GetFileName(downloadUrl)}...");
 
             var bytes = await http.GetByteArrayAsync(downloadUrl);
+
+            // BUG-03 fix: validate download integrity
+            if (bytes == null || bytes.Length < 1024)
+                return (false, $"Downloaded file too small ({bytes?.Length ?? 0} bytes) — possible corruption.");
+            Logger.Info($"Downloaded {bytes.Length} bytes from {downloadUrl}");
 
             if (downloadUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
             {
@@ -594,6 +614,7 @@ public sealed class PaqetService
         return null;
     }
 
+    // BUG-04/BUG-10 fix: read stdout/stderr asynchronously to prevent deadlock
     internal static string RunCommand(string fileName, string arguments, int timeout = 10000)
     {
         var psi = new ProcessStartInfo(fileName, arguments)
@@ -605,9 +626,13 @@ public sealed class PaqetService
             WindowStyle = ProcessWindowStyle.Hidden
         };
         using var proc = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start process.");
-        var output = proc.StandardOutput.ReadToEnd();
+        var stdout = new StringBuilder();
+        proc.OutputDataReceived += (s, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
+        proc.ErrorDataReceived += (s, e) => { }; // drain stderr to prevent buffer deadlock
+        proc.BeginOutputReadLine();
+        proc.BeginErrorReadLine();
         proc.WaitForExit(timeout);
-        return output;
+        return stdout.ToString();
     }
 
     internal static string RunCommandWithStderr(string fileName, string arguments, int timeout = 10000)
@@ -621,14 +646,28 @@ public sealed class PaqetService
             WindowStyle = ProcessWindowStyle.Hidden
         };
         using var proc = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start process.");
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        proc.OutputDataReceived += (s, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
+        proc.ErrorDataReceived += (s, e) => { if (e.Data != null) stderr.AppendLine(e.Data); };
+        proc.BeginOutputReadLine();
+        proc.BeginErrorReadLine();
         proc.WaitForExit(timeout);
-        return string.IsNullOrEmpty(stdout) ? stderr : stdout;
+        var stdoutStr = stdout.ToString();
+        var stderrStr = stderr.ToString();
+        return string.IsNullOrEmpty(stdoutStr) ? stderrStr : stdoutStr;
     }
 
     internal static void RunElevated(string fileName, string arguments)
     {
+        // BUG-23 fix: only allow known system commands to be elevated
+        var baseName = Path.GetFileNameWithoutExtension(fileName).ToLowerInvariant();
+        var allowedCmds = new[] { "netsh", "reg", "net", "route", "ipconfig", "powershell", "schtasks", "sc" };
+        if (!allowedCmds.Any(c => baseName == c))
+        {
+            Logger.Warn($"RunElevated: blocked non-system command: {fileName}");
+            throw new InvalidOperationException($"Elevation not allowed for: {fileName}");
+        }
         var psi = new ProcessStartInfo
         {
             FileName = fileName,
