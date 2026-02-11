@@ -65,7 +65,8 @@ public partial class MainWindow : Window
     // ── Window chrome buttons ─────────────────────────────────────
     private void Minimize_Click(object sender, RoutedEventArgs e)
     {
-        Hide();
+        // R5-31: minimize to taskbar instead of hiding to tray
+        WindowState = WindowState.Minimized;
     }
 
     private void Close_Click(object sender, RoutedEventArgs e)

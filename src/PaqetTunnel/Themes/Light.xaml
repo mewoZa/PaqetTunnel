@@ -16,7 +16,7 @@
     <Color x:Key="DangerColor">#cf222e</Color>
     <Color x:Key="WarningColor">#9a6700</Color>
     <Color x:Key="TextColor">#1f2328</Color>
-    <Color x:Key="TextDimColor">#656d76</Color>
+    <Color x:Key="TextDimColor">#57606a</Color>
     <Color x:Key="InputBgColor">#ffffff</Color>
     <Color x:Key="HoverBgColor">#eaeef2</Color>
     <Color x:Key="PopupBgColor">#ffffff</Color>
@@ -33,6 +33,7 @@
     <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
     <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
     <SolidColorBrush x:Key="TextDimBrush" Color="{StaticResource TextDimColor}" />
     <SolidColorBrush x:Key="InputBgBrush" Color="{StaticResource InputBgColor}" />
@@ -378,7 +379,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
                     <Grid>
-                        <Border x:Name="Track" Background="#e1e4e8"
+                        <Border x:Name="Track" Background="{StaticResource BorderBrush}"
                                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                                 CornerRadius="11" Width="40" Height="22" />
                         <Border x:Name="Thumb" Width="16" Height="16" CornerRadius="8"

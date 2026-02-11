@@ -125,7 +125,10 @@
                     </Style>
                 </Border.Style>
 
-                <Border Background="#183B82F6" Padding="14,7">
+                <Border Padding="14,7">
+                    <Border.Background>
+                        <SolidColorBrush Color="{DynamicResource AccentColor}" Opacity="0.094" />
+                    </Border.Background>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition />
@@ -134,7 +137,7 @@
 
                         <StackPanel VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="⬆" FontSize="11" Foreground="#60A5FA" 
+                                <TextBlock Text="⬆" FontSize="11" Foreground="{DynamicResource AccentBrush}" 
                                            VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <TextBlock FontSize="11.5" FontWeight="SemiBold" 
                                            Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center">
@@ -183,7 +186,7 @@
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                                     Visibility="{Binding IsUpdating, Converter={StaticResource BoolToVis}}">
                             <Ellipse Width="14" Height="14" StrokeThickness="2"
-                                     Stroke="#60A5FA" StrokeDashArray="3,2"
+                                     Stroke="{DynamicResource AccentBrush}" StrokeDashArray="3,2"
                                      RenderTransformOrigin="0.5,0.5">
                                 <Ellipse.RenderTransform>
                                     <RotateTransform x:Name="UpdateSpinRotation" />
@@ -212,17 +215,17 @@
                     <!-- ── Setup Banner ────────────────────────── -->
                     <Border Style="{DynamicResource Card}"
                             Visibility="{Binding NeedsSetup, Converter={StaticResource BoolToVis}}"
-                            BorderBrush="#d29922" Padding="12,10" Margin="0,0,0,6">
+                            BorderBrush="{DynamicResource WarningBrush}" Padding="12,10" Margin="0,0,0,6">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="⚠" FontSize="18" VerticalAlignment="Top" Margin="0,0,10,0"
-                                       Foreground="#d29922" />
+                                       Foreground="{DynamicResource WarningBrush}" />
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="SETUP REQUIRED" FontSize="9.5" FontWeight="Bold"
-                                           Foreground="#d29922" Margin="0,0,0,3"
+                                           Foreground="{DynamicResource WarningBrush}" Margin="0,0,0,3"
                                            FontFamily="{DynamicResource MainFont}" />
                                 <TextBlock Text="{Binding SetupStatus}" Foreground="{DynamicResource TextDimBrush}"
                                            TextWrapping="Wrap" FontSize="11" Margin="0,0,0,6" />
@@ -897,7 +900,7 @@
                                        Foreground="{DynamicResource AccentBrush}"
                                        Visibility="{Binding DnsStatus, Converter={StaticResource StringToVis}}" />
                             <!-- DNS Benchmark Results Table -->
-                            <Border Background="{DynamicResource CardBg}" CornerRadius="6" Padding="8"
+                            <Border Background="{DynamicResource CardBrush}" CornerRadius="6" Padding="8"
                                     Margin="0,2,0,4"
                                     Visibility="{Binding DnsBenchmarkResults, Converter={StaticResource StringToVis}}">
                                 <TextBlock Text="{Binding DnsBenchmarkResults}" 
@@ -1195,7 +1198,7 @@
                                             Command="{Binding RunServerActionCommand}" CommandParameter="uninstall"
                                             IsEnabled="{Binding IsServerBusy, Converter={StaticResource InvBoolConv}}"
                                             HorizontalAlignment="Stretch" Padding="6,5" FontSize="10"
-                                            Foreground="#f85149" />
+                                            Foreground="{DynamicResource DangerBrush}" />
                                 </Grid>
 
                                 <!-- Server Output -->
@@ -1218,12 +1221,12 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
-                                <Border Background="#0d1117" CornerRadius="4" Padding="8" Margin="0,0,0,4"
+                                <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4" Padding="8" Margin="0,0,0,4"
                                         MaxHeight="150"
                                         Visibility="{Binding ServerOutput, Converter={StaticResource StringToVis}}">
                                     <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="140">
                                         <TextBlock Text="{Binding ServerOutput}" FontFamily="Consolas" FontSize="9.5"
-                                                   Foreground="#c9d1d9" TextWrapping="Wrap" />
+                                                   Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
                                     </ScrollViewer>
                                 </Border>
                             </StackPanel>

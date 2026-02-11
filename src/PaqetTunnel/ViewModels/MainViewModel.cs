@@ -294,8 +294,12 @@ public partial class MainViewModel : ObservableObject
                 Logger.Info("Already connected — restoring LAN sharing...");
                 _ = Task.Run(() =>
                 {
-                    _proxyService.RestoreSharingIfEnabled();
-                    Logger.Info($"LAN sharing restored: portproxy={_proxyService.IsPortproxyActive()}");
+                    try
+                    {
+                        _proxyService.RestoreSharingIfEnabled();
+                        Logger.Info($"LAN sharing restored: portproxy={_proxyService.IsPortproxyActive()}");
+                    }
+                    catch (Exception ex) { Logger.Error("LAN sharing restore failed", ex); }
                 });
             }
         }
@@ -330,8 +334,12 @@ public partial class MainViewModel : ObservableObject
             Logger.Info("TUN binaries missing, pre-downloading in background...");
             _ = Task.Run(async () =>
             {
-                var result = await _tunService.DownloadBinariesAsync();
-                Logger.Info($"TUN pre-download: {result.Message}");
+                try
+                {
+                    var result = await _tunService.DownloadBinariesAsync();
+                    Logger.Info($"TUN pre-download: {result.Message}");
+                }
+                catch (Exception ex) { Logger.Error("TUN pre-download failed", ex); }
             });
         }
 
@@ -383,10 +391,11 @@ public partial class MainViewModel : ObservableObject
         StatusBarText = "Connecting...";
 
         // R4-09/R4-10: create cancellation token so DisconnectAsync can cancel in-flight connect
-        _connectCts?.Cancel();
-        _connectCts?.Dispose();
+        // R5-03: swap-and-dispose pattern avoids Cancel+Dispose race
+        var oldCts = _connectCts;
         _connectCts = new System.Threading.CancellationTokenSource();
         var ct = _connectCts.Token;
+        try { oldCts?.Cancel(); oldCts?.Dispose(); } catch { }
 
         // R3-12 fix: capture UI-bound property values before entering Task.Run
         var wantFullSystem = IsFullSystemTunnel;
@@ -415,7 +424,13 @@ public partial class MainViewModel : ObservableObject
             Logger.Info($"Start() returned: success={success}, message={message}");
 
             // R4-09: check if disconnect was called while we were starting
-            if (ct.IsCancellationRequested) { Logger.Info("ConnectAsync cancelled after Start"); return; }
+            // R5-06: kill orphaned paqet process if cancelled after Start
+            if (ct.IsCancellationRequested)
+            {
+                Logger.Info("ConnectAsync cancelled after Start — cleaning up");
+                try { _paqetService.Stop(); } catch { }
+                return;
+            }
 
             if (!success)
             {
@@ -544,8 +559,12 @@ public partial class MainViewModel : ObservableObject
                 Logger.Info("Restoring LAN sharing after connect...");
                 _ = Task.Run(() =>
                 {
-                    _proxyService.RestoreSharingIfEnabled();
-                    Logger.Info($"LAN sharing active: portproxy={_proxyService.IsPortproxyActive()}");
+                    try
+                    {
+                        _proxyService.RestoreSharingIfEnabled();
+                        Logger.Info($"LAN sharing active: portproxy={_proxyService.IsPortproxyActive()}");
+                    }
+                    catch (Exception ex) { Logger.Error("LAN sharing restore failed", ex); }
                 });
             }
         });
@@ -559,6 +578,7 @@ public partial class MainViewModel : ObservableObject
         IsConnecting = true;
         _userRequestedConnect = false;
         _reconnectAttempts = 0;
+        _consecutiveHealthFailures = 0; // R5-09: reset health failure counter on disconnect
         ConnectionStatus = "Disconnecting...";
         Logger.Info("DisconnectAsync started");
 
@@ -1453,7 +1473,7 @@ public partial class MainViewModel : ObservableObject
                     LogViewerText = LogViewerText[^30000..];
             }));
         }
-        catch { }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"OnLogAdded: {ex.Message}"); }
     }
 
     private void RefreshLogViewer()
@@ -1617,8 +1637,8 @@ public partial class MainViewModel : ObservableObject
                         UploadSpeed = "0 B/s";
                         ConnectionTime = "";
 
-                        // R4-06: auto-reconnect only if not currently connecting and not disposed
-                        if (_userRequestedConnect && !IsConnecting && !_disposed && _reconnectAttempts < MAX_RECONNECT_ATTEMPTS)
+                        // R4-06: auto-reconnect only if not currently connecting, not disposed, and not repairing
+                        if (_userRequestedConnect && !IsConnecting && !_disposed && !IsRepairing && _reconnectAttempts < MAX_RECONNECT_ATTEMPTS)
                         {
                             _reconnectAttempts++;
                             var delay = RECONNECT_BASE_DELAY_MS * _reconnectAttempts;
@@ -1627,10 +1647,14 @@ public partial class MainViewModel : ObservableObject
                             StatusBarText = ConnectionStatus;
                             _ = Task.Run(async () =>
                             {
-                                await Task.Delay(delay);
-                                if (_userRequestedConnect && !IsConnected && !IsConnecting && !_disposed)
-                                    if (Application.Current?.Dispatcher != null)
-                                        await Application.Current.Dispatcher.InvokeAsync(async () => await ConnectInternalAsync());
+                                try
+                                {
+                                    await Task.Delay(delay);
+                                    if (_userRequestedConnect && !IsConnected && !IsConnecting && !_disposed)
+                                        if (Application.Current?.Dispatcher != null)
+                                            await Application.Current.Dispatcher.InvokeAsync(async () => await ConnectInternalAsync());
+                                }
+                                catch (Exception ex) { Logger.Error("Auto-reconnect failed", ex); }
                             });
                         }
                         else if (_reconnectAttempts >= MAX_RECONNECT_ATTEMPTS)
@@ -1652,6 +1676,8 @@ public partial class MainViewModel : ObservableObject
                         _healthCheckCounter = 0;
                         _ = Task.Run(async () =>
                         {
+                            try
+                            {
                             // Measure tunnel latency (time to get IP through SOCKS5)
                             var sw = System.Diagnostics.Stopwatch.StartNew();
                             var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
@@ -1712,6 +1738,8 @@ public partial class MainViewModel : ObservableObject
                                 });
                                 Logger.Debug($"Health check OK — exit IP: {ip}, latency={latencyMs}ms");
                             }
+                            }
+                            catch (Exception ex) { Logger.Error("Health check failed", ex); }
                         });
                     }
                 }
@@ -1746,13 +1774,14 @@ public partial class MainViewModel : ObservableObject
         {
             Application.Current?.Dispatcher?.BeginInvoke(() =>
             {
-                var latest = _networkMonitor.Latest;
-                DownloadSpeed = NetworkMonitorService.FormatSpeed(latest.DownloadSpeed);
-                UploadSpeed = NetworkMonitorService.FormatSpeed(latest.UploadSpeed);
-
+                // R5-04: access all NetworkMonitor state under consistent lock
                 lock (_networkMonitor)
                 {
-                    var hist = _networkMonitor.GetHistorySnapshot(); // BUG-07 fix: thread-safe copy
+                    var latest = _networkMonitor.Latest;
+                    DownloadSpeed = NetworkMonitorService.FormatSpeed(latest.DownloadSpeed);
+                    UploadSpeed = NetworkMonitorService.FormatSpeed(latest.UploadSpeed);
+
+                    var hist = _networkMonitor.GetHistorySnapshot();
                     DownloadHistory = new List<double>(hist.ConvertAll(s => s.DownloadSpeed));
                     UploadHistory = new List<double>(hist.ConvertAll(s => s.UploadSpeed));
                     SpeedHistory = new List<double>(hist.ConvertAll(s => s.DownloadSpeed + s.UploadSpeed));
@@ -1761,9 +1790,8 @@ public partial class MainViewModel : ObservableObject
                     if (histPeak > PeakSpeed) PeakSpeed = histPeak;
 
                     // Total transferred since monitoring started (baseline from Start())
-                    var latest2 = _networkMonitor.Latest;
-                    double totalDl = Math.Max(0, latest2.BytesReceived - _networkMonitor.BaselineBytesReceived);
-                    double totalUl = Math.Max(0, latest2.BytesSent - _networkMonitor.BaselineBytesSent);
+                    double totalDl = Math.Max(0, latest.BytesReceived - _networkMonitor.BaselineBytesReceived);
+                    double totalUl = Math.Max(0, latest.BytesSent - _networkMonitor.BaselineBytesSent);
                     TotalTransferred = NetworkMonitorService.FormatBytes(totalDl + totalUl);
                 }
             });
@@ -1866,8 +1894,12 @@ public partial class MainViewModel : ObservableObject
             {
                 _ = Task.Run(() =>
                 {
-                    _proxyService.RestoreSharingIfEnabled();
-                    Logger.Info($"Reconnect: LAN sharing restored: portproxy={_proxyService.IsPortproxyActive()}");
+                    try
+                    {
+                        _proxyService.RestoreSharingIfEnabled();
+                        Logger.Info($"Reconnect: LAN sharing restored: portproxy={_proxyService.IsPortproxyActive()}");
+                    }
+                    catch (Exception ex) { Logger.Error("Reconnect LAN sharing restore failed", ex); }
                 });
             }
         });

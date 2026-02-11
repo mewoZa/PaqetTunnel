@@ -643,6 +643,7 @@ public sealed class ProxyService
     {
         try { _pacCts?.Cancel(); } catch { }
         try { _pacServer?.Stop(); } catch { }
+        try { _pacCts?.Dispose(); } catch { }
         _pacServer = null;
         _pacCts = null;
     }

@@ -33,6 +33,7 @@
     <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
     <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
     <SolidColorBrush x:Key="TextDimBrush" Color="{StaticResource TextDimColor}" />
     <SolidColorBrush x:Key="InputBgBrush" Color="{StaticResource InputBgColor}" />
@@ -398,11 +399,11 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
                     <Grid>
-                        <Border x:Name="Track" Background="#262c36" 
+                        <Border x:Name="Track" Background="{StaticResource SurfaceBrush}" 
                                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                                 CornerRadius="11" Width="40" Height="22" />
                         <Border x:Name="Thumb" Width="16" Height="16" CornerRadius="8"
-                                Background="#6e7681" HorizontalAlignment="Left" Margin="3,0,0,0">
+                                Background="{StaticResource TextDimBrush}" HorizontalAlignment="Left" Margin="3,0,0,0">
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="3" ShadowDepth="0" Opacity="0.3" Color="Black" />
                             </Border.Effect>
