@@ -1583,22 +1583,14 @@ public partial class MainViewModel : ObservableObject
                     UploadHistory = new List<double>(hist.ConvertAll(s => s.UploadSpeed));
                     SpeedHistory = new List<double>(hist.ConvertAll(s => s.DownloadSpeed + s.UploadSpeed));
 
-                    var peak = hist.Count > 0 ? hist.Max(s => s.DownloadSpeed + s.UploadSpeed) : 0;
-                    PeakSpeed = peak;
+                    var histPeak = hist.Count > 0 ? hist.Max(s => s.DownloadSpeed + s.UploadSpeed) : 0;
+                    if (histPeak > PeakSpeed) PeakSpeed = histPeak;
 
-                    // BUG-11 fix: calculate total from byte counters, not speed sums
-                    if (hist.Count >= 2)
-                    {
-                        var first = hist[0];
-                        var last = hist[^1];
-                        double totalDl = Math.Max(0, last.BytesReceived - first.BytesReceived);
-                        double totalUl = Math.Max(0, last.BytesSent - first.BytesSent);
-                        TotalTransferred = NetworkMonitorService.FormatBytes(totalDl + totalUl);
-                    }
-                    else
-                    {
-                        TotalTransferred = "0 B";
-                    }
+                    // Total transferred since monitoring started (baseline from Start())
+                    var latest2 = _networkMonitor.Latest;
+                    double totalDl = Math.Max(0, latest2.BytesReceived - _networkMonitor.BaselineBytesReceived);
+                    double totalUl = Math.Max(0, latest2.BytesSent - _networkMonitor.BaselineBytesSent);
+                    TotalTransferred = NetworkMonitorService.FormatBytes(totalDl + totalUl);
                 }
             });
         }

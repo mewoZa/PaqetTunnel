@@ -17,6 +17,8 @@ public sealed class NetworkMonitorService : IDisposable
     private readonly Timer _timer;
     private long _lastBytesReceived;
     private long _lastBytesSent;
+    private long _baselineBytesReceived;
+    private long _baselineBytesSent;
     private DateTime _lastSampleTime;
     private readonly object _lock = new();
 
@@ -31,6 +33,10 @@ public sealed class NetworkMonitorService : IDisposable
 
     public event Action? SpeedUpdated;
 
+    /// <summary>Baseline byte counters captured at Start() — used for cumulative TotalTransferred.</summary>
+    public long BaselineBytesReceived => _baselineBytesReceived;
+    public long BaselineBytesSent => _baselineBytesSent;
+
     public NetworkMonitorService()
     {
         _timer = new Timer(2000); // 2-second interval
@@ -44,8 +50,10 @@ public sealed class NetworkMonitorService : IDisposable
     {
         if (_running) return; // R4-14: idempotent — don't reset baseline if already running
         _running = true;
-        // Take initial sample
+        // Take initial sample — baseline for TotalTransferred
         SampleNetstat(out _lastBytesReceived, out _lastBytesSent);
+        _baselineBytesReceived = _lastBytesReceived;
+        _baselineBytesSent = _lastBytesSent;
         _lastSampleTime = DateTime.Now;
         _timer.Start();
     }
