@@ -1166,8 +1166,10 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void SetTheme(string theme)
     {
-        if (theme == SelectedTheme) return;
-        Logger.Info($"Theme changed: {SelectedTheme} → {theme}");
+        if (string.IsNullOrEmpty(theme)) return;
+        var previous = ThemeManager.CurrentTheme;
+        if (theme == previous) return;
+        Logger.Info($"Theme changed: {previous} → {theme}");
         SelectedTheme = theme;
         ThemeManager.Apply(theme);
 
