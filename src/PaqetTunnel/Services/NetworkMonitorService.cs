@@ -22,13 +22,16 @@ public sealed class NetworkMonitorService : IDisposable
     private DateTime _lastSampleTime;
     private readonly object _lock = new();
 
-    public List<SpeedSnapshot> History { get; } = new(HISTORY_SIZE);
-    public SpeedSnapshot Latest { get; private set; } = new(0, 0, 0, 0, DateTime.Now);
+    private readonly List<SpeedSnapshot> _history = new(HISTORY_SIZE);
+    private volatile SpeedSnapshot _latest = new(0, 0, 0, 0, DateTime.Now);
+
+    // R5 svc-09: expose Latest as volatile field for lock-free reads
+    public SpeedSnapshot Latest => _latest;
 
     /// <summary>BUG-07 fix: return a thread-safe copy of History under lock.</summary>
     public List<SpeedSnapshot> GetHistorySnapshot()
     {
-        lock (_lock) { return new List<SpeedSnapshot>(History); }
+        lock (_lock) { return new List<SpeedSnapshot>(_history); }
     }
 
     public event Action? SpeedUpdated;
@@ -84,10 +87,10 @@ public sealed class NetworkMonitorService : IDisposable
 
             lock (_lock)
             {
-                Latest = snapshot;
-                History.Add(snapshot);
-                if (History.Count > HISTORY_SIZE)
-                    History.RemoveAt(0);
+                _latest = snapshot;
+                _history.Add(snapshot);
+                if (_history.Count > HISTORY_SIZE)
+                    _history.RemoveAt(0);
             }
 
             _lastBytesReceived = recv;
