@@ -88,24 +88,21 @@ public partial class App : Application
         // ── System tray icon ───────────────────────────────────────
         CreateTrayIcon();
 
+        // R4-16: Show window BEFORE InitializeAsync so user sees UI immediately
+        ShowWindow();
+
         Services.Logger.Info("Starting InitializeAsync...");
 
         // ── Start services ─────────────────────────────────────────
         await _viewModel.InitializeAsync();
 
-        // Show window on first launch
-        ShowWindow();
-
-        // ── Auto-connect if --connect flag passed or AutoConnect setting ──
+        // R4-01 fix: --connect flag only fires if InitializeAsync didn't already connect
+        // (auto-connect in InitializeAsync already handles AutoConnectOnLaunch setting)
         var shouldAutoConnect = (e.Args.Length > 0 && e.Args[0] == "--connect");
-        if (shouldAutoConnect)
+        if (shouldAutoConnect && !_viewModel.IsConnected && !_viewModel.IsConnecting && !_viewModel.NeedsSetup)
         {
-            Services.Logger.Info("Auto-connect requested via --connect flag");
-            if (!_viewModel.IsConnected && !_viewModel.NeedsSetup)
-            {
-                await Task.Delay(500);
-                _viewModel.ToggleConnectionCommand.Execute(null);
-            }
+            Services.Logger.Info("Auto-connect requested via --connect flag (not already connected)");
+            await _viewModel.ConnectFromStartupAsync();
         }
     }
 
@@ -235,23 +232,36 @@ public partial class App : Application
 
     private void QuitApp()
     {
-        if (_trayIcon != null)
+        // R4-04: try/finally ensures mutex is always released even if Cleanup throws
+        try
         {
-            _trayIcon.Visible = false;
-            _trayIcon.Dispose();
-            _trayIcon = null;
+            if (_trayIcon != null)
+            {
+                _trayIcon.Visible = false;
+                _trayIcon.Dispose();
+                _trayIcon = null;
+            }
+            _viewModel?.Cleanup();
+            _proxyService?.OnShutdown();
         }
-        _viewModel?.Cleanup();
-        _proxyService?.OnShutdown();
-        _mutex?.ReleaseMutex();
-        _mutex?.Dispose();
-        Shutdown(0);
+        catch (Exception ex)
+        {
+            Services.Logger.Error("QuitApp error (continuing shutdown)", ex);
+        }
+        finally
+        {
+            try { _mutex?.ReleaseMutex(); } catch { }
+            try { _mutex?.Dispose(); _mutex = null; } catch { }
+            Shutdown(0);
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _trayIcon?.Dispose();
-        _mutex?.Dispose();
+        // R4-20: ensure proxy cleanup happens even on unexpected shutdown paths
+        try { _proxyService?.OnShutdown(); } catch { }
+        try { _trayIcon?.Dispose(); _trayIcon = null; } catch { }
+        try { _mutex?.Dispose(); _mutex = null; } catch { }
         base.OnExit(e);
     }
 }

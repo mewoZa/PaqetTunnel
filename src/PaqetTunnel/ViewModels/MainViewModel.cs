@@ -33,6 +33,8 @@ public partial class MainViewModel : ObservableObject
     // ── Reconnection & Health ─────────────────────────────────────
 
     private bool _userRequestedConnect;   // true if user explicitly connected
+    private volatile bool _disposed;      // R4-15: prevent timer callback after Cleanup
+    private System.Threading.CancellationTokenSource? _connectCts; // R4-09/R4-10: cancel in-flight connect
     private int _reconnectAttempts;
     private const int MAX_RECONNECT_ATTEMPTS = 5;
     private const int RECONNECT_BASE_DELAY_MS = 3000;
@@ -300,11 +302,11 @@ public partial class MainViewModel : ObservableObject
 
         Logger.Info($"StatusBarText={StatusBarText}");
 
-        // Auto-setup if needed
+        // R4-05: auto-setup runs in background (non-blocking) so UI stays responsive
         if (NeedsSetup)
         {
-            Logger.Info("Running auto-setup...");
-            await RunSetupAsync();
+            Logger.Info("Setup needed — running in background...");
+            _ = RunSetupAsync();
         }
 
         // Pre-download TUN binaries in background if missing (so they're ready when user needs them)
@@ -334,6 +336,13 @@ public partial class MainViewModel : ObservableObject
 
     // ── Commands ──────────────────────────────────────────────────
 
+    /// <summary>R4-01 fix: Direct connect for startup — never toggles off.</summary>
+    public async Task ConnectFromStartupAsync()
+    {
+        if (IsConnecting || IsConnected) return;
+        await ConnectAsync();
+    }
+
     [RelayCommand]
     private async Task ToggleConnectionAsync()
     {
@@ -357,6 +366,12 @@ public partial class MainViewModel : ObservableObject
         _consecutiveHealthFailures = 0;
         ConnectionStatus = "Connecting...";
         StatusBarText = "Connecting...";
+
+        // R4-09/R4-10: create cancellation token so DisconnectAsync can cancel in-flight connect
+        _connectCts?.Cancel();
+        _connectCts?.Dispose();
+        _connectCts = new System.Threading.CancellationTokenSource();
+        var ct = _connectCts.Token;
 
         // R3-12 fix: capture UI-bound property values before entering Task.Run
         var wantFullSystem = IsFullSystemTunnel;
@@ -383,6 +398,9 @@ public partial class MainViewModel : ObservableObject
             Application.Current?.Dispatcher?.BeginInvoke(() => ConnectionStatus = "Starting paqet...");
             var (success, message) = _paqetService.Start();
             Logger.Info($"Start() returned: success={success}, message={message}");
+
+            // R4-09: check if disconnect was called while we were starting
+            if (ct.IsCancellationRequested) { Logger.Info("ConnectAsync cancelled after Start"); return; }
 
             if (!success)
             {
@@ -426,7 +444,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             // Step 2: If TUN mode, start tun2socks
-            if (wantFullSystem)
+            if (wantFullSystem && !ct.IsCancellationRequested)
             {
                 // Auto-download TUN binaries if missing
                 if (!_tunService.AllBinariesExist())
@@ -475,6 +493,16 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
+            // R4-08: flush DNS and force leak prevention BEFORE marking connected
+            DnsService.FlushCache();
+            if (!wantFullSystem)
+            {
+                var appSett = _configService.ReadAppSettings();
+                var (p, s) = DnsService.Resolve(appSett);
+                Logger.Info($"SOCKS5 mode: forcing DNS to {p}, {s} for leak prevention");
+                _savedAdapterDns = DnsService.ForceAllAdaptersDns(p, s);
+            }
+
             Application.Current?.Dispatcher?.BeginInvoke(() =>
             {
                 IsConnected = true;
@@ -485,18 +513,7 @@ public partial class MainViewModel : ObservableObject
                 _networkMonitor.Start();
                 IsConnecting = false;
             });
-            // Flush DNS cache after connecting (clear stale ISP DNS entries)
-            _ = Task.Run(() =>
-            {
-                DnsService.FlushCache();
-                if (!wantFullSystem)
-                {
-                    var appSett = _configService.ReadAppSettings();
-                    var (p, s) = DnsService.Resolve(appSett);
-                    Logger.Info($"SOCKS5 mode: forcing DNS to {p}, {s} for leak prevention");
-                    _savedAdapterDns = DnsService.ForceAllAdaptersDns(p, s);
-                }
-            });
+
             // Fetch public IP through tunnel if not already fetched
             if (tunnelIp == null)
                 _ = FetchPublicIpAsync();
@@ -516,6 +533,9 @@ public partial class MainViewModel : ObservableObject
 
     private async Task DisconnectAsync()
     {
+        // R4-09: cancel any in-flight ConnectAsync
+        try { _connectCts?.Cancel(); } catch { }
+
         IsConnecting = true;
         _userRequestedConnect = false;
         _reconnectAttempts = 0;
@@ -1243,7 +1263,7 @@ public partial class MainViewModel : ObservableObject
     private void ClearLogs()
     {
         Logger.ClearBuffer();
-        _logEntries.Clear();
+        lock (_logEntriesLock) { _logEntries.Clear(); } // R4-25: lock to prevent race with OnLogAdded
         LogViewerText = "";
     }
 
@@ -1283,9 +1303,13 @@ public partial class MainViewModel : ObservableObject
 
     private void RefreshLogViewer()
     {
-        var entries = Logger.GetRecentLogs(200);
-        if (LogFilter != "ALL")
-            entries = entries.Where(e => e.Level == LogFilter).ToList();
+        List<LogEntry> entries;
+        lock (_logEntriesLock) // R4-25: lock for thread-safe snapshot
+        {
+            entries = Logger.GetRecentLogs(200);
+            if (LogFilter != "ALL")
+                entries = entries.Where(e => e.Level == LogFilter).ToList();
+        }
         LogViewerText = string.Join("\n", entries.Select(e => e.Formatted));
     }
 
@@ -1403,6 +1427,7 @@ public partial class MainViewModel : ObservableObject
 
     private void OnStatusTick(object? sender, ElapsedEventArgs e)
     {
+        if (_disposed) return; // R4-15: bail out if Cleanup already ran
         try
         {
             var running = _paqetService.IsRunning();
@@ -1414,6 +1439,7 @@ public partial class MainViewModel : ObservableObject
 
             Application.Current?.Dispatcher?.BeginInvoke(() =>
             {
+                if (_disposed) return; // R4-15: double-check inside dispatcher callback
                 if (portReady != IsConnected)
                 {
                     IsConnected = portReady;
@@ -1436,8 +1462,8 @@ public partial class MainViewModel : ObservableObject
                         UploadSpeed = "0 B/s";
                         ConnectionTime = "";
 
-                        // Auto-reconnect if user had explicitly connected
-                        if (_userRequestedConnect && !IsConnecting && _reconnectAttempts < MAX_RECONNECT_ATTEMPTS)
+                        // R4-06: auto-reconnect only if not currently connecting and not disposed
+                        if (_userRequestedConnect && !IsConnecting && !_disposed && _reconnectAttempts < MAX_RECONNECT_ATTEMPTS)
                         {
                             _reconnectAttempts++;
                             var delay = RECONNECT_BASE_DELAY_MS * _reconnectAttempts;
@@ -1447,7 +1473,7 @@ public partial class MainViewModel : ObservableObject
                             _ = Task.Run(async () =>
                             {
                                 await Task.Delay(delay);
-                                if (_userRequestedConnect && !IsConnected && !IsConnecting)
+                                if (_userRequestedConnect && !IsConnected && !IsConnecting && !_disposed)
                                     if (Application.Current?.Dispatcher != null)
                                         await Application.Current.Dispatcher.InvokeAsync(async () => await ConnectInternalAsync());
                             });
@@ -1512,9 +1538,9 @@ public partial class MainViewModel : ObservableObject
                         : elapsed.ToString(@"mm\:ss");
                 }
 
-                // Update process health info (every tick when connected, or every 10th tick otherwise)
+                // R4-22: reduce process enumeration overhead — every 3rd tick when connected, every 10th otherwise
                 _healthRefreshCounter++;
-                if (_healthRefreshCounter >= (IsConnected ? 1 : 10))
+                if (_healthRefreshCounter >= (IsConnected ? 3 : 10))
                 {
                     _healthRefreshCounter = 0;
                     RefreshProcessHealth();
@@ -1591,7 +1617,7 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Internal reconnect — doesn't reset user intent or attempt counter.</summary>
     private async Task ConnectInternalAsync()
     {
-        if (IsConnecting || IsConnected) return;
+        if (IsConnecting || IsConnected || _disposed) return;
         IsConnecting = true;
         ConnectionStatus = $"Reconnecting ({_reconnectAttempts}/{MAX_RECONNECT_ATTEMPTS})...";
         Logger.Info($"ConnectInternalAsync: reconnect attempt {_reconnectAttempts}");
@@ -1627,8 +1653,19 @@ public partial class MainViewModel : ObservableObject
                     Logger.Warn($"TUN reconnect failed: {tunResult.Message}");
             }
 
+            // R4-18: Force DNS for SOCKS5 mode to prevent DNS leaks after reconnect
+            DnsService.FlushCache();
+            if (!IsFullSystemTunnel)
+            {
+                var appSett = _configService.ReadAppSettings();
+                var (p, s) = DnsService.Resolve(appSett);
+                Logger.Info($"Reconnect SOCKS5: forcing DNS to {p}, {s}");
+                _savedAdapterDns = DnsService.ForceAllAdaptersDns(p, s);
+            }
+
             Application.Current?.Dispatcher?.BeginInvoke(() =>
             {
+                if (_disposed) return;
                 IsConnected = true;
                 _connectedSince = DateTime.Now;
                 _reconnectAttempts = 0;
@@ -1639,23 +1676,38 @@ public partial class MainViewModel : ObservableObject
                 _networkMonitor.Start();
                 IsConnecting = false;
             });
-            _ = Task.Run(() => DnsService.FlushCache());
+
+            // R4-19: Restore LAN sharing if enabled (portproxy is volatile)
+            if (IsProxySharingEnabled)
+            {
+                _ = Task.Run(() =>
+                {
+                    _proxyService.RestoreSharingIfEnabled();
+                    Logger.Info($"Reconnect: LAN sharing restored: portproxy={_proxyService.IsPortproxyActive()}");
+                });
+            }
         });
     }
 
     public void Cleanup()
     {
+        _disposed = true; // R4-15: signal timer callbacks to bail out
+
+        // R4-09: cancel any in-flight connect
+        try { _connectCts?.Cancel(); _connectCts?.Dispose(); } catch { }
+
         Logger.LogAdded -= OnLogAdded;
         _networkMonitor.SpeedUpdated -= OnSpeedUpdated;
+
+        // R4-11: stop timer first to prevent in-flight callbacks accessing disposed services
         _statusTimer.Stop();
         _statusTimer.Dispose();
+
         _networkMonitor.Stop();
         _networkMonitor.Dispose();
 
-        if (IsConnected)
-        {
-            try { _paqetService.Stop(); } catch { }
-        }
+        // R4-02: ALWAYS stop paqet (not just when IsConnected — catches orphaned processes)
+        try { _paqetService.Stop(); } catch { }
 
         // Stop TUN on a thread pool thread with timeout to prevent UI deadlock
         if (_tunService.IsRunning())
@@ -1663,6 +1715,17 @@ public partial class MainViewModel : ObservableObject
             Logger.Info("Cleanup: stopping TUN tunnel");
             try { Task.Run(() => _tunService.StopAsync()).Wait(TimeSpan.FromSeconds(5)); }
             catch (Exception ex) { Logger.Warn($"Cleanup TUN stop: {ex.Message}"); }
+        }
+
+        // R4-21: flush DNS cache so stale tunnel DNS entries don't linger
+        try { DnsService.FlushCache(); } catch { }
+
+        // R4-03: restore DNS on all adapters we changed
+        if (_savedAdapterDns != null && _savedAdapterDns.Count > 0)
+        {
+            foreach (var (name, originalDns) in _savedAdapterDns)
+                try { DnsService.RestoreAdapterDns(name, originalDns); } catch { }
+            _savedAdapterDns = null;
         }
     }
 

@@ -38,8 +38,12 @@ public sealed class NetworkMonitorService : IDisposable
         _timer.AutoReset = true;
     }
 
+    private volatile bool _running; // R4-14: prevent baseline reset on redundant Start calls
+
     public void Start()
     {
+        if (_running) return; // R4-14: idempotent — don't reset baseline if already running
+        _running = true;
         // Take initial sample
         SampleNetstat(out _lastBytesReceived, out _lastBytesSent);
         _lastSampleTime = DateTime.Now;
@@ -48,6 +52,7 @@ public sealed class NetworkMonitorService : IDisposable
 
     public void Stop()
     {
+        _running = false;
         _timer.Stop();
     }
 
