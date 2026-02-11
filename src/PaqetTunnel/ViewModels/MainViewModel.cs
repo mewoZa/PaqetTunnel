@@ -98,6 +98,14 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _updateCommitMessage = "";
     [ObservableProperty] private string _updateRemoteSha = "";
 
+    // ── Internet Health ──────────────────────────────────────────
+
+    [ObservableProperty] private string _internetStatus = "—";
+    [ObservableProperty] private string _internetStatusColor = "#8b949e";
+    [ObservableProperty] private string _serverLatency = "—";
+    [ObservableProperty] private bool _isInternetOk;
+    [ObservableProperty] private bool _isRepairing;
+
     // ── Connection Info ───────────────────────────────────────────
 
     [ObservableProperty] private string _localIp = "";
@@ -514,6 +522,11 @@ public partial class MainViewModel : ObservableObject
                 StatusBarText = wantFullSystem ? "Full system tunnel active" : "Connected";
                 _networkMonitor.Start();
                 IsConnecting = false;
+                // Trigger initial internet health check
+                InternetStatus = "Checking...";
+                InternetStatusColor = "#8b949e";
+                ServerLatency = "...";
+                _ = CheckInternetAsync();
             });
 
             // Fetch public IP through tunnel if not already fetched
@@ -600,6 +613,11 @@ public partial class MainViewModel : ObservableObject
                     TotalTransferred = "0 B";
                     PublicIp = "—";
                     StatusBarText = "Disconnected";
+                    // Reset internet health
+                    InternetStatus = "—";
+                    InternetStatusColor = "#8b949e";
+                    ServerLatency = "—";
+                    IsInternetOk = false;
                 }
                 else
                 {
@@ -1054,6 +1072,123 @@ public partial class MainViewModel : ObservableObject
         await InstallUpdateAsync();
     }
 
+    // ── Internet Health Commands ──────────────────────────────────
+
+    [RelayCommand]
+    private async Task CheckInternetAsync()
+    {
+        InternetStatus = "Checking...";
+        InternetStatusColor = "#8b949e";
+        ServerLatency = "...";
+        StatusBarText = "Checking internet connectivity...";
+        Logger.Info("Manual internet check started");
+
+        await Task.Run(async () =>
+        {
+            // 1. Check tunnel connectivity + measure latency
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
+            sw.Stop();
+            var latencyMs = (int)sw.ElapsedMilliseconds;
+
+            // 2. Check direct internet
+            bool directOk = false;
+            try
+            {
+                using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
+                var resp = await http.GetAsync("http://www.gstatic.com/generate_204");
+                directOk = resp.IsSuccessStatusCode || (int)resp.StatusCode == 204;
+            }
+            catch { }
+
+            Application.Current?.Dispatcher?.BeginInvoke(() =>
+            {
+                if (ip != null)
+                {
+                    ServerLatency = $"{latencyMs}ms";
+                    InternetStatus = "Internet OK";
+                    InternetStatusColor = "#3fb950";
+                    IsInternetOk = true;
+                    StatusBarText = $"Internet OK — latency {latencyMs}ms";
+                    if (string.IsNullOrEmpty(PublicIp) || PublicIp == "—") PublicIp = ip;
+                }
+                else if (directOk)
+                {
+                    ServerLatency = "—";
+                    InternetStatus = "Tunnel Down";
+                    InternetStatusColor = "#d29922";
+                    IsInternetOk = false;
+                    StatusBarText = "Internet reachable but tunnel is down";
+                }
+                else
+                {
+                    ServerLatency = "—";
+                    InternetStatus = "No Internet";
+                    InternetStatusColor = "#f85149";
+                    IsInternetOk = false;
+                    StatusBarText = "No internet connection detected";
+                }
+                Logger.Info($"Internet check: status={InternetStatus}, latency={ServerLatency}, direct={directOk}");
+            });
+        });
+    }
+
+    [RelayCommand]
+    private async Task RepairConnectionAsync()
+    {
+        if (IsRepairing || !IsConnected) return;
+        IsRepairing = true;
+        InternetStatus = "Repairing...";
+        InternetStatusColor = "#d29922";
+        StatusBarText = "Repairing connection...";
+        Logger.Info("Connection repair started");
+
+        try
+        {
+            // Step 1: Flush DNS
+            StatusBarText = "Flushing DNS cache...";
+            await Task.Run(() =>
+            {
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo("ipconfig", "/flushdns")
+                    {
+                        CreateNoWindow = true, UseShellExecute = false,
+                        RedirectStandardOutput = true, RedirectStandardError = true
+                    };
+                    var p = System.Diagnostics.Process.Start(psi);
+                    p?.WaitForExit(5000);
+                    Logger.Info("DNS cache flushed");
+                }
+                catch (Exception ex) { Logger.Debug($"DNS flush: {ex.Message}"); }
+            });
+
+            // Step 2: Restart paqet process
+            StatusBarText = "Restarting tunnel...";
+            await DisconnectAsync();
+            await Task.Delay(1000);
+            await ConnectAsync();
+
+            // Step 3: Wait for connection to stabilize
+            StatusBarText = "Verifying connection...";
+            await Task.Delay(3000);
+
+            // Step 4: Verify
+            await CheckInternetAsync();
+            Logger.Info($"Repair complete — status: {InternetStatus}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Repair failed", ex);
+            StatusBarText = $"Repair failed: {ex.Message}";
+        }
+        finally
+        {
+            IsRepairing = false;
+        }
+    }
+
     // ── DNS Commands ──────────────────────────────────────────────
 
     [RelayCommand]
@@ -1503,7 +1638,7 @@ public partial class MainViewModel : ObservableObject
                     }
                 }
 
-                // Periodic health check — verify actual tunnel connectivity
+                // Periodic health check — verify actual tunnel connectivity + measure latency
                 if (IsConnected && !IsConnecting)
                 {
                     _healthCheckCounter++;
@@ -1512,18 +1647,47 @@ public partial class MainViewModel : ObservableObject
                         _healthCheckCounter = 0;
                         _ = Task.Run(async () =>
                         {
+                            // Measure tunnel latency (time to get IP through SOCKS5)
+                            var sw = System.Diagnostics.Stopwatch.StartNew();
                             var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
+                            sw.Stop();
+                            var latencyMs = (int)sw.ElapsedMilliseconds;
+
+                            // Also check direct internet (without tunnel) to distinguish
+                            // "tunnel down" from "internet down"
+                            bool directOk = false;
+                            try
+                            {
+                                using var directHttp = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                                directHttp.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
+                                var resp = await directHttp.GetAsync("http://www.gstatic.com/generate_204");
+                                directOk = resp.IsSuccessStatusCode || (int)resp.StatusCode == 204;
+                            }
+                            catch { directOk = false; }
+
                             if (ip == null && IsConnected)
                             {
                                 var failures = System.Threading.Interlocked.Increment(ref _consecutiveHealthFailures);
-                                Logger.Warn($"Health check failed ({failures}/{HEALTH_FAIL_THRESHOLD})");
-                                if (failures >= HEALTH_FAIL_THRESHOLD)
+                                Logger.Warn($"Health check failed ({failures}/{HEALTH_FAIL_THRESHOLD}), direct={directOk}");
+                                Application.Current?.Dispatcher?.BeginInvoke(() =>
                                 {
-                                    Application.Current?.Dispatcher?.BeginInvoke(() =>
+                                    if (!directOk)
                                     {
+                                        InternetStatus = "No Internet";
+                                        InternetStatusColor = "#f85149";
+                                        IsInternetOk = false;
+                                        ServerLatency = "—";
+                                    }
+                                    else
+                                    {
+                                        InternetStatus = "Tunnel Down";
+                                        InternetStatusColor = "#d29922";
+                                        IsInternetOk = false;
+                                        ServerLatency = "—";
+                                    }
+                                    if (failures >= HEALTH_FAIL_THRESHOLD)
                                         ConnectionStatus = "Connected (tunnel check failed)";
-                                    });
-                                }
+                                });
                             }
                             else if (ip != null)
                             {
@@ -1532,13 +1696,16 @@ public partial class MainViewModel : ObservableObject
                                     Logger.Info($"Health check recovered after {prevFailures} failure(s)");
                                 Application.Current?.Dispatcher?.BeginInvoke(() =>
                                 {
-                                    // Restore normal status if it was degraded
                                     if (ConnectionStatus.Contains("tunnel check failed"))
                                         ConnectionStatus = IsFullSystemTunnel ? "Connected (Full System)" : "Connected";
                                     if (string.IsNullOrEmpty(PublicIp) || PublicIp == "—")
                                         PublicIp = ip;
+                                    ServerLatency = $"{latencyMs}ms";
+                                    InternetStatus = "Internet OK";
+                                    InternetStatusColor = "#3fb950";
+                                    IsInternetOk = true;
                                 });
-                                Logger.Debug($"Health check OK — exit IP: {ip}");
+                                Logger.Debug($"Health check OK — exit IP: {ip}, latency={latencyMs}ms");
                             }
                         });
                     }

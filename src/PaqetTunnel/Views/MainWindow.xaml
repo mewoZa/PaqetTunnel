@@ -442,6 +442,74 @@
                     </StackPanel>
 
                     <!-- ══════════════════════════════════════════════ -->
+                    <!-- ── INTERNET HEALTH STRIP ──────────────────── -->
+                    <!-- ══════════════════════════════════════════════ -->
+                    <Border CornerRadius="8" Padding="10,5" Margin="0,0,0,4"
+                            Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
+                        <Border.Background>
+                            <SolidColorBrush Color="{DynamicResource CardColor}" />
+                        </Border.Background>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Latency badge -->
+                            <Border Grid.Column="0" CornerRadius="4" Padding="6,2" Margin="0,0,6,0"
+                                    Background="{DynamicResource SurfaceBrush}">
+                                <TextBlock FontSize="10" FontFamily="{DynamicResource MonoFont}"
+                                           Foreground="{DynamicResource TextDimBrush}">
+                                    <Run Text="↔" /><Run Text=" " /><Run Text="{Binding ServerLatency}" />
+                                </TextBlock>
+                            </Border>
+
+                            <!-- Internet status -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0">
+                                <Ellipse Width="6" Height="6" Margin="0,0,5,0" VerticalAlignment="Center"
+                                         Fill="{Binding InternetStatusColor, Converter={StaticResource StringToBrush}}" />
+                                <TextBlock Text="{Binding InternetStatus}" FontSize="10.5" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Foreground="{Binding InternetStatusColor, Converter={StaticResource StringToBrush}}" />
+                            </StackPanel>
+
+                            <!-- Spacer -->
+                            <TextBlock Grid.Column="2" />
+
+                            <!-- Recheck button -->
+                            <Button Grid.Column="3" Content="↻" ToolTip="Check internet"
+                                    Command="{Binding CheckInternetCommand}"
+                                    Style="{DynamicResource GhostButton}"
+                                    Padding="5,2" FontSize="12" Opacity="0.6" Margin="0,0,2,0" />
+
+                            <!-- Repair button -->
+                            <Button Grid.Column="4" ToolTip="Repair connection (flush DNS + restart tunnel)"
+                                    Command="{Binding RepairConnectionCommand}"
+                                    IsEnabled="{Binding IsRepairing, Converter={StaticResource InvBoolConv}}"
+                                    Style="{DynamicResource GhostButton}"
+                                    Padding="5,2" FontSize="11" Opacity="0.6">
+                                <Button.Content>
+                                    <TextBlock>
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="🔧" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsRepairing}" Value="True">
+                                                        <Setter Property="Text" Value="⏳" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Button.Content>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <!-- ══════════════════════════════════════════════ -->
                     <!-- ── LIVE STATS PANEL ──────────────────────── -->
                     <!-- ══════════════════════════════════════════════ -->
                     <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4"
