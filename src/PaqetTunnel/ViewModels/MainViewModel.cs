@@ -248,6 +248,25 @@ public partial class MainViewModel : ObservableObject
         {
             _connectedSince = DateTime.Now;
             var tunActive = _tunService.IsRunning();
+
+            // If settings want TUN but tun2socks died (e.g. reboot), restart it
+            if (IsFullSystemTunnel && !tunActive && _tunService.AllBinariesExist())
+            {
+                Logger.Info("Paqet running but TUN not active — restarting TUN tunnel...");
+                try
+                {
+                    EnsureProxyDisabledForTun();
+                    var paqetCfg = _configService.ReadPaqetConfig();
+                    var tunResult = await _tunService.StartAsync(paqetCfg.ServerHost, _configService.ReadAppSettings());
+                    Logger.Info($"TUN restart: success={tunResult.Success}, message={tunResult.Message}");
+                    tunActive = tunResult.Success;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"TUN restart failed: {ex.Message}");
+                }
+            }
+
             TunnelMode = tunActive ? "TUNNEL" : "SOCKS5";
             ConnectionStatus = tunActive ? "Connected (Full System)" : "Connected";
             _networkMonitor.Start();
