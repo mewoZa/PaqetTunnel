@@ -267,6 +267,8 @@ function Require-Admin {
     if ($SocksPort -ne 10800) { $argList += " -SocksPort $SocksPort" }
     if ($Force) { $argList += ' -Force' }
     if ($Yes) { $argList += ' -y' }
+    if ($Silent) { $argList += ' -Silent' }
+    if ($Launch) { $argList += ' -Launch' }
     Start-Process powershell -ArgumentList $argList -Verb RunAs -Wait
     exit
 }

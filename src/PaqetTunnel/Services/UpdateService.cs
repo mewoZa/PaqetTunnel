@@ -59,7 +59,9 @@ public sealed class UpdateService
             if (string.IsNullOrEmpty(localSha))
                 return (true, localSha, remoteSha, "Version unknown — update recommended");
 
-            if (remoteSha == localSha)
+            // Compare SHAs: .commit may store short (7-char) or full (40-char) SHA
+            if (remoteSha.StartsWith(localSha, StringComparison.OrdinalIgnoreCase) ||
+                localSha.StartsWith(remoteSha, StringComparison.OrdinalIgnoreCase))
                 return (false, localSha, remoteSha, "");
 
             Logger.Info($"Update available: {localSha[..7]} → {remoteSha[..7]} — {message}");
