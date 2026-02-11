@@ -192,9 +192,9 @@ public sealed class ProxyService
                     {
                         if (name == "svchost")
                         {
-                            Logger.Warn($"Port {port} held by svchost (PID {pid}) — removing stale portproxy rule");
+                            Logger.Debug($"Port {port} held by svchost (PID {pid}) — clearing previous portproxy rule");
                             try { PaqetService.RunAdmin("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={port}"); } catch { }
-                            Task.Delay(1000).GetAwaiter().GetResult(); // NEW-09 fix
+                            Task.Delay(1000).GetAwaiter().GetResult();
                         }
                         else
                         {
@@ -357,7 +357,7 @@ public sealed class ProxyService
                 return;
             }
 
-            Logger.Info("Restoring LAN sharing (portproxy rule was lost after reboot)...");
+            Logger.Info("Restoring LAN sharing (portproxy rule not found)...");
             var result = SetProxySharing(true);
             Logger.Info($"Sharing restore: {result.Message}");
         }

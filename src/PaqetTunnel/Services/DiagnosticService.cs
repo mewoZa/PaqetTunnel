@@ -219,19 +219,29 @@ public sealed class DiagnosticService
         // Get process info
         try
         {
-            var paqetProc = Process.GetProcessesByName("paqet_windows_amd64").FirstOrDefault();
-            if (paqetProc != null)
+            var procs = Process.GetProcessesByName("paqet_windows_amd64");
+            try
             {
-                info.PaqetMemoryMb = paqetProc.WorkingSet64 / (1024 * 1024);
-                info.PaqetUptime = DateTime.Now - paqetProc.StartTime;
+                var paqetProc = procs.FirstOrDefault();
+                if (paqetProc != null)
+                {
+                    info.PaqetMemoryMb = paqetProc.WorkingSet64 / (1024 * 1024);
+                    info.PaqetUptime = DateTime.Now - paqetProc.StartTime;
+                }
             }
+            finally { foreach (var p in procs) p.Dispose(); }
         }
         catch { }
 
         try
         {
-            var t2sProc = Process.GetProcessesByName("tun2socks").FirstOrDefault();
-            if (t2sProc != null) info.Tun2SocksMemoryMb = t2sProc.WorkingSet64 / (1024 * 1024);
+            var procs = Process.GetProcessesByName("tun2socks");
+            try
+            {
+                var t2sProc = procs.FirstOrDefault();
+                if (t2sProc != null) info.Tun2SocksMemoryMb = t2sProc.WorkingSet64 / (1024 * 1024);
+            }
+            finally { foreach (var p in procs) p.Dispose(); }
         }
         catch { }
 
@@ -252,6 +262,15 @@ public sealed class DiagnosticService
                 info.Interface = config.Interface;
                 info.LocalIp = ParseHost(config.Ipv4Addr);
             }
+        }
+        catch { }
+
+        // Get default gateway
+        try
+        {
+            var gwOutput = PaqetService.RunCommand("powershell", "-NoProfile -Command \"(Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Where-Object { $_.NextHop -ne '0.0.0.0' } | Sort-Object RouteMetric | Select-Object -First 1).NextHop\"", 3000);
+            var gw = gwOutput?.Trim();
+            if (!string.IsNullOrEmpty(gw)) info.Gateway = gw;
         }
         catch { }
 

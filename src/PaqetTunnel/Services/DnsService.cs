@@ -290,7 +290,7 @@ public static class DnsService
         var changed = new List<(string Name, string? OriginalDns)>();
         try
         {
-            var output = PaqetService.RunCommand("powershell", "-NoProfile -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -ExpandProperty Name\"");
+            var output = PaqetService.RunCommand("powershell", "-NoProfile -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' -and $_.Virtual -eq $false } | Select-Object -ExpandProperty Name\"");
             foreach (var adapter in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
                 var name = adapter.Trim();

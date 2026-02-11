@@ -93,8 +93,6 @@ public partial class App : Application
         // ── Start services ─────────────────────────────────────────
         await _viewModel.InitializeAsync();
 
-        Services.Logger.Info("InitializeAsync complete");
-
         // Show window on first launch
         ShowWindow();
 

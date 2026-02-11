@@ -1052,6 +1052,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void SetDnsProvider(string provider)
     {
+        if (provider == SelectedDnsProvider) return;
         Logger.Info($"DNS provider changed: {SelectedDnsProvider} → {provider}");
         SelectedDnsProvider = provider;
         var settings = _configService.ReadAppSettings();
@@ -1110,6 +1111,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void SetTheme(string theme)
     {
+        if (theme == SelectedTheme) return;
         Logger.Info($"Theme changed: {SelectedTheme} → {theme}");
         SelectedTheme = theme;
         ThemeManager.Apply(theme);
