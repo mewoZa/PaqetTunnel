@@ -268,9 +268,18 @@ public sealed class DiagnosticService
         // Get default gateway
         try
         {
-            var gwOutput = PaqetService.RunCommand("powershell", "-NoProfile -Command \"(Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Where-Object { $_.NextHop -ne '0.0.0.0' } | Sort-Object RouteMetric | Select-Object -First 1).NextHop\"", 3000);
-            var gw = gwOutput?.Trim();
-            if (!string.IsNullOrEmpty(gw)) info.Gateway = gw;
+            var routeOutput = PaqetService.RunCommand("route", "print 0.0.0.0", 3000);
+            foreach (var line in routeOutput.Split('\n'))
+            {
+                var trimmed = line.Trim();
+                if (!trimmed.StartsWith("0.0.0.0")) continue;
+                var parts = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 3 && parts[0] == "0.0.0.0" && parts[1] == "0.0.0.0")
+                {
+                    info.Gateway = parts[2];
+                    break;
+                }
+            }
         }
         catch { }
 
