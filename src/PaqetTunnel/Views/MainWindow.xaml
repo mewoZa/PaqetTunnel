@@ -468,8 +468,10 @@
 
                             <!-- Latency badge -->
                             <Border Grid.Column="0" CornerRadius="4" Padding="6,2" Margin="0,0,6,0"
+                                    VerticalAlignment="Center"
                                     Background="{DynamicResource SurfaceBrush}">
                                 <TextBlock FontSize="10" FontFamily="{DynamicResource MonoFont}"
+                                           VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextDimBrush}">
                                     <Run Text="↔" /><Run Text=" " /><Run Text="{Binding ServerLatency}" />
                                 </TextBlock>
