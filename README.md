@@ -231,135 +231,31 @@ Use **Auto** mode to benchmark all providers and select the fastest, or pick man
 
 ## 🩺 CLI Tools
 
-PaqetTunnel doubles as a full command-line toolkit. Run any command from PowerShell or CMD:
+PaqetTunnel doubles as a full command-line toolkit — run diagnostics, manage updates, and control your VPS server all from the terminal.
 
 ```
 PaqetTunnel.exe [--command] [options]
 ```
 
-### Quick Reference
-
-| Command | What It Does |
+| Command | Description |
 |---------|-------------|
-| *(no args)* | Launch the GUI |
-| `--diag` | Full diagnostic suite (runs dns → ping → speed → info) |
-| `--dns` | Benchmark 17 DNS providers, ranked by latency |
-| `--ping` | Test SOCKS5 port + HTTP/HTTPS through tunnel + ICMP to server |
-| `--speed` | Download speed test (1 MB + 10 MB) — tunnel vs. direct |
-| `--info` | Show install paths, config, binaries, settings, legacy detection |
-| `--check` | Check for client updates (compares local/remote commit SHA) |
-| `--update` | Download and install the latest client update |
-| `--server <cmd>` | Manage your VPS server over SSH (see below) |
-| `--help` | Show built-in help text |
+| `--diag` | Run full diagnostic suite |
+| `--dns` | Benchmark DNS providers |
+| `--ping` | Test tunnel connectivity |
+| `--speed` | Speed test (tunnel vs direct) |
+| `--info` | Show install & config status |
+| `--check` | Check for updates |
+| `--update` | Install latest update |
+| `--server <cmd>` | Manage VPS over SSH |
+| `--help` | Show all commands |
 
-### Diagnostics
-
-```powershell
-# Run everything at once — DNS benchmark + connectivity + speed + system info
-PaqetTunnel.exe --diag
-
-# Benchmark all 17 DNS providers and rank by response time
-PaqetTunnel.exe --dns
-# Output:
-#   #   Provider                  Latency  Server
-#   1   Cloudflare                  12ms   1.1.1.1         * FASTEST
-#   2   Google                      18ms   8.8.8.8
-#   3   Quad9                       25ms   9.9.9.9
-#   ...
-
-# Test tunnel connectivity — SOCKS5 port, HTTP/HTTPS through proxy, ICMP ping
-PaqetTunnel.exe --ping
-# Output:
-#   SOCKS5 proxy (127.0.0.1:10800): listening [OK]
-#   HTTP via tunnel:  142ms - {"origin": "VPS_IP"}
-#   HTTPS via tunnel: 165ms - {"ip": "VPS_IP"}
-#   ICMP ping: [1] 32ms  [2] 28ms  [3] 31ms ...
-
-# Speed test — downloads 1 MB + 10 MB through tunnel, then direct (no tunnel)
-PaqetTunnel.exe --speed
-# Output:
-#   Through tunnel (SOCKS5):
-#     Cloudflare 10MB: 45.2 Mbps (9765KB in 1720ms)
-#     Cloudflare 1MB:  38.7 Mbps (976KB in 201ms)
-#   Direct (no tunnel):
-#     Cloudflare 10MB: 92.1 Mbps (9765KB in 868ms)
-#     Cloudflare 1MB:  78.4 Mbps (976KB in 100ms)
-```
-
-### System Info
-
-```powershell
-# Show installation status — paths, binaries, config, settings, legacy detection
-PaqetTunnel.exe --info
-# Output:
-#   Install:    C:\Users\You\AppData\Local\PaqetTunnel
-#   Binary:     [OK] ...\bin\paqet_windows_amd64.exe
-#   Config:     [OK] ...\config\client.yaml
-#   Tun2socks:  [OK] ...\bin\tun2socks.exe
-#   WinTun:     [OK] ...\bin\wintun.dll
-#
-#   Server:     156.253.5.220:8443
-#   Interface:  Ethernet
-#   Local IP:   192.168.1.100:0
-#   SOCKS5:     127.0.0.1:10800
-#   Key set:    yes
-#
-#   Theme:      monokai
-#   DNS:        auto
-#   TUN mode:   True
-#   Auto-start: True
-```
-
-### Updates
-
-```powershell
-# Check if a newer version is available (compares local vs remote commit SHA)
-PaqetTunnel.exe --check
-# Output:
-#   Update available!
-#   Local:   abc1234
-#   Remote:  def5678
-
-# Download and install the update — app restarts automatically
-PaqetTunnel.exe --update
-```
-
-### Remote Server Management
-
-Manage your VPS paqet server over SSH — requires SSH credentials configured in the GUI Settings tab or `settings.json`:
-
-```powershell
-PaqetTunnel.exe --server test        # Test SSH connection to your VPS
-PaqetTunnel.exe --server status      # Show server service status (systemctl)
-PaqetTunnel.exe --server install     # Install paqet server on VPS
-PaqetTunnel.exe --server update      # Update paqet binary on VPS
-PaqetTunnel.exe --server uninstall   # Uninstall paqet server from VPS
-PaqetTunnel.exe --server restart     # Restart the paqet systemd service
-PaqetTunnel.exe --server logs        # Tail recent server logs (journalctl)
-```
-
-> **SSH config** — set these in GUI Settings or directly in `%LOCALAPPDATA%\PaqetTunnel\settings.json`:
-> ```json
-> {
->   "ServerSshHost": "your-vps-ip",
->   "ServerSshUser": "root",
->   "ServerSshPort": 22,
->   "ServerSshKeyPath": "C:\\Users\\You\\.ssh\\id_ed25519"
-> }
-> ```
-
-### GUI Launch Flags
-
-```powershell
-# Launch GUI and immediately connect (used by Task Scheduler auto-start)
-PaqetTunnel.exe --connect
-```
+> 📖 Full CLI reference with examples and sample output → [Advanced: CLI Reference](#-cli-reference)
 
 ---
 
 ## 📋 Setup Script Commands
 
-Both scripts provide an **interactive menu** when run without arguments, or accept commands directly:
+Both scripts show an **interactive menu** when run without arguments, or accept commands directly:
 
 | Command | Windows | Linux |
 |---------|---------|-------|
@@ -369,17 +265,7 @@ Both scripts provide an **interactive menu** when run without arguments, or acce
 | **Uninstall** | `& $env:TEMP\pt.ps1 uninstall` | `sudo bash /tmp/pt.sh uninstall` |
 | **Status** | `& $env:TEMP\pt.ps1 status` | `sudo bash /tmp/pt.sh status` |
 
-### Flags
-
-| Windows (`setup.ps1`) | Linux (`setup.sh`) | Description |
-|------------------------|---------------------|-------------|
-| `-Addr ip:port` | `--addr ip:port` | Server address |
-| `-Key "secret"` | `--key "secret"` | Pre-shared encryption key |
-| `-Iface name` | `--iface name` | Network interface override |
-| `-SocksPort 10800` | — | SOCKS5 listen port |
-| `-Build` | `--build` | Build from source (requires Go + CGO) |
-| `-Force` | — | Force reinstall |
-| `-y` | `--yes` | Skip all confirmations |
+> 📖 Full flag reference and examples → [Advanced: Setup Script Reference](#-setup-script-reference)
 
 ---
 
@@ -556,6 +442,55 @@ transport:
 </details>
 
 <details>
+<summary><b>App Settings (settings.json)</b></summary>
+
+Located at `%LOCALAPPDATA%\PaqetTunnel\settings.json`. All fields are optional — defaults apply when absent.
+
+```json
+{
+  "AutoStart": false,
+  "StartBeforeLogon": false,
+  "StartMinimized": false,
+  "AutoConnectOnLaunch": false,
+  "FullSystemTunnel": false,
+  "SystemProxyEnabled": false,
+  "ProxySharingEnabled": false,
+  "DebugMode": false,
+  "Theme": "dark",
+  "DnsProvider": "auto",
+  "CustomDnsPrimary": "",
+  "CustomDnsSecondary": "",
+  "ServerSshHost": "",
+  "ServerSshPort": 22,
+  "ServerSshUser": "root",
+  "ServerSshKeyPath": "",
+  "ServerSshPassword": ""
+}
+```
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `AutoStart` | bool | `false` | Launch at Windows logon (Task Scheduler) |
+| `StartBeforeLogon` | bool | `false` | Start as SYSTEM service at boot (before logon) |
+| `StartMinimized` | bool | `false` | Hide window on launch — tray icon only |
+| `AutoConnectOnLaunch` | bool | `false` | Connect automatically when app starts |
+| `FullSystemTunnel` | bool | `false` | Use TUN mode (all traffic) vs SOCKS5 (browser only) |
+| `SystemProxyEnabled` | bool | `false` | Set Windows system proxy via PAC file |
+| `ProxySharingEnabled` | bool | `false` | Share tunnel on LAN via port 10801 |
+| `DebugMode` | bool | `false` | Enable verbose debug logging |
+| `Theme` | string | `"dark"` | UI theme (dark, light, nord, sakura, ocean, sunset, cyberpunk, dracula, monokai, rose) |
+| `DnsProvider` | string | `"auto"` | DNS provider name or "auto" for benchmark-selected |
+| `CustomDnsPrimary` | string | `""` | Custom primary DNS server IP |
+| `CustomDnsSecondary` | string | `""` | Custom secondary DNS server IP |
+| `ServerSshHost` | string | `""` | VPS IP/hostname for `--server` commands |
+| `ServerSshPort` | int | `22` | SSH port |
+| `ServerSshUser` | string | `"root"` | SSH username |
+| `ServerSshKeyPath` | string | `""` | Path to SSH private key file |
+| `ServerSshPassword` | string | `""` | SSH password (encrypted with DPAPI on disk) |
+
+</details>
+
+<details>
 <summary><b>Ports & Networking</b></summary>
 
 | Port | Protocol | Side | Purpose |
@@ -589,6 +524,427 @@ transport:
 | **Server port in use** | Run `ss -tlnup \| grep 8443`. Change port in config or kill the process. |
 
 </details>
+
+---
+
+## 🔧 Advanced: CLI Reference
+
+Full reference for every PaqetTunnel CLI command. Run from PowerShell, CMD, or any terminal.
+
+### `--diag` — Full Diagnostic Suite
+
+Runs all four diagnostic tools in sequence: DNS benchmark → connectivity test → speed test → system info.
+
+```powershell
+PaqetTunnel.exe --diag
+```
+
+```
+PaqetTunnel Diagnostics
+=======================
+
+[1/4] DNS Benchmark...
+#   Provider                  Latency  Server
+1   Cloudflare                  12ms   1.1.1.1         * FASTEST
+2   Google                      18ms   8.8.8.8
+3   Quad9                       25ms   9.9.9.9
+...
+17/17 providers reachable
+
+[2/4] Connectivity...
+SOCKS5 proxy (127.0.0.1:10800): listening [OK]
+  HTTP via tunnel:  142ms - {"origin": "203.0.113.50"}
+  HTTPS via tunnel: 165ms - {"ip": "203.0.113.50"}
+ICMP ping to 203.0.113.50:
+  [1] 32ms  [2] 28ms  [3] 31ms  [4] 29ms  [5] 30ms
+
+[3/4] Speed Test...
+Through tunnel (SOCKS5):
+  Cloudflare 10MB: 45.2 Mbps (9765KB in 1720ms)
+  Cloudflare 1MB:  38.7 Mbps (976KB in 201ms)
+Direct (no tunnel):
+  Cloudflare 10MB: 92.1 Mbps (9765KB in 868ms)
+  Cloudflare 1MB:  78.4 Mbps (976KB in 100ms)
+
+[4/4] System Info...
+  Install:    C:\Users\You\AppData\Local\PaqetTunnel
+  Binary:     [OK] ...\bin\paqet_windows_amd64.exe
+  ...
+
+[OK] Full diagnostic complete.
+```
+
+### `--dns` — DNS Benchmark
+
+Benchmarks all 17 built-in DNS providers and ranks by response time. Uses your local IP from `client.yaml` for accurate results.
+
+```powershell
+PaqetTunnel.exe --dns
+```
+
+```
+#   Provider                  Latency  Server
+-----------------------------------------------------------
+1   Cloudflare                  12ms   1.1.1.1         * FASTEST
+2   Google                      18ms   8.8.8.8
+3   Quad9                       25ms   9.9.9.9
+4   DNS.SB                      31ms   185.222.222.222
+...
+16  Verisign                   210ms   64.6.64.6
+17  Level3/Lumen             timeout   4.2.2.1
+
+16/17 providers reachable
+```
+
+Color-coded: 🟢 <50ms, 🟡 <200ms, ⚪ <timeout, ⚫ timeout.
+
+### `--ping` — Connectivity Test
+
+Tests three layers: SOCKS5 port availability → HTTP/HTTPS through tunnel → ICMP ping to server.
+
+```powershell
+PaqetTunnel.exe --ping
+```
+
+```
+SOCKS5 proxy (127.0.0.1:10800): listening [OK]
+
+Tunnel connectivity to 203.0.113.50:
+  HTTP via tunnel:  142ms - {"origin": "203.0.113.50"}
+  HTTPS via tunnel: 165ms - {"ip": "203.0.113.50"}
+
+ICMP ping to 203.0.113.50:
+  [1] 32ms  [2] 28ms  [3] 31ms  [4] 29ms  [5] 30ms
+```
+
+Useful for verifying the tunnel is working and checking latency. The HTTP test shows your exit IP (should be your VPS).
+
+### `--speed` — Speed Test
+
+Downloads 1 MB + 10 MB files from Cloudflare's speed test CDN, first through the tunnel (SOCKS5 proxy), then direct (no tunnel). Shows throughput in Mbps.
+
+```powershell
+PaqetTunnel.exe --speed
+```
+
+```
+Through tunnel (SOCKS5):
+  Cloudflare 10MB: 45.2 Mbps (9765KB in 1720ms)
+  Cloudflare 1MB:  38.7 Mbps (976KB in 201ms)
+
+Direct (no tunnel):
+  Cloudflare 10MB: 92.1 Mbps (9765KB in 868ms)
+  Cloudflare 1MB:  78.4 Mbps (976KB in 100ms)
+```
+
+Color-coded: 🟢 >10 Mbps, 🟡 >2 Mbps, 🔴 ≤2 Mbps.
+
+### `--info` — System Info
+
+Displays installation paths, binary status, configuration values, and current settings. Detects legacy installations.
+
+```powershell
+PaqetTunnel.exe --info
+```
+
+```
+  Install:    C:\Users\You\AppData\Local\PaqetTunnel
+  Binary:     [OK] C:\...\bin\paqet_windows_amd64.exe
+  Config:     [OK] C:\...\config\client.yaml
+  Tun2socks:  [OK] C:\...\bin\tun2socks.exe
+  WinTun:     [OK] C:\...\bin\wintun.dll
+
+  Server:     203.0.113.50:8443
+  Interface:  Ethernet
+  Local IP:   192.168.1.100:0
+  SOCKS5:     127.0.0.1:10800
+  Key set:    yes
+
+  Theme:      monokai
+  DNS:        auto
+  Debug:      False
+  TUN mode:   True
+  Auto-start: True
+
+  [!] Legacy install found: C:\Program Files\Paqet Tunnel
+    Run 'setup.ps1 update' to clean up.
+```
+
+`[OK]` means file exists. `[--]` means missing. The legacy warning only appears if an old Program Files install is detected.
+
+### `--check` — Check for Updates
+
+Compares local commit SHA (from `.commit` file) against the latest commit on GitHub `master` branch.
+
+```powershell
+PaqetTunnel.exe --check
+```
+
+```
+Checking for updates...
+
+  Update available!
+  Local:   abc1234
+  Remote:  def5678
+
+  Run --update to install.
+```
+
+Or if already up to date:
+```
+  [OK] Already up to date (abc1234)
+```
+
+### `--update` — Install Update
+
+Checks for updates, downloads the latest source, rebuilds, and replaces the running binary. The app restarts automatically.
+
+```powershell
+PaqetTunnel.exe --update
+```
+
+```
+Checking for updates...
+  Update: abc1234 -> def5678
+
+Starting update...
+  Downloading latest source...
+  Building PaqetTunnel...
+  Replacing binary...
+
+  Update started — app will restart shortly.
+```
+
+### `--server <subcommand>` — Remote VPS Management
+
+Manages the paqet server on your VPS over SSH. Requires SSH credentials configured in GUI Settings or `settings.json`.
+
+| Subcommand | Description |
+|-----------|-------------|
+| `--server test` | Test SSH connection — verifies host, port, auth |
+| `--server status` | Show systemd service status (`systemctl status paqet`) |
+| `--server install` | Install paqet server on the VPS |
+| `--server update` | Download latest paqet binary and restart service |
+| `--server uninstall` | Stop service, remove all files, clean iptables |
+| `--server restart` | Restart the paqet systemd service |
+| `--server logs` | Tail recent journal logs (`journalctl -u paqet`) |
+
+```powershell
+# Test SSH connection first
+PaqetTunnel.exe --server test
+#   Host: root@203.0.113.50:22
+#   Auth: key (C:\Users\You\.ssh\id_ed25519)
+#   Testing SSH connection...
+#   [OK] Connected successfully
+
+# Check server status
+PaqetTunnel.exe --server status
+#   Host: root@203.0.113.50:22
+#   Command: status
+#   ● paqet.service - Paqet Tunnel Server
+#     Active: active (running) since ...
+
+# View live server logs
+PaqetTunnel.exe --server logs
+```
+
+**SSH configuration** — set in `settings.json`:
+```json
+{
+  "ServerSshHost": "203.0.113.50",
+  "ServerSshUser": "root",
+  "ServerSshPort": 22,
+  "ServerSshKeyPath": "C:\\Users\\You\\.ssh\\id_ed25519"
+}
+```
+
+Or use password auth (stored encrypted with Windows DPAPI):
+```json
+{
+  "ServerSshHost": "203.0.113.50",
+  "ServerSshUser": "root",
+  "ServerSshPassword": "your-password"
+}
+```
+
+### `--connect` — GUI Auto-Connect Flag
+
+Launches the GUI and immediately connects. Used internally by the Task Scheduler auto-start task — generally not called manually.
+
+```powershell
+PaqetTunnel.exe --connect
+```
+
+### `--help` — Help
+
+Prints all available commands and examples.
+
+```powershell
+PaqetTunnel.exe --help
+```
+
+---
+
+## 🔧 Advanced: Setup Script Reference
+
+### Linux Server — `setup.sh`
+
+Full interactive installer for the paqet server. Downloads the script once, then use it for all management tasks.
+
+```bash
+# Download the script
+curl -fsSL https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh -o /tmp/pt.sh
+
+# Interactive menu
+sudo bash /tmp/pt.sh
+
+# Direct commands
+sudo bash /tmp/pt.sh install          # Install server
+sudo bash /tmp/pt.sh update           # Update paqet binary, restart service
+sudo bash /tmp/pt.sh uninstall        # Remove everything (binary, config, service, iptables)
+sudo bash /tmp/pt.sh status           # Show install status + service status + config info
+sudo bash /tmp/pt.sh restart          # Restart systemd service
+sudo bash /tmp/pt.sh logs             # Tail live logs (journalctl -u paqet -f)
+sudo bash /tmp/pt.sh help             # Show all commands and flags
+```
+
+**Flags:**
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--addr ip:port` | Bind address for the server | `0.0.0.0:8443` |
+| `--key "secret"` | Pre-shared encryption key | Auto-generated (base64, 32 bytes) |
+| `--iface name` | Network interface | Auto-detected (default route) |
+| `--build` | Build from source instead of downloading pre-built binary | Download release |
+| `--yes` / `-y` | Skip all confirmation prompts | Interactive |
+
+**Examples:**
+
+```bash
+# Silent install with all defaults (auto-detect everything)
+sudo bash /tmp/pt.sh install --yes
+
+# Install with custom port and key
+sudo bash /tmp/pt.sh install --addr 0.0.0.0:9443 --key "MySecretKey123" --yes
+
+# Install on a specific interface
+sudo bash /tmp/pt.sh install --iface ens3 --yes
+
+# Build from source instead of downloading pre-built binary (requires Go 1.23+)
+sudo bash /tmp/pt.sh install --build --yes
+
+# Update server binary to latest release
+sudo bash /tmp/pt.sh update --yes
+
+# Check status
+sudo bash /tmp/pt.sh status
+# Output:
+#   ✔ Paqet installed: /opt/paqet/paqet
+#   ✔ Config: /etc/paqet/server.yaml
+#   ✔ Service: active (running)
+#   Server: 0.0.0.0:8443
+#   Interface: eth0
+#   Key: ****...****
+```
+
+**What `install` does step by step:**
+1. Installs dependencies (`curl`, `jq`, `tar`)
+2. Downloads latest paqet binary from GitHub releases (or builds from source with `--build`)
+3. Auto-detects: network interface, server IP, gateway MAC address
+4. Generates encryption key (if not provided)
+5. Creates `/etc/paqet/server.yaml` config
+6. Configures iptables: NOTRACK (disable conntrack) + RST DROP (hide port) with persistence
+7. Creates hardened systemd service (`NoNewPrivileges`, `ProtectHome`, capability-restricted)
+8. Starts the service and prints the Windows client command (ready to copy-paste)
+
+**What `uninstall` removes:**
+- Systemd service + timer
+- `/opt/paqet/` binary directory
+- `/etc/paqet/` config directory
+- iptables NOTRACK and RST DROP rules
+- `/usr/local/bin/paqet` symlink
+
+### Windows Client — `setup.ps1`
+
+Full interactive installer for the client app. Run in PowerShell **as Administrator**.
+
+```powershell
+# Download the script
+irm https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1 -o $env:TEMP\pt.ps1
+
+# Interactive menu
+& $env:TEMP\pt.ps1
+
+# Direct commands
+& $env:TEMP\pt.ps1 install             # Install client
+& $env:TEMP\pt.ps1 update              # Pull latest, rebuild, update binary
+& $env:TEMP\pt.ps1 uninstall           # Remove everything
+& $env:TEMP\pt.ps1 status              # Show install status + running processes
+& $env:TEMP\pt.ps1 help                # Show all commands and flags
+```
+
+**Flags:**
+
+| Flag | Alias | Description | Default |
+|------|-------|-------------|---------|
+| `-Addr ip:port` | `-a` | Server address (IP:port) | *(prompted)* |
+| `-Key "secret"` | | Pre-shared encryption key | *(prompted)* |
+| `-Iface name` | `-i` | Network interface name | Auto-detected |
+| `-SocksPort 10800` | | SOCKS5 proxy listen port | `10800` |
+| `-Build` | | Build paqet from source (requires Go + MinGW + Npcap) | Download release |
+| `-Force` | | Force reinstall even if already installed | Skip if installed |
+| `-Server` | `-s` | Install in server mode instead of client | Client mode |
+| `-y` | | Skip all confirmation prompts | Interactive |
+| `-Silent` | | Suppress output | Normal output |
+| `-Launch` | | Auto-launch app after install | Don't launch |
+
+**Examples:**
+
+```powershell
+# Full silent install with server address and key
+& $env:TEMP\pt.ps1 install -Addr 203.0.113.50:8443 -Key "MySecretKey123" -y
+
+# Install with custom SOCKS5 port
+& $env:TEMP\pt.ps1 install -Addr 203.0.113.50:8443 -Key "key" -SocksPort 11080 -y
+
+# Force reinstall on a specific interface
+& $env:TEMP\pt.ps1 install -Addr 203.0.113.50:8443 -Key "key" -Iface "Wi-Fi" -Force -y
+
+# Build paqet from source (instead of downloading pre-built binary)
+& $env:TEMP\pt.ps1 install -Addr 203.0.113.50:8443 -Key "key" -Build -y
+
+# Update to latest version
+& $env:TEMP\pt.ps1 update
+
+# Check installation status
+& $env:TEMP\pt.ps1 status
+# Output:
+#   ✔ Installed: C:\Users\You\AppData\Local\PaqetTunnel
+#   ✔ Binary: paqet_windows_amd64.exe
+#   ✔ GUI: PaqetTunnel.exe (running, PID 1234)
+#   Server: 203.0.113.50:8443
+#   SOCKS5: 127.0.0.1:10800
+```
+
+**What `install` does step by step:**
+1. Checks for Git and .NET 8 SDK — downloads and installs if missing
+2. Clones the PaqetTunnel repo to `%LOCALAPPDATA%\PaqetTunnel\source`
+3. Downloads latest paqet binary from GitHub releases (or builds from source with `-Build`)
+4. Builds the .NET WPF GUI (`dotnet publish`)
+5. Downloads tun2socks + wintun.dll
+6. Auto-detects: network interface, local IP, gateway MAC, adapter GUID
+7. Creates `client.yaml` config
+8. Adds Windows Defender exclusions
+9. Creates Desktop + Start Menu shortcuts
+10. Registers Task Scheduler auto-start task
+11. Cleans up legacy `C:\Program Files\Paqet Tunnel\` installation if found
+
+**What `uninstall` removes:**
+- `%LOCALAPPDATA%\PaqetTunnel\` directory (binary, config, logs)
+- Desktop and Start Menu shortcuts
+- Task Scheduler auto-start task
+- Windows Defender exclusions
+- Optionally removes source code
 
 ## 🙏 Credits
 
