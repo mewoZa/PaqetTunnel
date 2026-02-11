@@ -282,6 +282,11 @@ public partial class MainViewModel : ObservableObject
             TunnelMode = tunActive ? "TUNNEL" : "SOCKS5";
             ConnectionStatus = tunActive ? "Connected (Full System)" : "Connected";
             _networkMonitor.Start();
+            // Trigger initial internet health check
+            InternetStatus = "Checking...";
+            InternetStatusColor = "#8b949e";
+            ServerLatency = "...";
+            _ = CheckInternetAsync();
 
             // Restore LAN sharing if enabled (portproxy is volatile — lost on reboot)
             if (IsProxySharingEnabled)
@@ -1849,6 +1854,11 @@ public partial class MainViewModel : ObservableObject
                 StatusBarText = "Reconnected";
                 _networkMonitor.Start();
                 IsConnecting = false;
+                // Trigger internet health check after reconnect
+                InternetStatus = "Checking...";
+                InternetStatusColor = "#8b949e";
+                ServerLatency = "...";
+                _ = CheckInternetAsync();
             });
 
             // R4-19: Restore LAN sharing if enabled (portproxy is volatile)
