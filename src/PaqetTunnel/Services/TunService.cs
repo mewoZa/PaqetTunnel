@@ -404,8 +404,10 @@ public sealed class TunService
     {
         try
         {
-            // Set IP address on TUN adapter
-            var output = RunNetsh($"interface ip set address \"{TUN_ADAPTER_NAME}\" static {TUN_IP} {TUN_SUBNET} {TUN_GATEWAY}");
+            // Set IP address on TUN adapter — do NOT set gateway here, because netsh
+            // auto-adds a persistent 0.0.0.0/0 route that conflicts with split routing
+            // and persists after adapter removal, causing stale routes on reboot.
+            var output = RunNetsh($"interface ip set address \"{TUN_ADAPTER_NAME}\" static {TUN_IP} {TUN_SUBNET}");
             Logger.Debug($"netsh set address: {output}");
 
             // Disable IPv6 on TUN adapter — browsers prefer IPv6 and our tunnel only handles IPv4,
@@ -434,6 +436,12 @@ public sealed class TunService
         var addedRoutes = new List<string>(); // BUG-16 fix: track routes for rollback
         try
         {
+            // Clean up any stale persistent default route from previous crashed TUN sessions.
+            // Windows auto-adds persistent 0.0.0.0/0 via TUN gateway when netsh sets a gateway,
+            // which survives adapter removal and causes routing failures on next startup.
+            try { RunRoute($"delete 0.0.0.0 mask 0.0.0.0 {TUN_GATEWAY}"); } catch { }
+            try { PaqetService.RunCommand("route", $"-p delete 0.0.0.0 mask 0.0.0.0 {TUN_GATEWAY}", timeout: 5000); } catch { }
+
             // NEW-01 fix: route VPN server IP directly through original gateway to prevent routing loop
             if (!string.IsNullOrEmpty(serverIp) && !string.IsNullOrEmpty(_originalGateway))
             {
@@ -506,6 +514,9 @@ public sealed class TunService
 
             RunRoute($"delete 0.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
             RunRoute($"delete 128.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
+            // Also clean any stale persistent default route
+            try { RunRoute($"delete 0.0.0.0 mask 0.0.0.0 {TUN_GATEWAY}"); } catch { }
+            try { PaqetService.RunCommand("route", $"-p delete 0.0.0.0 mask 0.0.0.0 {TUN_GATEWAY}", timeout: 5000); } catch { }
             // Remove LAN exclusion routes
             if (!string.IsNullOrEmpty(_originalGateway))
             {
