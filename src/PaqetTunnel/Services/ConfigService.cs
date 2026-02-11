@@ -11,6 +11,8 @@ namespace PaqetTunnel.Services;
 /// </summary>
 public sealed class ConfigService
 {
+    private static readonly object _settingsLock = new(); // R3-15 fix: prevent concurrent read/write races
+
     public string PaqetConfigPath => AppPaths.PaqetConfigPath;
     public string PaqetDirectory => AppPaths.ConfigDir;
 
@@ -58,38 +60,50 @@ public sealed class ConfigService
 
     public AppSettings ReadAppSettings()
     {
-        try
+        lock (_settingsLock) // R3-15 fix
         {
-            if (!File.Exists(AppPaths.SettingsPath))
-                return new AppSettings();
+            try
+            {
+                if (!File.Exists(AppPaths.SettingsPath))
+                    return new AppSettings();
 
-            var json = File.ReadAllText(AppPaths.SettingsPath);
-            var settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
-            // BUG-01 fix: decrypt protected password, or keep plaintext for backward compat
-            if (!string.IsNullOrEmpty(settings.ServerSshPasswordProtected))
-                settings.ServerSshPassword = CredentialHelper.Unprotect(settings.ServerSshPasswordProtected);
-            return settings;
-        }
-        catch
-        {
-            return new AppSettings();
+                var json = File.ReadAllText(AppPaths.SettingsPath);
+                var settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                // BUG-01 fix: decrypt protected password, or keep plaintext for backward compat
+                if (!string.IsNullOrEmpty(settings.ServerSshPasswordProtected))
+                    settings.ServerSshPassword = CredentialHelper.Unprotect(settings.ServerSshPasswordProtected);
+                return settings;
+            }
+            catch
+            {
+                // NEW-16: log corruption warning instead of silent fallback
+                Logger.Warn("settings.json corrupted or unreadable — using defaults");
+                return new AppSettings();
+            }
         }
     }
 
     public void WriteAppSettings(AppSettings settings)
     {
-        try
+        lock (_settingsLock) // R3-15 fix
         {
-            AppPaths.EnsureDirectories();
-            // BUG-01 fix: encrypt SSH password before persisting
-            if (!string.IsNullOrEmpty(settings.ServerSshPassword))
-                settings.ServerSshPasswordProtected = CredentialHelper.Protect(settings.ServerSshPassword);
+            // NEW-03 fix: save password reference before clearing, restore in finally
             var savedPlain = settings.ServerSshPassword;
-            settings.ServerSshPassword = ""; // Don't write plaintext to disk
-            var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(AppPaths.SettingsPath, json);
-            settings.ServerSshPassword = savedPlain; // Restore in-memory value
+            try
+            {
+                AppPaths.EnsureDirectories();
+                // BUG-01 fix: encrypt SSH password before persisting
+                if (!string.IsNullOrEmpty(settings.ServerSshPassword))
+                    settings.ServerSshPasswordProtected = CredentialHelper.Protect(settings.ServerSshPassword);
+                settings.ServerSshPassword = ""; // Don't write plaintext to disk
+                var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(AppPaths.SettingsPath, json);
+            }
+            catch (Exception ex) { Logger.Error("Failed to save app settings", ex); }
+            finally
+            {
+                settings.ServerSshPassword = savedPlain; // Always restore in-memory value
+            }
         }
-        catch (Exception ex) { Logger.Error("Failed to save app settings", ex); }
     }
 }

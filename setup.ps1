@@ -245,7 +245,10 @@ function Has-Command($name) {
 }
 
 function Is-Admin {
-    if ($IsLinux -or $IsMacOS) { return ((id -u) -eq 0) }
+    # NEW-31 fix: use PSVersionTable check instead of $IsLinux/$IsMacOS (undefined in PS 5.1)
+    if ($PSVersionTable.PSEdition -eq 'Core' -and $PSVersionTable.Platform -ne 'Win32NT') {
+        return ((id -u) -eq 0)
+    }
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal $identity
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -391,7 +394,7 @@ function Ensure-Git {
             if ($asset) { $minGitUrl = $asset.browser_download_url }
         }
     } catch {}
-    if (-not $minGitUrl) { $minGitUrl = "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/MinGit-2.47.1-64-bit.zip" }
+    if (-not $minGitUrl) { $minGitUrl = "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/MinGit-2.47.1-64-bit.zip" } # R2-35: fallback version — update periodically
 
     $dl = "$env:TEMP\mingit.zip"
     if (-not (Download-File $minGitUrl $dl)) { Err "Git download failed"; return $false }
@@ -485,7 +488,7 @@ function Ensure-Go {
 
     # Fallback: detect latest Go version from go.dev and download zip (works in more regions than MSI)
     Step "Installing Go..."
-    $latest = 'go1.23.5' # BUG-37 fix: use known stable version as fallback
+    $latest = 'go1.23.5' # R2-35: fallback version — script tries latest API first, this is used if API fails
     try {
         $json = Download-String 'https://go.dev/dl/?mode=json'
         if ($json) {
@@ -568,7 +571,7 @@ function Ensure-Npcap {
             if ($npcapAsset) { $npcapUrl = $npcapAsset.browser_download_url }
         }
     } catch {}
-    if (-not $npcapUrl) { $npcapUrl = 'https://npcap.com/dist/npcap-1.80.exe' }
+    if (-not $npcapUrl) { $npcapUrl = 'https://npcap.com/dist/npcap-1.80.exe' } # R2-35: fallback — update when new version available
     $dl = "$env:TEMP\npcap-setup.exe"
     if (-not (Download-File $npcapUrl $dl)) { Err "Npcap download failed"; return $false }
     Start-Process $dl -ArgumentList '/S /winpcap_mode=yes' -Wait
@@ -1095,7 +1098,12 @@ function Do-ServerInstall {
         $r = Read-Host
         if ($r) { $r } else { "0.0.0.0:8443" }
     }
-    $port = ($serverAddr -split ':')[-1]
+    # NEW-33 fix: handle IPv6 addresses like [::1]:8443
+    if ($serverAddr -match '\]:(\d+)$') {
+        $port = $Matches[1]
+    } else {
+        $port = ($serverAddr -split ':')[-1]
+    }
 
     # Auto-detect network
     $net = Detect-Network

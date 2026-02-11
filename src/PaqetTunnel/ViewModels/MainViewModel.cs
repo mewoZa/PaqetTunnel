@@ -338,7 +338,11 @@ public partial class MainViewModel : ObservableObject
         _consecutiveHealthFailures = 0;
         ConnectionStatus = "Connecting...";
         StatusBarText = "Connecting...";
-        Logger.Info($"ConnectAsync started (FullSystemTunnel={IsFullSystemTunnel})");
+
+        // R3-12 fix: capture UI-bound property values before entering Task.Run
+        var wantFullSystem = IsFullSystemTunnel;
+        var wantSharing = IsProxySharingEnabled;
+        Logger.Info($"ConnectAsync started (FullSystemTunnel={wantFullSystem})");
 
         await Task.Run(async () =>
         {
@@ -346,7 +350,7 @@ public partial class MainViewModel : ObservableObject
             if (!_paqetService.BinaryExists())
             {
                 Logger.Warn("ConnectAsync: binary not found");
-                Application.Current.Dispatcher.Invoke(() =>
+                Application.Current?.Dispatcher?.Invoke(() =>
                 {
                     ConnectionStatus = "Binary not found";
                     StatusBarText = "Setup required";
@@ -357,13 +361,13 @@ public partial class MainViewModel : ObservableObject
 
             // Step 1: Start paqet SOCKS5
             Logger.Info("Calling PaqetService.Start()...");
-            Application.Current.Dispatcher.Invoke(() => ConnectionStatus = "Starting paqet...");
+            Application.Current?.Dispatcher?.Invoke(() => ConnectionStatus = "Starting paqet...");
             var (success, message) = _paqetService.Start();
             Logger.Info($"Start() returned: success={success}, message={message}");
 
             if (!success)
             {
-                Application.Current.Dispatcher.Invoke(() =>
+                Application.Current?.Dispatcher?.Invoke(() =>
                 {
                     ConnectionStatus = message;
                     StatusBarText = message;
@@ -378,7 +382,7 @@ public partial class MainViewModel : ObservableObject
 
             if (!portReady)
             {
-                Application.Current.Dispatcher.Invoke(() =>
+                Application.Current?.Dispatcher?.Invoke(() =>
                 {
                     IsConnected = false;
                     ConnectionStatus = message;
@@ -389,7 +393,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             // Step 1b: Verify actual tunnel connectivity (not just port binding)
-            Application.Current.Dispatcher.Invoke(() => ConnectionStatus = "Verifying tunnel...");
+            Application.Current?.Dispatcher?.Invoke(() => ConnectionStatus = "Verifying tunnel...");
             var tunnelIp = await PaqetService.CheckTunnelConnectivityAsync(8000);
             if (tunnelIp == null)
             {
@@ -400,22 +404,22 @@ public partial class MainViewModel : ObservableObject
             else
             {
                 Logger.Info($"Tunnel verified — exit IP: {tunnelIp}");
-                Application.Current.Dispatcher.Invoke(() => PublicIp = tunnelIp);
+                Application.Current?.Dispatcher?.Invoke(() => PublicIp = tunnelIp);
             }
 
             // Step 2: If TUN mode, start tun2socks
-            if (IsFullSystemTunnel)
+            if (wantFullSystem)
             {
                 // Auto-download TUN binaries if missing
                 if (!_tunService.AllBinariesExist())
                 {
-                    Application.Current.Dispatcher.Invoke(() => ConnectionStatus = "Downloading TUN binaries...");
+                    Application.Current?.Dispatcher?.Invoke(() => ConnectionStatus = "Downloading TUN binaries...");
                     Logger.Info("TUN binaries missing, downloading...");
                     var dlResult = await _tunService.DownloadBinariesAsync();
                     Logger.Info($"TUN download: success={dlResult.Success}, message={dlResult.Message}");
                     if (!dlResult.Success)
                     {
-                        Application.Current.Dispatcher.Invoke(() =>
+                        Application.Current?.Dispatcher?.Invoke(() =>
                         {
                             IsConnected = true;
                             _connectedSince = DateTime.Now;
@@ -431,7 +435,7 @@ public partial class MainViewModel : ObservableObject
                 // Disable system proxy before starting TUN — proxy + TUN conflicts
                 EnsureProxyDisabledForTun();
 
-                Application.Current.Dispatcher.Invoke(() => ConnectionStatus = "Starting TUN tunnel...");
+                Application.Current?.Dispatcher?.Invoke(() => ConnectionStatus = "Starting TUN tunnel...");
                 Logger.Info("Starting TUN tunnel...");
                 var config = _configService.ReadPaqetConfig();
                 var serverIp = config.ServerHost;
@@ -440,7 +444,7 @@ public partial class MainViewModel : ObservableObject
 
                 if (!tunResult.Success)
                 {
-                    Application.Current.Dispatcher.Invoke(() =>
+                    Application.Current?.Dispatcher?.Invoke(() =>
                     {
                         // SOCKS5 is still running, show partial success
                         IsConnected = true;
@@ -454,13 +458,13 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 IsConnected = true;
                 _connectedSince = DateTime.Now;
-                TunnelMode = IsFullSystemTunnel ? "TUNNEL" : "SOCKS5";
-                ConnectionStatus = IsFullSystemTunnel ? "Connected (Full System)" : "Connected";
-                StatusBarText = IsFullSystemTunnel ? "Full system tunnel active" : "Connected";
+                TunnelMode = wantFullSystem ? "TUNNEL" : "SOCKS5";
+                ConnectionStatus = wantFullSystem ? "Connected (Full System)" : "Connected";
+                StatusBarText = wantFullSystem ? "Full system tunnel active" : "Connected";
                 _networkMonitor.Start();
                 IsConnecting = false;
             });
@@ -469,7 +473,7 @@ public partial class MainViewModel : ObservableObject
             {
                 DnsService.FlushCache();
                 // In SOCKS5-only mode, still force DNS to prevent ISP DNS leaks
-                if (!IsFullSystemTunnel)
+                if (!wantFullSystem)
                 {
                     var appSett = _configService.ReadAppSettings();
                     var (p, s) = DnsService.Resolve(appSett);
@@ -482,7 +486,7 @@ public partial class MainViewModel : ObservableObject
                 _ = FetchPublicIpAsync();
 
             // Restore LAN sharing if it was enabled (portproxy is volatile — lost on reboot)
-            if (IsProxySharingEnabled)
+            if (wantSharing)
             {
                 Logger.Info("Restoring LAN sharing after connect...");
                 _ = Task.Run(() =>
@@ -542,7 +546,7 @@ public partial class MainViewModel : ObservableObject
             }
             DnsService.FlushCache();
 
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 if (success)
                 {
@@ -585,7 +589,7 @@ public partial class MainViewModel : ObservableObject
         await Task.Run(() =>
         {
             var result = _proxyService.SetSystemProxy(newState);
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 if (result.Success)
                 {
@@ -609,7 +613,7 @@ public partial class MainViewModel : ObservableObject
         await Task.Run(() =>
         {
             var result = _proxyService.SetProxySharing(newState);
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 if (result.Success)
                 {
@@ -654,7 +658,7 @@ public partial class MainViewModel : ObservableObject
         await Task.Run(() =>
         {
             var result = _proxyService.SetAutoStart(newState);
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 if (result.Success)
                 {
@@ -681,7 +685,7 @@ public partial class MainViewModel : ObservableObject
         await Task.Run(() =>
         {
             var result = _proxyService.SetStartBeforeLogon(newState);
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 if (result.Success)
                 {
@@ -732,9 +736,9 @@ public partial class MainViewModel : ObservableObject
         {
             // Fetch through SOCKS5 proxy to get the tunnel exit IP (not local IP)
             var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
-            Application.Current.Dispatcher.Invoke(() => PublicIp = ip ?? "—");
+            Application.Current?.Dispatcher?.Invoke(() => PublicIp = ip ?? "—");
         }
-        catch { Application.Current.Dispatcher.Invoke(() => PublicIp = "unavailable"); }
+        catch { Application.Current?.Dispatcher?.Invoke(() => PublicIp = "unavailable"); }
     }
 
     [RelayCommand]
@@ -836,7 +840,7 @@ public partial class MainViewModel : ObservableObject
 
         var progress = new Progress<string>(msg =>
         {
-            Application.Current.Dispatcher.Invoke(() => SetupStatus = msg);
+            Application.Current?.Dispatcher?.Invoke(() => SetupStatus = msg);
         });
 
         var result = await _setupService.RunFullSetupAsync(progress);
@@ -859,7 +863,7 @@ public partial class MainViewModel : ObservableObject
         await Task.Run(() =>
         {
             var (success, output) = _paqetService.ListInterfaces();
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 InterfaceList = output;
                 StatusBarText = success ? "Interfaces listed." : output;
@@ -876,7 +880,7 @@ public partial class MainViewModel : ObservableObject
         await Task.Run(() =>
         {
             var (success, key) = _paqetService.GenerateSecret();
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 if (success && !string.IsNullOrEmpty(key))
                 {
@@ -901,7 +905,7 @@ public partial class MainViewModel : ObservableObject
         await Task.Run(() =>
         {
             var (success, output) = _paqetService.Ping();
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 PingResult = output;
                 StatusBarText = success ? "Ping complete." : output;
@@ -924,15 +928,17 @@ public partial class MainViewModel : ObservableObject
         UpdateStatus = "Checking...";
         StatusBarText = "Checking for updates...";
         var (available, local, remote, message) = await UpdateService.CheckAsync();
-        Application.Current.Dispatcher.Invoke(() =>
+        Application.Current?.Dispatcher?.Invoke(() =>
         {
             if (available)
             {
                 IsUpdateAvailable = true;
-                UpdateRemoteSha = remote[..7];
+                var shortRemote = remote.Length >= 7 ? remote[..7] : remote; // R3-10 fix
+                var shortLocal = local.Length >= 7 ? local[..7] : local;
+                UpdateRemoteSha = shortRemote;
                 UpdateCommitMessage = message;
-                UpdateStatus = $"Update available ({remote[..7]})";
-                StatusBarText = $"Update available! {local[..7]} → {remote[..7]}";
+                UpdateStatus = $"Update available ({shortRemote})";
+                StatusBarText = $"Update available! {shortLocal} → {shortRemote}";
                 Logger.Info($"Update banner shown: {message}");
             }
             else
@@ -954,14 +960,14 @@ public partial class MainViewModel : ObservableObject
 
         var (success, msg) = await UpdateService.RunSilentUpdateAsync(progress =>
         {
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 UpdateProgressText = progress;
                 StatusBarText = progress;
             });
         });
 
-        Application.Current.Dispatcher.Invoke(() =>
+        Application.Current?.Dispatcher?.Invoke(() =>
         {
             if (success)
             {
@@ -1000,12 +1006,17 @@ public partial class MainViewModel : ObservableObject
     {
         if (IsDnsBenchmarking) return;
         IsDnsBenchmarking = true;
-        DnsStatus = "⏳ Benchmarking 18 providers...";
+        DnsStatus = $"⏳ Benchmarking {DnsService.Providers.Count} providers...";
         DnsBenchmarkResults = "";
         try
         {
             var results = await DnsService.BenchmarkAllAsync(LocalIp);
-            var best = results.First();
+            var best = results.FirstOrDefault(); // NEW-25 fix: avoid crash on empty results
+            if (best == null)
+            {
+                DnsStatus = "❌ All DNS benchmarks failed";
+                return;
+            }
 
             // Build formatted results table
             var lines = new System.Text.StringBuilder();
@@ -1219,18 +1230,23 @@ public partial class MainViewModel : ObservableObject
         RefreshLogViewer();
     }
 
+    private readonly object _logEntriesLock = new(); // R3-07 fix: thread-safe log list
+
     private void OnLogAdded(LogEntry entry)
     {
         try
         {
-            _logEntries.Add(entry);
-            if (_logEntries.Count > 500)
-                _logEntries.RemoveAt(0);
+            lock (_logEntriesLock)
+            {
+                _logEntries.Add(entry);
+                if (_logEntries.Count > 500)
+                    _logEntries.RemoveAt(0);
+            }
 
             if (!ShowLogViewer) return;
             if (LogFilter != "ALL" && entry.Level != LogFilter) return;
 
-            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
             {
                 LogViewerText += entry.Formatted + "\n";
                 // Trim if too long
@@ -1255,46 +1271,55 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            // Paqet process
-            var paqetProc = System.Diagnostics.Process.GetProcessesByName("paqet_windows_amd64").FirstOrDefault();
-            if (paqetProc != null)
+            // R3-09 fix: dispose all Process objects from GetProcessesByName to avoid handle leaks
+            var paqetProcs = System.Diagnostics.Process.GetProcessesByName("paqet_windows_amd64");
+            try
             {
-                PaqetPid = paqetProc.Id.ToString();
-                PaqetMemory = $"{paqetProc.WorkingSet64 / (1024 * 1024)} MB";
-                var uptime = DateTime.Now - paqetProc.StartTime;
-                PaqetUptime = uptime.TotalHours >= 1
-                    ? uptime.ToString(@"hh\:mm\:ss")
-                    : uptime.ToString(@"mm\:ss");
+                var paqetProc = paqetProcs.FirstOrDefault();
+                if (paqetProc != null)
+                {
+                    PaqetPid = paqetProc.Id.ToString();
+                    PaqetMemory = $"{paqetProc.WorkingSet64 / (1024 * 1024)} MB";
+                    var uptime = DateTime.Now - paqetProc.StartTime;
+                    PaqetUptime = uptime.TotalHours >= 1
+                        ? uptime.ToString(@"hh\:mm\:ss")
+                        : uptime.ToString(@"mm\:ss");
+                }
+                else
+                {
+                    PaqetPid = "—";
+                    PaqetMemory = "—";
+                    PaqetUptime = "—";
+                }
             }
-            else
-            {
-                PaqetPid = "—";
-                PaqetMemory = "—";
-                PaqetUptime = "—";
-            }
+            finally { foreach (var p in paqetProcs) p.Dispose(); }
 
-            // tun2socks process
-            var t2sProc = System.Diagnostics.Process.GetProcessesByName("tun2socks").FirstOrDefault();
-            if (t2sProc != null)
+            var t2sProcs = System.Diagnostics.Process.GetProcessesByName("tun2socks");
+            try
             {
-                Tun2socksPid = t2sProc.Id.ToString();
-                Tun2socksMemory = $"{t2sProc.WorkingSet64 / (1024 * 1024)} MB";
+                var t2sProc = t2sProcs.FirstOrDefault();
+                if (t2sProc != null)
+                {
+                    Tun2socksPid = t2sProc.Id.ToString();
+                    Tun2socksMemory = $"{t2sProc.WorkingSet64 / (1024 * 1024)} MB";
+                }
+                else
+                {
+                    Tun2socksPid = "—";
+                    Tun2socksMemory = "—";
+                }
             }
-            else
-            {
-                Tun2socksPid = "—";
-                Tun2socksMemory = "—";
-            }
+            finally { foreach (var p in t2sProcs) p.Dispose(); }
 
             // TUN adapter
             TunAdapterStatus = _tunService.IsRunning() ? "Active" : "Inactive";
 
-            // Config info
+            // R3-18 fix: read encryption and KCP mode from actual config
             if (System.IO.File.Exists(AppPaths.PaqetConfigPath))
             {
                 var config = PaqetConfig.FromYaml(System.IO.File.ReadAllText(AppPaths.PaqetConfigPath));
-                EncryptionInfo = "AES (KCP)";
-                KcpModeInfo = "fast";
+                EncryptionInfo = string.IsNullOrEmpty(config.Protocol) ? "KCP" : config.Protocol.ToUpperInvariant();
+                KcpModeInfo = string.IsNullOrEmpty(config.KcpMode) ? "fast" : config.KcpMode;
             }
 
             // Connection quality based on health check result
@@ -1323,7 +1348,7 @@ public partial class MainViewModel : ObservableObject
                 ConnectionQualityColor = "#8b949e";
             }
         }
-        catch { }
+        catch (Exception ex) { Logger.Debug($"RefreshProcessHealth: {ex.Message}"); } // R3-17 fix
     }
 
     [RelayCommand]
@@ -1363,7 +1388,7 @@ public partial class MainViewModel : ObservableObject
             if (portReady != IsConnected)
                 Logger.Info($"OnStatusTick: state change — running={running}, portReady={portReady}, wasConnected={IsConnected}");
 
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 if (portReady != IsConnected)
                 {
@@ -1399,7 +1424,8 @@ public partial class MainViewModel : ObservableObject
                             {
                                 await Task.Delay(delay);
                                 if (_userRequestedConnect && !IsConnected && !IsConnecting)
-                                    await Application.Current.Dispatcher.InvokeAsync(async () => await ConnectInternalAsync());
+                                    if (Application.Current?.Dispatcher != null)
+                                        await Application.Current.Dispatcher.InvokeAsync(async () => await ConnectInternalAsync());
                             });
                         }
                         else if (_reconnectAttempts >= MAX_RECONNECT_ATTEMPTS)
@@ -1428,7 +1454,7 @@ public partial class MainViewModel : ObservableObject
                                 Logger.Warn($"Health check failed ({failures}/{HEALTH_FAIL_THRESHOLD})");
                                 if (failures >= HEALTH_FAIL_THRESHOLD)
                                 {
-                                    Application.Current.Dispatcher.Invoke(() =>
+                                    Application.Current?.Dispatcher?.Invoke(() =>
                                     {
                                         ConnectionStatus = "Connected (tunnel check failed)";
                                     });
@@ -1439,7 +1465,7 @@ public partial class MainViewModel : ObservableObject
                                 var prevFailures = System.Threading.Interlocked.Exchange(ref _consecutiveHealthFailures, 0);
                                 if (prevFailures > 0)
                                     Logger.Info($"Health check recovered after {prevFailures} failure(s)");
-                                Application.Current.Dispatcher.Invoke(() =>
+                                Application.Current?.Dispatcher?.Invoke(() =>
                                 {
                                     // Restore normal status if it was degraded
                                     if (ConnectionStatus.Contains("tunnel check failed"))
@@ -1481,7 +1507,7 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 var latest = _networkMonitor.Latest;
                 DownloadSpeed = NetworkMonitorService.FormatSpeed(latest.DownloadSpeed);
@@ -1527,7 +1553,7 @@ public partial class MainViewModel : ObservableObject
 
         // Always force full proxy disable — clears ProxyEnable, ProxyServer, ProxyOverride
         _proxyService.SetSystemProxy(false);
-        Application.Current.Dispatcher.Invoke(() => IsSystemProxyEnabled = false);
+        Application.Current?.Dispatcher?.Invoke(() => IsSystemProxyEnabled = false);
 
         // Reset WinHTTP proxy (Windows Update, system services)
         try
@@ -1550,7 +1576,7 @@ public partial class MainViewModel : ObservableObject
         {
             if (!_paqetService.BinaryExists())
             {
-                Application.Current.Dispatcher.Invoke(() => { IsConnecting = false; });
+                Application.Current?.Dispatcher?.Invoke(() => { IsConnecting = false; });
                 return;
             }
 
@@ -1559,7 +1585,7 @@ public partial class MainViewModel : ObservableObject
 
             if (!success || !PaqetService.IsPortListening())
             {
-                Application.Current.Dispatcher.Invoke(() =>
+                Application.Current?.Dispatcher?.Invoke(() =>
                 {
                     ConnectionStatus = $"Reconnect failed: {message}";
                     IsConnecting = false;
@@ -1576,7 +1602,7 @@ public partial class MainViewModel : ObservableObject
                     Logger.Warn($"TUN reconnect failed: {tunResult.Message}");
             }
 
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current?.Dispatcher?.Invoke(() =>
             {
                 IsConnected = true;
                 _connectedSince = DateTime.Now;
@@ -1613,6 +1639,9 @@ public partial class MainViewModel : ObservableObject
             Logger.Info("Cleanup: stopping TUN tunnel");
             _tunService.StopAsync().GetAwaiter().GetResult();
         }
+
+        // R3-01/02/03 fix: proxy cleanup is handled by ProxyService.OnShutdown() in App.OnExit
+        // Do NOT duplicate proxy restore here — Cleanup() focuses on process/TUN teardown only
     }
 
     private static string GetLocalIp()

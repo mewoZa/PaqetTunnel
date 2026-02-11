@@ -60,6 +60,8 @@ internal static class CredentialHelper
         }
         catch
         {
+            // NEW-13: log warning — key is tied to machine+user, decryption fails on migration
+            Logger.Warn("Credential decryption failed — likely machine/user change. Re-enter password.");
             return ""; // Decryption failed — possibly different machine/user
         }
     }

@@ -128,7 +128,7 @@ public static class Logger
             var files = new DirectoryInfo(LogDir).GetFiles("paqet*.log");
             if (files.Length <= 10) return;
 
-            Array.Sort(files, (a, b) => b.CreationTime.CompareTo(a.CreationTime));
+            Array.Sort(files, (a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime)); // NEW-39: LastWriteTime is more reliable than CreationTime on NTFS
             for (int i = 10; i < files.Length; i++)
             {
                 try { files[i].Delete(); } catch { }

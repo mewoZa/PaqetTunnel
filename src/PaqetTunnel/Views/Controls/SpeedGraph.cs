@@ -52,13 +52,45 @@ public sealed class SpeedGraph : FrameworkElement
     private static readonly SolidColorBrush BgBrush;
     private static readonly Typeface LabelTypeface = new("Segoe UI Variable");
 
+    // NEW-20 fix: cache brushes to avoid GDI object churn per render frame
+    private static readonly SolidColorBrush DlDotBrush;
+    private static readonly SolidColorBrush DlLiveBrush;
+    private static readonly RadialGradientBrush DlGlowBrush;
+
+    // R3-08 fix: cache per-series fill brush and stroke pen (download + upload)
+    private static readonly Brush DlFillBrush;
+    private static readonly Pen DlStrokePen;
+    private static readonly Brush UlFillBrush;
+    private static readonly Pen UlStrokePen;
+
     static SpeedGraph()
     {
         GridPen = new Pen(new SolidColorBrush(GridColor), 0.5);
         GridPen.Freeze();
         BgBrush = new SolidColorBrush(BgColor);
         BgBrush.Freeze();
+        DlDotBrush = new SolidColorBrush(DlColor);
+        DlDotBrush.Freeze();
+        DlLiveBrush = new SolidColorBrush(Color.FromArgb(200, DlColor.R, DlColor.G, DlColor.B));
+        DlLiveBrush.Freeze();
+        DlGlowBrush = new RadialGradientBrush(
+            Color.FromArgb(60, DlColor.R, DlColor.G, DlColor.B), Colors.Transparent);
+        DlGlowBrush.Freeze();
+
+        // R3-08 fix: pre-create per-series gradient fills and stroke pens
+        DlFillBrush = CreateSeriesFill(DlColor); DlFillBrush.Freeze();
+        DlStrokePen = CreateSeriesPen(DlColor); DlStrokePen.Freeze();
+        UlFillBrush = CreateSeriesFill(UlColor); UlFillBrush.Freeze();
+        UlStrokePen = CreateSeriesPen(UlColor); UlStrokePen.Freeze();
     }
+
+    private static LinearGradientBrush CreateSeriesFill(Color c) =>
+        new(Color.FromArgb(50, c.R, c.G, c.B), Color.FromArgb(3, c.R, c.G, c.B),
+            new Point(0, 0), new Point(0, 1));
+
+    private static Pen CreateSeriesPen(Color c) =>
+        new(new SolidColorBrush(Color.FromArgb(200, c.R, c.G, c.B)), 1.5)
+        { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -96,10 +128,10 @@ public sealed class SpeedGraph : FrameworkElement
 
         // Draw upload first (behind), then download (in front)
         if (ulData?.Count >= 2)
-            DrawSeries(dc, ulData, w, h, max, UlColor, 1.2);
+            DrawSeries(dc, ulData, w, h, max, UlColor);
 
         if (dlData?.Count >= 2)
-            DrawSeries(dc, dlData, w, h, max, DlColor, 1.8);
+            DrawSeries(dc, dlData, w, h, max, DlColor);
 
         // Peak marker dot on download
         if (dlData?.Count >= 2)
@@ -115,9 +147,7 @@ public sealed class SpeedGraph : FrameworkElement
                 var stepX = w / (dlData.Count - 1);
                 var px = peakIdx * stepX;
                 var py = h - (peakVal / max * (h - 6)) - 3;
-                var dotBrush = new SolidColorBrush(DlColor);
-                dotBrush.Freeze();
-                dc.DrawEllipse(dotBrush, null, new Point(px, py), 2.5, 2.5);
+                dc.DrawEllipse(DlDotBrush, null, new Point(px, py), 2.5, 2.5);
             }
         }
 
@@ -128,18 +158,13 @@ public sealed class SpeedGraph : FrameworkElement
             var stepX = w / (dlData.Count - 1);
             var lx = (dlData.Count - 1) * stepX;
             var ly = h - (lastVal / max * (h - 6)) - 3;
-            var liveBrush = new SolidColorBrush(Color.FromArgb(200, DlColor.R, DlColor.G, DlColor.B));
-            liveBrush.Freeze();
-            dc.DrawEllipse(liveBrush, null, new Point(lx, ly), 3, 3);
-            var glowBrush = new RadialGradientBrush(
-                Color.FromArgb(60, DlColor.R, DlColor.G, DlColor.B), Colors.Transparent);
-            glowBrush.Freeze();
-            dc.DrawEllipse(glowBrush, null, new Point(lx, ly), 8, 8);
+            dc.DrawEllipse(DlLiveBrush, null, new Point(lx, ly), 3, 3);
+            dc.DrawEllipse(DlGlowBrush, null, new Point(lx, ly), 8, 8);
         }
     }
 
     private static void DrawSeries(DrawingContext dc, List<double> data, double w, double h,
-        double max, Color color, double strokeWidth)
+        double max, Color color)
     {
         var count = data.Count;
         var stepX = w / (count - 1);
@@ -168,22 +193,11 @@ public sealed class SpeedGraph : FrameworkElement
         }
         fillGeo.Freeze();
 
-        // Gradient fill (top = color, bottom = transparent)
-        var fillBrush = new LinearGradientBrush(
-            Color.FromArgb(50, color.R, color.G, color.B),
-            Color.FromArgb(3, color.R, color.G, color.B),
-            new Point(0, 0), new Point(0, 1));
-        fillBrush.Freeze();
+        // R3-08 fix: use pre-cached series fill brush and stroke pen
+        var fillBrush = color == DlColor ? DlFillBrush : UlFillBrush;
         dc.DrawGeometry(fillBrush, null, fillGeo);
 
-        // Stroke
-        var pen = new Pen(new SolidColorBrush(Color.FromArgb(200, color.R, color.G, color.B)), strokeWidth)
-        {
-            LineJoin = PenLineJoin.Round,
-            StartLineCap = PenLineCap.Round,
-            EndLineCap = PenLineCap.Round
-        };
-        pen.Freeze();
+        var pen = color == DlColor ? DlStrokePen : UlStrokePen;
         dc.DrawGeometry(null, pen, lineGeo);
     }
 

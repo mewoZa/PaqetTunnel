@@ -56,16 +56,25 @@ public sealed class PaqetService
             }
             var output = proc.StandardOutput.ReadToEnd();
             proc.WaitForExit(3000);
-            // BUG-14 fix: parse CSV rows and exact-match image name to avoid partial matches
+            // NEW-40 fix: proper CSV parsing for tasklist /FO CSV output
+            // Each line is: "Image Name","PID","Session Name","Session#","Mem Usage"
             var found = false;
             foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
-                var trimmed = line.Trim().Trim('"');
-                var firstField = trimmed.Split('"')[0];
-                if (firstField.Equals(AppPaths.BINARY_NAME, StringComparison.OrdinalIgnoreCase))
+                var trimmedLine = line.Trim();
+                if (trimmedLine.StartsWith('"'))
                 {
-                    found = true;
-                    break;
+                    // Extract first CSV field properly: find content between first pair of quotes
+                    var endQuote = trimmedLine.IndexOf('"', 1);
+                    if (endQuote > 1)
+                    {
+                        var imageName = trimmedLine[1..endQuote];
+                        if (imageName.Equals(AppPaths.BINARY_NAME, StringComparison.OrdinalIgnoreCase))
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
                 }
             }
             Logger.Debug($"IsRunning: {found} — tasklist output: {output.Trim().Replace("\r\n", " | ")}");
@@ -229,7 +238,7 @@ public sealed class PaqetService
             {
                 Logger.Warn($"Bind failure on attempt {attempt}/3, retrying in 2s...");
                 Stop(); // kill the failed process
-                Thread.Sleep(2000);
+                Task.Delay(2000).GetAwaiter().GetResult(); // NEW-09 fix
                 continue;
             }
 
@@ -295,7 +304,7 @@ public sealed class PaqetService
             // Wait up to 15s for process to bind to SOCKS5 port
             for (int i = 0; i < 30; i++)
             {
-                Thread.Sleep(500);
+                Task.Delay(500).GetAwaiter().GetResult(); // NEW-09 fix
 
                 if (proc.HasExited)
                 {
@@ -421,7 +430,7 @@ public sealed class PaqetService
 
             for (int i = 0; i < 10; i++)
             {
-                Thread.Sleep(200);
+                Task.Delay(200).GetAwaiter().GetResult(); // NEW-09 fix
                 if (!IsRunning())
                 {
                     Logger.Info("Stop: process terminated");

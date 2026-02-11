@@ -232,7 +232,12 @@ public static class DnsService
         foreach (var r in results.Take(5))
             Logger.Info($"  DNS benchmark: {r.Name} ({r.Primary}) = {r.AvgLatencyMs:F1}ms");
 
-        var best = results.First();
+        var best = results.FirstOrDefault(); // R3-04 fix: avoid crash on empty results
+        if (best == null)
+        {
+            Logger.Warn("DNS auto-selection: all providers failed, falling back to Cloudflare");
+            return ("cloudflare", "1.1.1.1", "1.0.0.1");
+        }
         Logger.Info($"DNS auto-selected: {best.Name} ({best.Primary}/{best.Secondary}) at {best.AvgLatencyMs:F1}ms");
         return (best.ProviderId, best.Primary, best.Secondary);
     }

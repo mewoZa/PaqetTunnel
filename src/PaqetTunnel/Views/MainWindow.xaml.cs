@@ -10,9 +10,21 @@ public partial class MainWindow : Window
 {
     private bool _autoHideEnabled;
 
+    // R3-11 fix: create timer ONCE, reuse across deactivations
+    private readonly System.Timers.Timer _deactivateTimer;
+
     public MainWindow()
     {
         InitializeComponent();
+        _deactivateTimer = new System.Timers.Timer(400) { AutoReset = false };
+        _deactivateTimer.Elapsed += (s, ev) =>
+        {
+            Dispatcher.Invoke(() =>
+            {
+                if (!IsActive && IsVisible)
+                    Hide();
+            });
+        };
         Loaded += OnLoaded;
     }
 
@@ -66,17 +78,9 @@ public partial class MainWindow : Window
     {
         if (!_autoHideEnabled) return;
 
-        var timer = new System.Timers.Timer(400) { AutoReset = false };
-        timer.Elapsed += (s, ev) =>
-        {
-            Dispatcher.Invoke(() =>
-            {
-                if (!IsActive && IsVisible)
-                    Hide();
-            });
-            timer.Dispose();
-        };
-        timer.Start();
+        // R3-11 fix: just restart the existing timer (no allocation)
+        _deactivateTimer.Stop();
+        _deactivateTimer.Start();
     }
 
     // ── DNS ComboBox selection handler ────────────────────────────

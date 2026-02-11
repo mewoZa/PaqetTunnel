@@ -19,13 +19,42 @@ public sealed class PaqetConfig
     public string Ipv4Addr { get; set; } = "";            // network.ipv4.addr
     public string RouterMac { get; set; } = "";           // network.ipv4.router_mac
     public string SocksListen { get; set; } = "127.0.0.1:10800";
+    public string Protocol { get; set; } = "";               // transport.protocol
+    public string KcpMode { get; set; } = "";                // transport.kcp.mode
     public string RawConfig { get; set; } = "";
 
-    /// <summary>Get server host (without port) from ServerAddr.</summary>
-    public string ServerHost => ServerAddr.Contains(':') ? ServerAddr[..ServerAddr.LastIndexOf(':')] : ServerAddr;
+    /// <summary>Get server host (without port) from ServerAddr. Handles IPv6 [::1]:port format.</summary>
+    public string ServerHost
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(ServerAddr)) return ServerAddr;
+            // R3-20 fix: handle bracketed IPv6 like "[::1]:8443"
+            if (ServerAddr.StartsWith('['))
+            {
+                var endBracket = ServerAddr.IndexOf(']');
+                return endBracket > 0 ? ServerAddr[1..endBracket] : ServerAddr;
+            }
+            var lastColon = ServerAddr.LastIndexOf(':');
+            return lastColon > 0 ? ServerAddr[..lastColon] : ServerAddr;
+        }
+    }
 
-    /// <summary>Get server port from ServerAddr.</summary>
-    public int ServerPort => ServerAddr.Contains(':') && int.TryParse(ServerAddr[(ServerAddr.LastIndexOf(':') + 1)..], out var p) ? p : 443;
+    /// <summary>Get server port from ServerAddr. Handles IPv6 [::1]:port format.</summary>
+    public int ServerPort
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(ServerAddr)) return 443;
+            if (ServerAddr.StartsWith('['))
+            {
+                var afterBracket = ServerAddr.IndexOf("]:");
+                return afterBracket >= 0 && int.TryParse(ServerAddr[(afterBracket + 2)..], out var p6) ? p6 : 443;
+            }
+            var lastColon = ServerAddr.LastIndexOf(':');
+            return lastColon > 0 && int.TryParse(ServerAddr[(lastColon + 1)..], out var p) ? p : 443;
+        }
+    }
 
     /// <summary>Parse a paqet YAML config file.</summary>
     public static PaqetConfig FromYaml(string yaml)
@@ -39,7 +68,7 @@ public sealed class PaqetConfig
             if (string.IsNullOrEmpty(trimmed) || trimmed.TrimStart().StartsWith('#'))
                 continue;
 
-            // Calculate indent level (2-space indentation)
+            // Calculate indent level (supports 2-space and 4-space indentation)
             var indent = trimmed.Length - trimmed.TrimStart().Length;
             var line = trimmed.TrimStart();
 
@@ -47,8 +76,8 @@ public sealed class PaqetConfig
             if (line.StartsWith("- "))
                 line = line[2..];
 
-            // Adjust section stack based on indent
-            var level = indent / 2;
+            // Adjust section stack based on indent — detect indentation step from first indented line
+            var level = indent > 0 && sectionPath.Count > 0 ? indent / Math.Max(2, indent / sectionPath.Count) : indent / 2;
             while (sectionPath.Count > level)
                 sectionPath.RemoveAt(sectionPath.Count - 1);
 
@@ -78,6 +107,8 @@ public sealed class PaqetConfig
                 case "network.ipv4.addr": config.Ipv4Addr = value; break;
                 case "network.ipv4.router_mac": config.RouterMac = value; break;
                 case "socks5.listen": config.SocksListen = value; break;
+                case "transport.protocol": config.Protocol = value; break;
+                case "transport.kcp.mode": config.KcpMode = value; break;
             }
         }
 
@@ -151,15 +182,22 @@ public sealed class PaqetConfig
             return yaml[..m.Index] + Regex.Replace(m.Value, pattern, $"$1\"{newValue}\"", RegexOptions.None, TimeSpan.FromSeconds(1)) + yaml[(m.Index + m.Length)..];
         }
 
-        // Find the key after the section header — replace only the first match
-        var after = yaml[sectionIdx..];
-        var match = Regex.Match(after, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+        // NEW-08 fix: find next top-level section to bound the search region
+        // A top-level section is a line starting with a non-space char followed by ':'
+        var afterSection = yaml[(sectionIdx + parentSection.Length + 1)..];
+        var nextSectionMatch = Regex.Match(afterSection, @"\n[a-zA-Z_][a-zA-Z0-9_]*\s*:", RegexOptions.None, TimeSpan.FromSeconds(1));
+        var searchEnd = nextSectionMatch.Success
+            ? sectionIdx + parentSection.Length + 1 + nextSectionMatch.Index
+            : yaml.Length;
+
+        var region = yaml[sectionIdx..searchEnd];
+        var match = Regex.Match(region, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
         if (!match.Success) return yaml;
 
-        var replaced = after[..match.Index]
+        var replaced = region[..match.Index]
             + Regex.Replace(match.Value, pattern, $"$1\"{newValue}\"", RegexOptions.None, TimeSpan.FromSeconds(1))
-            + after[(match.Index + match.Length)..];
-        return yaml[..sectionIdx] + replaced;
+            + region[(match.Index + match.Length)..];
+        return yaml[..sectionIdx] + replaced + yaml[searchEnd..];
     }
 }
 

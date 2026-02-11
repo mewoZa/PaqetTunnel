@@ -28,6 +28,7 @@ public sealed class TunService
     private const int TUN_METRIC = 1;
 
     private Process? _tun2socksProcess;
+    private readonly object _tunProcessLock = new(); // NEW-06: synchronize _tun2socksProcess access
     private string? _originalGateway;
     private string? _originalInterface;
     private string? _serverIp;
@@ -42,8 +43,11 @@ public sealed class TunService
     /// <summary>Check if the tun2socks process is running.</summary>
     public bool IsRunning()
     {
-        if (_tun2socksProcess != null && !_tun2socksProcess.HasExited)
-            return true;
+        lock (_tunProcessLock) // NEW-06 fix
+        {
+            if (_tun2socksProcess != null && !_tun2socksProcess.HasExited)
+                return true;
+        }
 
         try
         {
@@ -230,8 +234,10 @@ public sealed class TunService
             if (!Tun2SocksExists())
             {
                 progress?.Report("Downloading tun2socks...");
-                const string tun2socksUrl = "https://github.com/xjasonlyu/tun2socks/releases/download/v2.6.0/tun2socks-windows-amd64.zip"; // BUG-25: version tracked here
-                Logger.Info($"Downloading tun2socks v2.6.0 from {tun2socksUrl}");
+                // R2-23 fix: version constants centralized for easy updates
+                const string tun2socksVersion = "v2.6.0";
+                var tun2socksUrl = $"https://github.com/xjasonlyu/tun2socks/releases/download/{tun2socksVersion}/tun2socks-windows-amd64.zip";
+                Logger.Info($"Downloading tun2socks {tun2socksVersion} from {tun2socksUrl}");
 
                 var bytes = await http.GetByteArrayAsync(tun2socksUrl);
                 var zipPath = Path.Combine(AppPaths.BinDir, "tun2socks_latest.zip");
@@ -255,8 +261,10 @@ public sealed class TunService
             if (!WintunExists())
             {
                 progress?.Report("Downloading wintun.dll...");
-                const string wintunUrl = "https://www.wintun.net/builds/wintun-0.14.1.zip"; // BUG-25: version tracked here
-                Logger.Info($"Downloading wintun v0.14.1 from {wintunUrl}");
+                // R2-23 fix: version constant centralized for easy updates
+                const string wintunVersion = "0.14.1";
+                var wintunUrl = $"https://www.wintun.net/builds/wintun-{wintunVersion}.zip";
+                Logger.Info($"Downloading wintun v{wintunVersion} from {wintunUrl}");
 
                 var bytes = await http.GetByteArrayAsync(wintunUrl);
                 var zipPath = Path.Combine(AppPaths.BinDir, "wintun_latest.zip");
@@ -321,31 +329,34 @@ public sealed class TunService
 
             Logger.Info($"tun2socks cmd: {psi.FileName} {psi.Arguments}");
 
-            _tun2socksProcess = Process.Start(psi);
-            if (_tun2socksProcess == null)
+            var proc = Process.Start(psi);
+            if (proc == null)
                 return (false, "Failed to start tun2socks.");
 
             // Async read to prevent buffer deadlock
-            _tun2socksProcess.OutputDataReceived += (s, e) =>
+            proc.OutputDataReceived += (s, e) =>
             {
                 if (e.Data != null) Logger.Debug($"[tun2socks stdout] {e.Data}");
             };
-            _tun2socksProcess.ErrorDataReceived += (s, e) =>
+            proc.ErrorDataReceived += (s, e) =>
             {
                 if (e.Data != null) Logger.Debug($"[tun2socks stderr] {e.Data}");
             };
-            _tun2socksProcess.BeginOutputReadLine();
-            _tun2socksProcess.BeginErrorReadLine();
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
 
-            Thread.Sleep(1000);
+            // NEW-09: allow thread pool to process other work during wait
+            Task.Delay(1000).GetAwaiter().GetResult();
 
-            if (_tun2socksProcess.HasExited)
+            if (proc.HasExited)
             {
-                Logger.Error($"tun2socks exited with code {_tun2socksProcess.ExitCode}");
-                return (false, $"tun2socks exited immediately (code {_tun2socksProcess.ExitCode}). Needs admin privileges.");
+                Logger.Error($"tun2socks exited with code {proc.ExitCode}");
+                return (false, $"tun2socks exited immediately (code {proc.ExitCode}). Needs admin privileges.");
             }
 
-            Logger.Info($"tun2socks started PID {_tun2socksProcess.Id}");
+            lock (_tunProcessLock) { _tun2socksProcess = proc; } // NEW-06 fix
+
+            Logger.Info($"tun2socks started PID {proc.Id}");
             return (true, "tun2socks started.");
         }
         catch (Exception ex)
@@ -359,12 +370,15 @@ public sealed class TunService
     {
         try
         {
-            if (_tun2socksProcess != null && !_tun2socksProcess.HasExited)
+            lock (_tunProcessLock) // NEW-06 fix
             {
-                Logger.Info($"Killing tun2socks PID {_tun2socksProcess.Id}");
-                _tun2socksProcess.Kill(entireProcessTree: true);
-                _tun2socksProcess.WaitForExit(3000);
-                _tun2socksProcess.Dispose();
+                if (_tun2socksProcess != null && !_tun2socksProcess.HasExited)
+                {
+                    Logger.Info($"Killing tun2socks PID {_tun2socksProcess.Id}");
+                    _tun2socksProcess.Kill(entireProcessTree: true);
+                    _tun2socksProcess.WaitForExit(3000);
+                    _tun2socksProcess.Dispose();
+                }
                 _tun2socksProcess = null;
             }
 
@@ -420,6 +434,14 @@ public sealed class TunService
         var addedRoutes = new List<string>(); // BUG-16 fix: track routes for rollback
         try
         {
+            // NEW-01 fix: route VPN server IP directly through original gateway to prevent routing loop
+            if (!string.IsNullOrEmpty(serverIp) && !string.IsNullOrEmpty(_originalGateway))
+            {
+                RunRoute($"add {serverIp} mask 255.255.255.255 {_originalGateway} metric 1");
+                addedRoutes.Add($"delete {serverIp} mask 255.255.255.255 {_originalGateway}");
+                Logger.Info($"Added direct route for VPN server {serverIp} via {_originalGateway}");
+            }
+
             if (!string.IsNullOrEmpty(_originalGateway))
             {
                 var lanRoutes = new[]
@@ -475,6 +497,13 @@ public sealed class TunService
     {
         try
         {
+            // NEW-02 fix: remove VPN server direct route
+            if (!string.IsNullOrEmpty(serverIp) && !string.IsNullOrEmpty(_originalGateway))
+            {
+                try { RunRoute($"delete {serverIp} mask 255.255.255.255 {_originalGateway}"); } catch { }
+                Logger.Info($"Removed direct route for VPN server {serverIp}");
+            }
+
             RunRoute($"delete 0.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
             RunRoute($"delete 128.0.0.0 mask 128.0.0.0 {TUN_GATEWAY}");
             // Remove LAN exclusion routes

@@ -41,7 +41,9 @@ public sealed class SetupService
         {
             progress?.Report("Downloading Npcap installer...");
 
-            const string npcapUrl = "https://npcap.com/dist/npcap-1.80.exe";
+            // R2-22 fix: version constant centralized for easy updates
+            const string npcapVersion = "1.80";
+            var npcapUrl = $"https://npcap.com/dist/npcap-{npcapVersion}.exe";
             var tempPath = Path.Combine(Path.GetTempPath(), "npcap-installer.exe");
 
             using var http = new System.Net.Http.HttpClient();

@@ -106,6 +106,8 @@ public sealed class SshService
             }
             catch { }
             // First connection — trust and save fingerprint
+            // NEW-15: log fingerprint visibly so user can verify
+            Logger.Info($"SSH: FIRST CONNECTION — trusting host key for {hostKey}: {fingerprint}");
             e.CanTrust = true;
             try
             {

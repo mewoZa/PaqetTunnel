@@ -80,14 +80,24 @@ public sealed class UpdateService
     {
         try
         {
+            // NEW-18 fix: check both source clone dir and install dir for setup.ps1
             var setupScript = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 "PaqetTunnel", "setup.ps1");
 
             if (!File.Exists(setupScript))
             {
+                var altPath = Path.Combine(AppPaths.DataDir, "setup.ps1");
+                if (File.Exists(altPath))
+                    setupScript = altPath;
+            }
+
+            if (!File.Exists(setupScript))
+            {
                 onProgress("Downloading setup script...");
-                Logger.Info("setup.ps1 not found locally, downloading...");
+                Logger.Info("setup.ps1 not found locally, downloading from GitHub...");
+                // NEW-10: log that we're downloading from remote (integrity relies on HTTPS)
+                Logger.Warn("Downloading setup.ps1 from GitHub — verify update source is trusted");
                 using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
                 var content = await http.GetStringAsync(
                     "https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.ps1");

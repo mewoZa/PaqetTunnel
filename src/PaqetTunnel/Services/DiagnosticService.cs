@@ -250,7 +250,7 @@ public sealed class DiagnosticService
             {
                 var config = PaqetConfig.FromYaml(File.ReadAllText(AppPaths.PaqetConfigPath));
                 info.Interface = config.Interface;
-                info.LocalIp = config.Ipv4Addr.Contains(':') ? config.Ipv4Addr[..config.Ipv4Addr.LastIndexOf(':')] : config.Ipv4Addr;
+                info.LocalIp = ParseHost(config.Ipv4Addr);
             }
         }
         catch { }
@@ -318,8 +318,8 @@ public sealed class DiagnosticService
         {
             try
             {
-                var host = report.ServerAddr.Contains(':') ? report.ServerAddr[..report.ServerAddr.LastIndexOf(':')] : report.ServerAddr;
-                var portStr = report.ServerAddr.Contains(':') ? report.ServerAddr[(report.ServerAddr.LastIndexOf(':') + 1)..] : "8443";
+                var host = ParseHost(report.ServerAddr);
+                var portStr = ParsePort(report.ServerAddr);
                 if (int.TryParse(portStr, out var port))
                     report.ServerLatency = await MeasureServerLatencyAsync(host, port, 10, ct);
             }
@@ -516,5 +516,30 @@ public sealed class DiagnosticService
         if (sorted.Count == 0) return 0;
         var index = (int)Math.Ceiling(percentile / 100.0 * sorted.Count) - 1;
         return sorted[Math.Clamp(index, 0, sorted.Count - 1)];
+    }
+
+    // R3-13 fix: IPv6-safe host/port parsing (handles "[::1]:8443" and "1.2.3.4:8443")
+    private static string ParseHost(string addr)
+    {
+        if (string.IsNullOrEmpty(addr)) return addr;
+        if (addr.StartsWith('['))
+        {
+            var endBracket = addr.IndexOf(']');
+            return endBracket > 0 ? addr[1..endBracket] : addr;
+        }
+        var lastColon = addr.LastIndexOf(':');
+        return lastColon > 0 ? addr[..lastColon] : addr;
+    }
+
+    private static string ParsePort(string addr)
+    {
+        if (string.IsNullOrEmpty(addr)) return "8443";
+        if (addr.StartsWith('['))
+        {
+            var afterBracket = addr.IndexOf("]:");
+            return afterBracket >= 0 ? addr[(afterBracket + 2)..] : "8443";
+        }
+        var lastColon = addr.LastIndexOf(':');
+        return lastColon > 0 ? addr[(lastColon + 1)..] : "8443";
     }
 }

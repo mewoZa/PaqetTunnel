@@ -51,8 +51,11 @@ public sealed class NetworkMonitorService : IDisposable
         _timer.Stop();
     }
 
+    private volatile bool _disposed; // R3-14 fix: prevent in-flight tick after Dispose
+
     private void OnTick(object? sender, ElapsedEventArgs e)
     {
+        if (_disposed) return; // R3-14 fix
         try
         {
             if (!SampleNetstat(out var recv, out var sent)) return;
@@ -132,6 +135,8 @@ public sealed class NetworkMonitorService : IDisposable
 
     public void Dispose()
     {
+        _disposed = true; // R3-14 fix: signal OnTick to bail out
+        _timer.Elapsed -= OnTick;
         _timer.Stop();
         _timer.Dispose();
     }

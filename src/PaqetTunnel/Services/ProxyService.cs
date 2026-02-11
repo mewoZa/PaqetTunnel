@@ -194,7 +194,7 @@ public sealed class ProxyService
                         {
                             Logger.Warn($"Port {port} held by svchost (PID {pid}) — removing stale portproxy rule");
                             try { PaqetService.RunAdmin("netsh", $"interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport={port}"); } catch { }
-                            Thread.Sleep(1000);
+                            Task.Delay(1000).GetAwaiter().GetResult(); // NEW-09 fix
                         }
                         else
                         {
@@ -203,10 +203,8 @@ public sealed class ProxyService
                         continue;
                     }
 
-                    Logger.Warn($"Port {port} stolen by PID {pid} ({name}) — killing it");
-                    proc.Kill();
-                    proc.WaitForExit(3000);
-                    Logger.Info($"Killed port thief: PID {pid} ({name})");
+                    // NEW-07 fix: don't kill arbitrary user processes — just log a warning
+                    Logger.Warn($"Port {port} occupied by PID {pid} ({name}) — cannot bind. User should close it manually.");
                 }
                 catch (Exception ex) { Logger.Debug($"KillPortThief({port}, PID {pid}): {ex.Message}"); }
             }
@@ -406,7 +404,7 @@ public sealed class ProxyService
                     $"advfirewall firewall add rule name=\"Paqet SOCKS5 Sharing\" dir=in action=allow protocol=TCP localport={SHARING_PORT} profile=any");
 
                 // Verify port is actually listening
-                Thread.Sleep(500);
+                Task.Delay(500).GetAwaiter().GetResult(); // NEW-09 fix
                 var listening = PaqetService.RunCommand("netstat", "-ano -p TCP")
                     .Contains($":{SHARING_PORT}");
                 if (!listening)
@@ -446,7 +444,7 @@ public sealed class ProxyService
             {
                 Logger.Info($"iphlpsvc is {status}, starting it...");
                 PaqetService.RunAdmin("net", "start iphlpsvc");
-                Thread.Sleep(1000);
+                Task.Delay(1000).GetAwaiter().GetResult(); // NEW-09 fix
             }
         }
         catch (Exception ex) { Logger.Debug($"EnsureIphlpsvc: {ex.Message}"); }
@@ -606,7 +604,7 @@ public sealed class ProxyService
                 {
                     try
                     {
-                        var client = await _pacServer.AcceptTcpClientAsync();
+                        var client = await _pacServer.AcceptTcpClientAsync(ct); // NEW-17: pass CancellationToken
                         _ = Task.Run(async () =>
                         {
                             try

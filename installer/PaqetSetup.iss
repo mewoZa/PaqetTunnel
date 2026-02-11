@@ -2,13 +2,13 @@
 ; Paqet Tunnel — InnoSetup Installer Script
 ; Builds: PaqetTunnelSetup.exe
 ;
-; Installs PaqetTunnel.exe to {autopf}\Paqet Tunnel
+; Installs PaqetTunnel.exe to %LOCALAPPDATA%\PaqetTunnel
 ; Creates data dirs at %LOCALAPPDATA%\PaqetTunnel\{bin,config,logs}
 ; Bundles paqet binary, tun2socks, wintun if present in publish\ folder
 ; ──────────────────────────────────────────────────────────────
 
 #define MyAppName "Paqet Tunnel"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "Paqet"
 #define MyAppURL "https://github.com/mewoZa/PaqetTunnel"
 #define MyAppExeName "PaqetTunnel.exe"

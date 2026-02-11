@@ -212,7 +212,7 @@ sudo bash /tmp/pt.sh uninstall
 # Custom install (specify port and key)
 sudo bash /tmp/pt.sh install --addr 0.0.0.0:9443 --key "mySecretKey123" --yes
 
-# Build from source (requires Go 1.23.5+, auto-installed)
+# Build from source (requires Go 1.23+, auto-installed by script)
 sudo bash /tmp/pt.sh install --build --yes
 ```
 
@@ -354,15 +354,15 @@ Run from command line or PowerShell:
 & "$env:LOCALAPPDATA\PaqetTunnel\PaqetTunnel.exe" --speed
 
 # Show installation info, paths, config values
-& "$env:LOCALAPPDATA\PaqetTunnel\PaqetTunnel.exe" --info
+# Note: PaqetTunnel is a GUI app — use these setup.ps1 commands instead:
+& "$env:TEMP\pt.ps1" status            # Check installation status
+& "$env:TEMP\pt.ps1" update            # Update to latest version
 
-# Check for updates
-& "$env:LOCALAPPDATA\PaqetTunnel\PaqetTunnel.exe" --check
-
-# Remote server management (via SSH)
-& "$env:LOCALAPPDATA\PaqetTunnel\PaqetTunnel.exe" --server status
-& "$env:LOCALAPPDATA\PaqetTunnel\PaqetTunnel.exe" --server logs
-& "$env:LOCALAPPDATA\PaqetTunnel\PaqetTunnel.exe" --server restart
+# Remote server management (via SSH from the app's Server Management tab,
+# or directly via SSH):
+ssh root@SERVER_IP "systemctl status paqet"
+ssh root@SERVER_IP "journalctl -u paqet --no-pager -n 50"
+ssh root@SERVER_IP "systemctl restart paqet"
 ```
 
 ### Troubleshooting Guide
