@@ -110,6 +110,8 @@ public partial class App : Application
         }
     }
 
+    private System.ComponentModel.PropertyChangedEventHandler? _trayIconHandler;
+
     private void CreateTrayIcon()
     {
         _trayIcon = new Forms.NotifyIcon
@@ -132,9 +134,10 @@ public partial class App : Application
         _trayIcon.ContextMenuStrip = contextMenu;
 
         // Listen for status changes to update tray icon
+        // R5 life-02: store handler reference so we can unsubscribe on exit
         if (_viewModel != null)
         {
-            _viewModel.PropertyChanged += (s, e) =>
+            _trayIconHandler = (s, e) =>
             {
                 if (e.PropertyName == nameof(MainViewModel.IsConnected) && _trayIcon != null)
                 {
@@ -144,6 +147,7 @@ public partial class App : Application
                     oldIcon?.Dispose();
                 }
             };
+            _viewModel.PropertyChanged += _trayIconHandler;
         }
     }
 
@@ -229,9 +233,13 @@ public partial class App : Application
     {
         if (_mainWindow == null) return;
 
+        // R5 life-03: use ActualWidth/Height if layout has completed, else fall back to Width/Height
+        var w = _mainWindow.ActualWidth > 0 ? _mainWindow.ActualWidth : _mainWindow.Width;
+        var h = _mainWindow.ActualHeight > 0 ? _mainWindow.ActualHeight : _mainWindow.Height;
+
         var workArea = SystemParameters.WorkArea;
-        _mainWindow.Left = workArea.Right - _mainWindow.Width - 12;
-        _mainWindow.Top = workArea.Bottom - _mainWindow.Height - 12;
+        _mainWindow.Left = Math.Max(workArea.Left, workArea.Right - w - 12);
+        _mainWindow.Top = Math.Max(workArea.Top, workArea.Bottom - h - 12);
     }
 
     private void QuitApp()
@@ -239,6 +247,10 @@ public partial class App : Application
         // R4-04: try/finally ensures mutex is always released even if Cleanup throws
         try
         {
+            // R5 life-02: unsubscribe PropertyChanged handler before cleanup
+            if (_viewModel != null && _trayIconHandler != null)
+                _viewModel.PropertyChanged -= _trayIconHandler;
+
             if (_trayIcon != null)
             {
                 _trayIcon.Visible = false;

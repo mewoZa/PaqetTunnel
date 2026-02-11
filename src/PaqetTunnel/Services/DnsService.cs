@@ -387,6 +387,7 @@ public static class DnsService
         var offset = 12;
         foreach (var part in parts)
         {
+            if (part.Length > 63) throw new ArgumentException($"DNS label '{part}' exceeds 63 characters");
             packet[offset++] = (byte)part.Length;
             foreach (var c in part) packet[offset++] = (byte)c;
         }

@@ -915,6 +915,13 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveConfigAsync()
     {
+        // R5 svc-08: validate port range
+        if (ServerPort < 1 || ServerPort > 65535)
+        {
+            StatusBarText = "Invalid port (1-65535).";
+            return;
+        }
+
         IsBusy = true;
         StatusBarText = "Saving config...";
         await Task.Run(() =>

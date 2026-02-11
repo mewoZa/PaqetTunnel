@@ -156,6 +156,7 @@
                                            Foreground="{DynamicResource TextDimBrush}"
                                            FontFamily="{DynamicResource MonoFont}"
                                            VerticalAlignment="Center" Margin="8,0,0,0"
+                                           TextTrimming="CharacterEllipsis"
                                            Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}" />
                             </StackPanel>
                             <TextBlock FontSize="9.5" Foreground="{DynamicResource TextDimBrush}" 
@@ -400,6 +401,10 @@
                                                 </BeginStoryboard>
                                             </Trigger.ExitActions>
                                         </Trigger>
+                                        <!-- R5 ui-05: pressed feedback -->
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="HoverOverlay" Property="Opacity" Value="0.6" />
+                                        </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
                             </Button.Template>
@@ -528,7 +533,7 @@
                                 
                                 <!-- Download -->
                                 <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                                    <TextBlock Text="↓ DOWN" FontSize="9" FontWeight="SemiBold" 
+                                    <TextBlock Text="↓ DOWN" FontSize="9.5" FontWeight="SemiBold" 
                                                HorizontalAlignment="Center" 
                                                Foreground="{DynamicResource TextDimBrush}"
                                                FontFamily="{DynamicResource MainFont}" />
@@ -541,7 +546,7 @@
                                 <!-- Center divider + mode badge -->
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0">
                                     <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="4" Padding="6,2">
-                                        <TextBlock Text="{Binding TunnelMode}" FontSize="8.5" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding TunnelMode}" FontSize="9.5" FontWeight="SemiBold"
                                                    HorizontalAlignment="Center"
                                                    Foreground="{DynamicResource TextDimBrush}"
                                                    FontFamily="{DynamicResource MainFont}" />
@@ -550,7 +555,7 @@
                                 
                                 <!-- Upload -->
                                 <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                                    <TextBlock Text="↑ UP" FontSize="9" FontWeight="SemiBold" 
+                                    <TextBlock Text="↑ UP" FontSize="9.5" FontWeight="SemiBold" 
                                                HorizontalAlignment="Center" 
                                                Foreground="{DynamicResource TextDimBrush}"
                                                FontFamily="{DynamicResource MainFont}" />
@@ -615,6 +620,7 @@
                                     <TextBlock Text="{Binding PublicIp}" FontSize="11" FontWeight="Medium"
                                                FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
                                                Foreground="{DynamicResource TextBrush}" />
                                 </Grid>
                                 <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
@@ -626,6 +632,7 @@
                                     <TextBlock Text="{Binding ServerIpDisplay}" FontSize="11" FontWeight="Medium"
                                                FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
                                                Foreground="{DynamicResource TextBrush}" />
                                 </Grid>
                                 <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,5" />
@@ -648,6 +655,7 @@
                                     <TextBlock Text="{Binding SharingInfo}" FontSize="11" FontWeight="Medium"
                                                FontFamily="{DynamicResource MonoFont}"
                                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
                                                Foreground="{DynamicResource AccentBrush}" />
                                 </Grid>
 
@@ -1028,9 +1036,13 @@
                                     HorizontalAlignment="Stretch" Padding="12,8"
                                     HorizontalContentAlignment="Stretch">
                                 <Grid>
-                                    <TextBlock Text="Server Configuration" FontSize="11" FontWeight="Medium"
-                                               VerticalAlignment="Center" HorizontalAlignment="Left"
-                                               Foreground="{DynamicResource TextDimBrush}" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="⚙" FontSize="10" Margin="0,0,5,0" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource AccentBrush}" />
+                                        <TextBlock Text="Server Configuration" FontSize="11" FontWeight="Medium"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextDimBrush}" />
+                                    </StackPanel>
                                     <TextBlock FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextDimBrush}">
                                         <TextBlock.Style>
@@ -1269,7 +1281,7 @@
                                         Visibility="{Binding ShowTools, Converter={StaticResource BoolToVis}}">
 
                                 <!-- Network Tools -->
-                                <TextBlock Text="NETWORK TOOLS" FontSize="8.5" FontWeight="Bold" 
+                                <TextBlock Text="Network Tools" FontSize="8.5" FontWeight="Bold" 
                                            Foreground="{DynamicResource TextDimBrush}" Opacity="0.6"
                                            Margin="0,0,0,6" FontFamily="{DynamicResource MainFont}" />
                                 <Grid Margin="0,0,0,4">
