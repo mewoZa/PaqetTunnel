@@ -109,7 +109,7 @@ Management: & $env:TEMP\pt.ps1 {status|update|uninstall}
 | 🚀 **Start with Windows** | Launch at logon, or at boot (before logon) as SYSTEM service |
 | 📊 **Live Monitoring** | Real-time upload/download speed, health checks, process stats |
 | 🖥️ **System Tray** | Minimal footprint — runs silently in the taskbar |
-| 🩺 **CLI Diagnostics** | Built-in `--diag`, `--dns`, `--ping`, `--speed`, `--info` tools |
+| 🩺 **CLI Tools** | 10+ commands: `--diag`, `--dns`, `--ping`, `--speed`, `--info`, `--check`, `--update`, `--server` |
 
 ---
 
@@ -229,16 +229,130 @@ Use **Auto** mode to benchmark all providers and select the fastest, or pick man
 
 ---
 
-## 🩺 CLI Diagnostics
+## 🩺 CLI Tools
 
-The app includes built-in diagnostic tools accessible from the command line:
+PaqetTunnel doubles as a full command-line toolkit. Run any command from PowerShell or CMD:
 
 ```
-PaqetTunnel.exe --diag    # Full suite: DNS + connectivity + speed + system info
-PaqetTunnel.exe --dns     # Benchmark all DNS providers, rank by latency
-PaqetTunnel.exe --ping    # Test SOCKS5 port, HTTP/HTTPS through tunnel, ICMP to server
-PaqetTunnel.exe --speed   # Download speed test (1MB + 10MB) through tunnel vs direct
-PaqetTunnel.exe --info    # Show paths, config, binary status, theme, debug flags
+PaqetTunnel.exe [--command] [options]
+```
+
+### Quick Reference
+
+| Command | What It Does |
+|---------|-------------|
+| *(no args)* | Launch the GUI |
+| `--diag` | Full diagnostic suite (runs dns → ping → speed → info) |
+| `--dns` | Benchmark 17 DNS providers, ranked by latency |
+| `--ping` | Test SOCKS5 port + HTTP/HTTPS through tunnel + ICMP to server |
+| `--speed` | Download speed test (1 MB + 10 MB) — tunnel vs. direct |
+| `--info` | Show install paths, config, binaries, settings, legacy detection |
+| `--check` | Check for client updates (compares local/remote commit SHA) |
+| `--update` | Download and install the latest client update |
+| `--server <cmd>` | Manage your VPS server over SSH (see below) |
+| `--help` | Show built-in help text |
+
+### Diagnostics
+
+```powershell
+# Run everything at once — DNS benchmark + connectivity + speed + system info
+PaqetTunnel.exe --diag
+
+# Benchmark all 17 DNS providers and rank by response time
+PaqetTunnel.exe --dns
+# Output:
+#   #   Provider                  Latency  Server
+#   1   Cloudflare                  12ms   1.1.1.1         * FASTEST
+#   2   Google                      18ms   8.8.8.8
+#   3   Quad9                       25ms   9.9.9.9
+#   ...
+
+# Test tunnel connectivity — SOCKS5 port, HTTP/HTTPS through proxy, ICMP ping
+PaqetTunnel.exe --ping
+# Output:
+#   SOCKS5 proxy (127.0.0.1:10800): listening [OK]
+#   HTTP via tunnel:  142ms - {"origin": "VPS_IP"}
+#   HTTPS via tunnel: 165ms - {"ip": "VPS_IP"}
+#   ICMP ping: [1] 32ms  [2] 28ms  [3] 31ms ...
+
+# Speed test — downloads 1 MB + 10 MB through tunnel, then direct (no tunnel)
+PaqetTunnel.exe --speed
+# Output:
+#   Through tunnel (SOCKS5):
+#     Cloudflare 10MB: 45.2 Mbps (9765KB in 1720ms)
+#     Cloudflare 1MB:  38.7 Mbps (976KB in 201ms)
+#   Direct (no tunnel):
+#     Cloudflare 10MB: 92.1 Mbps (9765KB in 868ms)
+#     Cloudflare 1MB:  78.4 Mbps (976KB in 100ms)
+```
+
+### System Info
+
+```powershell
+# Show installation status — paths, binaries, config, settings, legacy detection
+PaqetTunnel.exe --info
+# Output:
+#   Install:    C:\Users\You\AppData\Local\PaqetTunnel
+#   Binary:     [OK] ...\bin\paqet_windows_amd64.exe
+#   Config:     [OK] ...\config\client.yaml
+#   Tun2socks:  [OK] ...\bin\tun2socks.exe
+#   WinTun:     [OK] ...\bin\wintun.dll
+#
+#   Server:     156.253.5.220:8443
+#   Interface:  Ethernet
+#   Local IP:   192.168.1.100:0
+#   SOCKS5:     127.0.0.1:10800
+#   Key set:    yes
+#
+#   Theme:      monokai
+#   DNS:        auto
+#   TUN mode:   True
+#   Auto-start: True
+```
+
+### Updates
+
+```powershell
+# Check if a newer version is available (compares local vs remote commit SHA)
+PaqetTunnel.exe --check
+# Output:
+#   Update available!
+#   Local:   abc1234
+#   Remote:  def5678
+
+# Download and install the update — app restarts automatically
+PaqetTunnel.exe --update
+```
+
+### Remote Server Management
+
+Manage your VPS paqet server over SSH — requires SSH credentials configured in the GUI Settings tab or `settings.json`:
+
+```powershell
+PaqetTunnel.exe --server test        # Test SSH connection to your VPS
+PaqetTunnel.exe --server status      # Show server service status (systemctl)
+PaqetTunnel.exe --server install     # Install paqet server on VPS
+PaqetTunnel.exe --server update      # Update paqet binary on VPS
+PaqetTunnel.exe --server uninstall   # Uninstall paqet server from VPS
+PaqetTunnel.exe --server restart     # Restart the paqet systemd service
+PaqetTunnel.exe --server logs        # Tail recent server logs (journalctl)
+```
+
+> **SSH config** — set these in GUI Settings or directly in `%LOCALAPPDATA%\PaqetTunnel\settings.json`:
+> ```json
+> {
+>   "ServerSshHost": "your-vps-ip",
+>   "ServerSshUser": "root",
+>   "ServerSshPort": 22,
+>   "ServerSshKeyPath": "C:\\Users\\You\\.ssh\\id_ed25519"
+> }
+> ```
+
+### GUI Launch Flags
+
+```powershell
+# Launch GUI and immediately connect (used by Task Scheduler auto-start)
+PaqetTunnel.exe --connect
 ```
 
 ---
