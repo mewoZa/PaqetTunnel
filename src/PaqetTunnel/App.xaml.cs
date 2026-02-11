@@ -89,7 +89,11 @@ public partial class App : Application
         CreateTrayIcon();
 
         // R4-16: Show window BEFORE InitializeAsync so user sees UI immediately
-        ShowWindow();
+        // (unless StartMinimized is enabled — then stay in tray only)
+        if (!appSettings.StartMinimized)
+            ShowWindow();
+        else
+            Services.Logger.Info("StartMinimized=true — window hidden, tray only");
 
         Services.Logger.Info("Starting InitializeAsync...");
 

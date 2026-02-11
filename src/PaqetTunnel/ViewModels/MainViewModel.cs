@@ -86,6 +86,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _debugMode;
     [ObservableProperty] private bool _isFullSystemTunnel;
     [ObservableProperty] private bool _isAutoConnect;
+    [ObservableProperty] private bool _isStartMinimized;
     [ObservableProperty] private string _paqetVersion = "";
     [ObservableProperty] private string _interfaceList = "";
     [ObservableProperty] private string _pingResult = "";
@@ -198,6 +199,7 @@ public partial class MainViewModel : ObservableObject
         IsFullSystemTunnel = appSettings.FullSystemTunnel;
         TunnelMode = IsFullSystemTunnel ? "TUNNEL" : "SOCKS5";
         IsAutoConnect = appSettings.AutoConnectOnLaunch;
+        IsStartMinimized = appSettings.StartMinimized;
 
         // Check if paqet binary exists
         NeedsSetup = !_paqetService.BinaryExists();
@@ -801,6 +803,17 @@ public partial class MainViewModel : ObservableObject
         _configService.WriteAppSettings(settings);
         Logger.Info($"Auto-connect toggled: {IsAutoConnect}");
         StatusBarText = IsAutoConnect ? "Auto-connect enabled" : "Auto-connect disabled";
+    }
+
+    [RelayCommand]
+    private void ToggleStartMinimized()
+    {
+        IsStartMinimized = !IsStartMinimized;
+        var settings = _configService.ReadAppSettings();
+        settings.StartMinimized = IsStartMinimized;
+        _configService.WriteAppSettings(settings);
+        Logger.Info($"Start minimized toggled: {IsStartMinimized}");
+        StatusBarText = IsStartMinimized ? "App will start minimized to tray" : "App will show window on start";
     }
 
     [RelayCommand]

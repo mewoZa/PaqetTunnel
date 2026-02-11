@@ -695,6 +695,23 @@
                                               VerticalAlignment="Center" />
                             </Grid>
 
+                            <!-- Start Minimized -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Start Minimized" FontSize="12" FontWeight="Medium" />
+                                    <TextBlock Text="Hide window on launch, tray only" FontSize="10"
+                                               Foreground="{DynamicResource TextDimBrush}" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <ToggleButton Grid.Column="1" Style="{DynamicResource ToggleSwitch}"
+                                              IsChecked="{Binding IsStartMinimized, Mode=OneWay}"
+                                              Command="{Binding ToggleStartMinimizedCommand}"
+                                              VerticalAlignment="Center" />
+                            </Grid>
+
                             <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.3" Margin="0,0,0,10" />
 
                             <!-- Start with Windows -->
