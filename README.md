@@ -22,7 +22,8 @@
 
 ### 💝 Support Development
 
-If you find this project useful, consider supporting its development:
+If you find this project useful, consider supporting its development!  
+*Even just one coffee helps — every bit of support keeps the project alive and thriving.* ☕✨
 
 **Solana:**  
 `D8GLXGSkBku64Z5GRdmBnLyb6zrCLuxa8ydnZS3z3Ni1`
