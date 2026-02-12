@@ -18,6 +18,18 @@
 
 <img src="assets/screenshot1.png" width="280" alt="Paqet Tunnel — Settings" />&nbsp;&nbsp;<img src="assets/screenshot2.png" width="280" alt="Paqet Tunnel — Connected" />
 
+---
+
+### 💝 Support Development
+
+If you find this project useful, consider supporting its development:
+
+**Solana:**  
+`D8GLXGSkBku64Z5GRdmBnLyb6zrCLuxa8ydnZS3z3Ni1`
+
+**Ethereum:**  
+`0x022958603a48078718D4fE940b8eC1D972D003b7`
+
 </div>
 
 ---
