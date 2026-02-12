@@ -35,6 +35,25 @@ If you find this project useful, consider supporting its development!
 
 ---
 
+## 🌐 About
+
+**Break through internet restrictions, beautifully.** PaqetTunnel is a high-performance encrypted VPN that combines military-grade security with a gorgeous, intuitive interface. Built on the blazing-fast KCP protocol, it delivers what others can't: **undetectable tunneling that looks like normal UDP traffic**, bypassing even the most sophisticated censorship systems.
+
+**Why PaqetTunnel?**
+
+- **🚀 KCP Protocol** — Up to 30% faster than TCP-based VPNs, designed for unreliable networks
+- **🔒 Encrypted & Stealthy** — XChaCha20-Poly1305 encryption wrapped in UDP that mimics game traffic
+- **🎨 Beautiful by Design** — Modern WPF interface with 10 stunning themes (Dark, Nord, Sakura, Cyberpunk...)
+- **⚡ One-Click Setup** — Server + client install in under 60 seconds, fully automated
+- **🌍 Full System Tunnel** — Route all traffic through the VPN, or use SOCKS5 proxy mode
+- **🧠 Smart DNS** — Auto-benchmark 18 DNS providers, picks the fastest for you
+- **🏠 LAN Sharing** — Share your tunnel with other devices on your network
+- **🔧 Zero Config** — Auto-detects network interface, router MAC, optimal settings
+
+Unlike bloated commercial VPNs, PaqetTunnel gives you **full control** — run your own server, own your data, pay only for the VPS. No monthly subscriptions, no bandwidth caps, no privacy compromises.
+
+---
+
 ## ⚡ Install
 
 ### 1. Server (Linux VPS)
