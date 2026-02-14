@@ -1032,6 +1032,7 @@ public partial class MainViewModel : ObservableObject
     {
         UpdateStatus = "Checking...";
         StatusBarText = "Checking for updates...";
+        Logger.Debug("Update check triggered from UI");
         var (available, local, remote, message) = await UpdateService.CheckAsync();
         Application.Current?.Dispatcher?.BeginInvoke(() =>
         {
@@ -1044,13 +1045,14 @@ public partial class MainViewModel : ObservableObject
                 UpdateCommitMessage = message;
                 UpdateStatus = $"Update available ({shortRemote})";
                 StatusBarText = $"Update available! {shortLocal} → {shortRemote}";
-                Logger.Info($"Update banner shown: {message}");
+                Logger.Info($"Update banner shown: {shortLocal} → {shortRemote} — {message}");
             }
             else
             {
                 IsUpdateAvailable = false;
                 UpdateStatus = "Up to date";
                 StatusBarText = "No updates available.";
+                Logger.Debug("No update available — UI dismissed");
             }
         });
     }
@@ -1078,6 +1080,7 @@ public partial class MainViewModel : ObservableObject
             {
                 UpdateProgressText = "Updating... app will restart shortly";
                 StatusBarText = "Updating... app will restart shortly";
+                Logger.Info("Update process launched — waiting for restart");
             }
             else
             {
@@ -1085,7 +1088,7 @@ public partial class MainViewModel : ObservableObject
                 UpdateProgressText = "";
                 UpdateStatus = msg;
                 StatusBarText = $"Update failed: {msg}";
-                Logger.Warn($"Update failed: {msg}");
+                Logger.Warn($"Update failed in UI handler: {msg}");
             }
         });
     }

@@ -35,6 +35,7 @@ public sealed class UpdateService
     {
         try
         {
+            Logger.Info("Update check started");
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
             http.DefaultRequestHeaders.Add("User-Agent", "PaqetTunnel");
 
@@ -63,7 +64,10 @@ public sealed class UpdateService
             // Compare SHAs: .commit may store short (7-char) or full (40-char) SHA
             if (remoteSha.StartsWith(localSha, StringComparison.OrdinalIgnoreCase) ||
                 localSha.StartsWith(remoteSha, StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.Info($"No update available (local={localSha[..7]}, remote={remoteSha[..7]})");
                 return (false, localSha, remoteSha, "");
+            }
 
             Logger.Info($"Update available: {localSha[..7]} → {remoteSha[..7]} — {message}");
             return (true, localSha, remoteSha, message);
@@ -137,8 +141,12 @@ try {{
 
             var proc = Process.Start(psi);
             if (proc == null)
+            {
+                Logger.Error("Failed to start updater process — Process.Start returned null");
                 return (false, "Failed to start updater process");
+            }
 
+            Logger.Info($"Update process started (PID={proc.Id})");
             onProgress("Updating...");
 
             // Single background task handles both log polling and process exit
@@ -193,6 +201,10 @@ try {{
                     {
                         Logger.Warn($"Update process exited with code {proc.ExitCode}");
                         onProgress($"Update exited with code {proc.ExitCode}");
+                    }
+                    else
+                    {
+                        Logger.Info($"Update process completed successfully (PID={proc.Id})");
                     }
                 }
                 catch (OperationCanceledException) { }
@@ -277,8 +289,8 @@ try {{
 
     private static void CleanupTempFiles(string? logFile, string? wrapperScript)
     {
-        try { if (logFile != null && File.Exists(logFile)) File.Delete(logFile); } catch { }
-        try { if (wrapperScript != null && File.Exists(wrapperScript)) File.Delete(wrapperScript); } catch { }
+        try { if (logFile != null && File.Exists(logFile)) { File.Delete(logFile); Logger.Debug($"Cleaned up log file: {logFile}"); } } catch { }
+        try { if (wrapperScript != null && File.Exists(wrapperScript)) { File.Delete(wrapperScript); Logger.Debug($"Cleaned up wrapper: {wrapperScript}"); } } catch { }
     }
 
     /// <summary>Legacy: opens elevated PowerShell window for update.</summary>
