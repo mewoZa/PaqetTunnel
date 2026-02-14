@@ -902,22 +902,32 @@ function Do-Update {
     # Clean legacy Program Files installation if present
     Clean-LegacyInstall
 
+    # Compare installed commit against latest source HEAD
+    # (self-update at script start already reset source to origin/master)
+    $commitFile = "$Script:InstallDir\.commit"
+    $installed = if (Test-Path $commitFile) { (Get-Content $commitFile -Raw).Trim() } else { '' }
+
     Push-Location $Script:SourceDir
     $oldEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     & git fetch --all --quiet 2>$null
-    $local = & git rev-parse HEAD 2>$null
-    $remote = & git rev-parse origin/master 2>$null
+    $latest = & git rev-parse HEAD 2>$null
     $ErrorActionPreference = $oldEAP
     Pop-Location
 
-    if ($local -eq $remote -and -not $Force) {
-        $tag = if ($local) { $local.Substring(0,7) } else { '?' }
+    # Match by prefix (installed may be short 7-char or full 40-char SHA)
+    $isMatch = $installed -and $latest -and (
+        $installed.StartsWith($latest, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $latest.StartsWith($installed, [System.StringComparison]::OrdinalIgnoreCase)
+    )
+
+    if ($isMatch -and -not $Force) {
+        $tag = if ($latest) { $latest.Substring(0,7) } else { '?' }
         OK "Already up to date ($tag)"
         return
     }
 
-    $localTag = if ($local) { $local.Substring(0,7) } else { '?' }
-    $remoteTag = if ($remote) { $remote.Substring(0,7) } else { '?' }
+    $localTag = if ($installed) { $installed.Substring(0, [Math]::Min(7, $installed.Length)) } else { '?' }
+    $remoteTag = if ($latest) { $latest.Substring(0,7) } else { '?' }
     Step "Updating $localTag → $remoteTag..."
     WL ""
 
@@ -933,10 +943,11 @@ function Do-Update {
         $src = "$pubDir\$f"
         if (Test-Path $src) { Copy-Item $src "$Script:InstallDir\bin\$f" -Force }
     }
-    $updTag = if ($remote) { $remote.Substring(0,7) } else { 'latest' }
+    $updTag = if ($latest) { $latest.Substring(0,7) } else { 'latest' }
     OK "Updated to $updTag"
 
     $Script:AppVersion | Out-File "$Script:InstallDir\.version" -NoNewline
+    if ($latest) { $latest | Out-File "$Script:InstallDir\.commit" -NoNewline }
     WL ""
     OK "Update complete!"
 
