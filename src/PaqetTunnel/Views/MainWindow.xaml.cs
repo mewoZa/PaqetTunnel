@@ -42,6 +42,18 @@ public partial class MainWindow : Window
                 app.ShowWindow();
             handled = true;
         }
+        else if (msg == NativeMethods.WM_DISPLAYCHANGE || msg == NativeMethods.WM_DPICHANGED)
+        {
+            // Display resolution or DPI changed — reposition on next show
+            if (Application.Current is App app2 && IsVisible)
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    app2.ShowWindow();
+                }));
+            }
+            // Don't set handled — let WPF process it too
+        }
         return IntPtr.Zero;
     }
 

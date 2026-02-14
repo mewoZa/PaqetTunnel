@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using Microsoft.Win32;
 using PaqetTunnel.Services;
 using PaqetTunnel.ViewModels;
 using PaqetTunnel.Views;
@@ -87,6 +88,9 @@ public partial class App : Application
 
         // ── System tray icon ───────────────────────────────────────
         CreateTrayIcon();
+
+        // Listen for display/DPI changes to fix window position
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
         // R4-16: Show window BEFORE InitializeAsync so user sees UI immediately
         // (unless StartMinimized is enabled — then stay in tray only)
@@ -233,13 +237,90 @@ public partial class App : Application
     {
         if (_mainWindow == null) return;
 
-        // R5 life-03: use ActualWidth/Height if layout has completed, else fall back to Width/Height
+        // Use fresh work area from Win32 API (not cached SystemParameters.WorkArea)
+        var workArea = GetWorkAreaNearCursor();
+
+        // Use ActualWidth/Height if layout has completed, else fall back to Width/Height
         var w = _mainWindow.ActualWidth > 0 ? _mainWindow.ActualWidth : _mainWindow.Width;
         var h = _mainWindow.ActualHeight > 0 ? _mainWindow.ActualHeight : _mainWindow.Height;
 
-        var workArea = SystemParameters.WorkArea;
-        _mainWindow.Left = Math.Max(workArea.Left, workArea.Right - w - 12);
-        _mainWindow.Top = Math.Max(workArea.Top, workArea.Bottom - h - 12);
+        // Guard against NaN/Infinity from uninitialized layout
+        if (double.IsNaN(w) || double.IsInfinity(w) || w <= 0) w = 380;
+        if (double.IsNaN(h) || double.IsInfinity(h) || h <= 0) h = 620;
+
+        var left = workArea.Right - w - 12;
+        var top = workArea.Bottom - h - 12;
+
+        // Clamp to work area bounds
+        _mainWindow.Left = Math.Max(workArea.Left, Math.Min(left, workArea.Right - w));
+        _mainWindow.Top = Math.Max(workArea.Top, Math.Min(top, workArea.Bottom - h));
+    }
+
+    /// <summary>
+    /// Gets the work area of the monitor nearest to the cursor (where the tray icon is).
+    /// Uses Win32 API for fresh values instead of WPF's cached SystemParameters.WorkArea.
+    /// </summary>
+    private static Rect GetWorkAreaNearCursor()
+    {
+        try
+        {
+            NativeMethods.GetCursorPos(out var cursorPos);
+            var hMonitor = NativeMethods.MonitorFromPoint(cursorPos, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            var monitorInfo = new NativeMethods.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MONITORINFO>() };
+            if (NativeMethods.GetMonitorInfo(hMonitor, ref monitorInfo))
+            {
+                var rc = monitorInfo.rcWork;
+                // Convert physical pixels to WPF logical units (DPI-aware)
+                var dpiScale = GetDpiScale();
+                return new Rect(
+                    rc.left / dpiScale,
+                    rc.top / dpiScale,
+                    (rc.right - rc.left) / dpiScale,
+                    (rc.bottom - rc.top) / dpiScale);
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"GetWorkAreaNearCursor failed, using fallback: {ex.Message}");
+        }
+        // Fallback to SystemParameters (still better than nothing)
+        return SystemParameters.WorkArea;
+    }
+
+    private static double GetDpiScale()
+    {
+        try
+        {
+            var dc = NativeMethods.GetDC(IntPtr.Zero);
+            if (dc != IntPtr.Zero)
+            {
+                try
+                {
+                    var dpiX = NativeMethods.GetDeviceCaps(dc, 88); // LOGPIXELSX
+                    if (dpiX > 0) return dpiX / 96.0;
+                }
+                finally
+                {
+                    NativeMethods.ReleaseDC(IntPtr.Zero, dc);
+                }
+            }
+        }
+        catch { }
+        return 1.0;
+    }
+
+    /// <summary>Re-validate window position when display settings change (resolution, DPI, explorer restart).</summary>
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        if (_mainWindow == null) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_mainWindow.IsVisible)
+            {
+                PositionWindowNearTray();
+                Services.Logger.Info("Window repositioned after display settings change");
+            }
+        }));
     }
 
     private void QuitApp()
@@ -247,6 +328,8 @@ public partial class App : Application
         // R4-04: try/finally ensures mutex is always released even if Cleanup throws
         try
         {
+            SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+
             // R5 life-02: unsubscribe PropertyChanged handler before cleanup
             if (_viewModel != null && _trayIconHandler != null)
                 _viewModel.PropertyChanged -= _trayIconHandler;
@@ -275,6 +358,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         // R4-20: ensure proxy cleanup happens even on unexpected shutdown paths
+        try { SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; } catch { }
         try { _proxyService?.OnShutdown(); } catch { }
         try { _trayIcon?.Dispose(); _trayIcon = null; } catch { }
         try { _mutex?.Dispose(); _mutex = null; } catch { }
@@ -283,12 +367,15 @@ public partial class App : Application
 }
 
 /// <summary>
-/// Native Win32 interop for single-instance communication.
+/// Native Win32 interop for single-instance communication and display management.
 /// </summary>
 internal static class NativeMethods
 {
     public static readonly IntPtr HWND_BROADCAST = new(0xFFFF);
     public static readonly uint WM_PAQET_SHOW = RegisterWindowMessage("WM_PAQET_SHOW");
+    public const int WM_DISPLAYCHANGE = 0x007E;
+    public const int WM_DPICHANGED = 0x02E0;
+    public const int MONITOR_DEFAULTTONEAREST = 2;
 
     [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
     public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
@@ -298,4 +385,47 @@ internal static class NativeMethods
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     public static extern bool DestroyIcon(IntPtr handle);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT lpPoint);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern IntPtr MonitorFromPoint(POINT pt, int dwFlags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+    public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern IntPtr GetDC(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    public static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int x;
+        public int y;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int left;
+        public int top;
+        public int right;
+        public int bottom;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+    public struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public int dwFlags;
+    }
 }
