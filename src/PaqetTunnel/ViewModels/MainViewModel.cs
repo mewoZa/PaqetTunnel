@@ -70,6 +70,34 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _key = "";
     [ObservableProperty] private string _networkInterface = "";
 
+    // ── Advanced KCP Settings ────────────────────────────────────
+    [ObservableProperty] private string _selectedKcpMode = "fast";
+    [ObservableProperty] private string _selectedCipher = "aes";
+    [ObservableProperty] private string _selectedLogLevel = "info";
+    [ObservableProperty] private int _connections = 1;
+    [ObservableProperty] private int _mtu = 1350;
+    [ObservableProperty] private int _receiveWindow = 512;
+    [ObservableProperty] private int _sendWindow = 512;
+    // Manual mode
+    [ObservableProperty] private int _nodelay = -1;
+    [ObservableProperty] private int _interval = -1;
+    [ObservableProperty] private int _resend = -1;
+    [ObservableProperty] private int _noCongestion = -1;
+    // Buffers
+    [ObservableProperty] private int _smuxBuffer = 4194304;
+    [ObservableProperty] private int _streamBuffer = 2097152;
+    [ObservableProperty] private int _tcpBuffer = 8192;
+    [ObservableProperty] private int _udpBuffer = 4096;
+    [ObservableProperty] private int _pcapSockBuffer = 4194304;
+    // TCP Flags
+    [ObservableProperty] private string _localFlag = "PA";
+    [ObservableProperty] private string _remoteFlag = "PA";
+    // SOCKS5 auth
+    [ObservableProperty] private string _socksUsername = "";
+    [ObservableProperty] private string _socksPassword = "";
+    // Show/hide advanced panel
+    [ObservableProperty] private bool _showAdvancedSettings;
+
     // ── Setup State ───────────────────────────────────────────────
 
     [ObservableProperty] private bool _isSettingUp;
@@ -127,6 +155,10 @@ public partial class MainViewModel : ObservableObject
     // Theme
     [ObservableProperty] private string _selectedTheme = "dark";
     public string[] AvailableThemes => ThemeManager.AvailableThemes;
+    public static string[] KcpModes => PaqetConfig.ValidKcpModes;
+    public static string[] Ciphers => PaqetConfig.ValidCiphers;
+    public static string[] LogLevels => PaqetConfig.ValidLogLevels;
+    public static string[] TcpFlags => PaqetConfig.ValidTcpFlags;
 
     // ── Diagnostics ──────────────────────────────────────────────
 
@@ -221,6 +253,26 @@ public partial class MainViewModel : ObservableObject
         Key = config.Key;
         NetworkInterface = config.Interface;
         ServerIpDisplay = config.ServerHost;
+        SelectedKcpMode = string.IsNullOrEmpty(config.KcpMode) ? "fast" : config.KcpMode;
+        SelectedCipher = string.IsNullOrEmpty(config.KcpBlock) ? "aes" : config.KcpBlock;
+        SelectedLogLevel = string.IsNullOrEmpty(config.LogLevel) ? "info" : config.LogLevel;
+        Connections = config.Conn;
+        Mtu = config.Mtu;
+        ReceiveWindow = config.RcvWnd;
+        SendWindow = config.SndWnd;
+        Nodelay = config.Nodelay;
+        Interval = config.Interval;
+        Resend = config.Resend;
+        NoCongestion = config.NoCongestion;
+        SmuxBuffer = config.SmuxBuf;
+        StreamBuffer = config.StreamBuf;
+        TcpBuffer = config.TcpBuf;
+        UdpBuffer = config.UdpBuf;
+        PcapSockBuffer = config.PcapSockBuf;
+        LocalFlag = config.LocalFlag;
+        RemoteFlag = config.RemoteFlag;
+        SocksUsername = config.SocksUsername;
+        SocksPassword = config.SocksPassword;
         Logger.Info($"Config loaded: server={config.ServerAddr}, interface={config.Interface}, socks={config.SocksListen}");
 
         // Get local IP
@@ -930,6 +982,26 @@ public partial class MainViewModel : ObservableObject
             config.ServerAddr = $"{ServerAddress}:{ServerPort}";
             config.Key = Key;
             config.Interface = NetworkInterface;
+            config.KcpMode = SelectedKcpMode;
+            config.KcpBlock = SelectedCipher;
+            config.LogLevel = SelectedLogLevel;
+            config.Conn = Connections;
+            config.Mtu = Mtu;
+            config.RcvWnd = ReceiveWindow;
+            config.SndWnd = SendWindow;
+            config.Nodelay = Nodelay;
+            config.Interval = Interval;
+            config.Resend = Resend;
+            config.NoCongestion = NoCongestion;
+            config.SmuxBuf = SmuxBuffer;
+            config.StreamBuf = StreamBuffer;
+            config.TcpBuf = TcpBuffer;
+            config.UdpBuf = UdpBuffer;
+            config.PcapSockBuf = PcapSockBuffer;
+            config.LocalFlag = LocalFlag;
+            config.RemoteFlag = RemoteFlag;
+            config.SocksUsername = SocksUsername;
+            config.SocksPassword = SocksPassword;
             _configService.WritePaqetConfig(config);
         });
         StatusBarText = "Config saved.";
@@ -1552,7 +1624,7 @@ public partial class MainViewModel : ObservableObject
             {
                 var config = PaqetConfig.FromYaml(System.IO.File.ReadAllText(AppPaths.PaqetConfigPath));
                 EncryptionInfo = string.IsNullOrEmpty(config.Protocol) ? "KCP" : config.Protocol.ToUpperInvariant();
-                KcpModeInfo = string.IsNullOrEmpty(config.KcpMode) ? "fast" : config.KcpMode;
+                KcpModeInfo = $"{(string.IsNullOrEmpty(config.KcpMode) ? "fast" : config.KcpMode)} / {(string.IsNullOrEmpty(config.KcpBlock) ? "aes" : config.KcpBlock)}";
             }
 
             // Connection quality based on health check result

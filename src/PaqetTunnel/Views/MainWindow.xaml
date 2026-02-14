@@ -1085,6 +1085,187 @@
                                 <PasswordBox h:PasswordBoxHelper.BindPassword="True"
                                              h:PasswordBoxHelper.BoundPassword="{Binding Key, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
                                              Margin="0,0,0,10" />
+
+                                <!-- ── Advanced Settings Toggle ── -->
+                                <ToggleButton Content="▸ Advanced Settings" FontSize="10.5"
+                                              IsChecked="{Binding ShowAdvancedSettings}"
+                                              HorizontalAlignment="Left" Padding="4,4" Margin="0,0,0,6"
+                                              Background="Transparent" BorderThickness="0"
+                                              Foreground="{DynamicResource AccentBrush}" Cursor="Hand">
+                                    <ToggleButton.Style>
+                                        <Style TargetType="ToggleButton">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ToggleButton">
+                                                        <TextBlock x:Name="Tb" Foreground="{DynamicResource AccentBrush}"
+                                                                   FontSize="10.5" Cursor="Hand" Opacity="0.7">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Text" Value="▸ Advanced Settings" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource TemplatedParent}}" Value="True">
+                                                                            <Setter Property="Text" Value="▾ Advanced Settings" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ToggleButton.Style>
+                                </ToggleButton>
+
+                                <!-- ── Advanced Settings Panel ── -->
+                                <StackPanel Visibility="{Binding ShowAdvancedSettings, Converter={StaticResource BoolToVis}}"
+                                            Margin="0,0,0,8">
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+                                            Padding="0,8,0,0" Margin="0,0,0,6">
+                                        <TextBlock Text="TRANSPORT" Style="{DynamicResource FieldLabel}" FontSize="9" Opacity="0.5" />
+                                    </Border>
+
+                                    <!-- KCP Mode + Cipher -->
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="KCP MODE" Style="{DynamicResource FieldLabel}" />
+                                            <ComboBox ItemsSource="{Binding KcpModes}" SelectedItem="{Binding SelectedKcpMode}"
+                                                      Margin="0,0,0,0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="CIPHER" Style="{DynamicResource FieldLabel}" />
+                                            <ComboBox ItemsSource="{Binding Ciphers}" SelectedItem="{Binding SelectedCipher}"
+                                                      Margin="0,0,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Connections + MTU -->
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="CONNECTIONS" Style="{DynamicResource FieldLabel}" />
+                                            <TextBox Text="{Binding Connections, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="MTU" Style="{DynamicResource FieldLabel}" />
+                                            <TextBox Text="{Binding Mtu, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Receive/Send Window -->
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="RECEIVE WINDOW" Style="{DynamicResource FieldLabel}" />
+                                            <TextBox Text="{Binding ReceiveWindow, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="SEND WINDOW" Style="{DynamicResource FieldLabel}" />
+                                            <TextBox Text="{Binding SendWindow, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Log Level + TCP Flags -->
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="LOG LEVEL" Style="{DynamicResource FieldLabel}" />
+                                            <ComboBox ItemsSource="{Binding LogLevels}" SelectedItem="{Binding SelectedLogLevel}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="LOCAL FLAG" Style="{DynamicResource FieldLabel}" />
+                                            <ComboBox ItemsSource="{Binding TcpFlags}" SelectedItem="{Binding LocalFlag}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="4">
+                                            <TextBlock Text="REMOTE FLAG" Style="{DynamicResource FieldLabel}" />
+                                            <ComboBox ItemsSource="{Binding TcpFlags}" SelectedItem="{Binding RemoteFlag}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- SOCKS5 Auth -->
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+                                            Padding="0,8,0,0" Margin="0,4,0,4">
+                                        <TextBlock Text="SOCKS5 AUTH (OPTIONAL)" Style="{DynamicResource FieldLabel}" FontSize="9" Opacity="0.5" />
+                                    </Border>
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="USERNAME" Style="{DynamicResource FieldLabel}" />
+                                            <TextBox Text="{Binding SocksUsername, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="PASSWORD" Style="{DynamicResource FieldLabel}" />
+                                            <PasswordBox h:PasswordBoxHelper.BindPassword="True"
+                                                         h:PasswordBoxHelper.BoundPassword="{Binding SocksPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Buffers (collapsible) -->
+                                    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+                                            Padding="0,8,0,0" Margin="0,4,0,4">
+                                        <TextBlock Text="BUFFERS" Style="{DynamicResource FieldLabel}" FontSize="9" Opacity="0.5" />
+                                    </Border>
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="SMUX BUFFER" Style="{DynamicResource FieldLabel}" />
+                                            <TextBox Text="{Binding SmuxBuffer, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="STREAM BUFFER" Style="{DynamicResource FieldLabel}" />
+                                            <TextBox Text="{Binding StreamBuffer, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="TCP BUFFER" Style="{DynamicResource FieldLabel}" />
+                                            <TextBox Text="{Binding TcpBuffer, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="UDP BUFFER" Style="{DynamicResource FieldLabel}" />
+                                            <TextBox Text="{Binding UdpBuffer, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="4">
+                                            <TextBlock Text="PCAP BUFFER" Style="{DynamicResource FieldLabel}" />
+                                            <TextBox Text="{Binding PcapSockBuffer, UpdateSourceTrigger=PropertyChanged}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+
                                 <Button Content="Save Configuration" Style="{DynamicResource PrimaryButton}"
                                         Command="{Binding SaveConfigCommand}"
                                         HorizontalAlignment="Stretch" Padding="12,7" FontSize="11.5" />

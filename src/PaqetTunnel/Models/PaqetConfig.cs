@@ -11,17 +11,71 @@ namespace PaqetTunnel.Models;
 /// </summary>
 public sealed class PaqetConfig
 {
+    // ── Core ──
     public string Role { get; set; } = "client";
-    public string ServerAddr { get; set; } = "";         // server.addr = "host:port"
+    public string ServerAddr { get; set; } = "";         // server.addr
     public string Key { get; set; } = "";                 // transport.kcp.key
     public string Interface { get; set; } = "";           // network.interface
     public string DeviceGuid { get; set; } = "";          // network.guid
     public string Ipv4Addr { get; set; } = "";            // network.ipv4.addr
     public string RouterMac { get; set; } = "";           // network.ipv4.router_mac
     public string SocksListen { get; set; } = "127.0.0.1:10800";
-    public string Protocol { get; set; } = "";               // transport.protocol
-    public string KcpMode { get; set; } = "";                // transport.kcp.mode
+    public string Protocol { get; set; } = "";            // transport.protocol
+
+    // ── Logging ──
+    public string LogLevel { get; set; } = "info";       // log.level
+
+    // ── KCP Transport ──
+    public string KcpMode { get; set; } = "fast";        // transport.kcp.mode
+    public string KcpBlock { get; set; } = "aes";        // transport.kcp.block
+    public int Conn { get; set; } = 1;                    // transport.conn
+    public int Mtu { get; set; } = 1350;                  // transport.kcp.mtu
+    public int RcvWnd { get; set; } = 512;                // transport.kcp.rcvwnd
+    public int SndWnd { get; set; } = 512;                // transport.kcp.sndwnd
+
+    // ── KCP Manual Mode (only when mode="manual") ──
+    public int Nodelay { get; set; } = -1;                // transport.kcp.nodelay (-1 = not set)
+    public int Interval { get; set; } = -1;               // transport.kcp.interval
+    public int Resend { get; set; } = -1;                 // transport.kcp.resend
+    public int NoCongestion { get; set; } = -1;           // transport.kcp.nocongestion
+    public string WDelay { get; set; } = "";              // transport.kcp.wdelay (bool as string)
+    public string AckNodelay { get; set; } = "";          // transport.kcp.acknodelay
+
+    // ── Buffers ──
+    public int SmuxBuf { get; set; } = 4194304;          // transport.kcp.smuxbuf (4MB)
+    public int StreamBuf { get; set; } = 2097152;        // transport.kcp.streambuf (2MB)
+    public int TcpBuf { get; set; } = 8192;              // transport.tcpbuf
+    public int UdpBuf { get; set; } = 4096;              // transport.udpbuf
+    public int PcapSockBuf { get; set; } = 4194304;      // network.pcap.sockbuf (4MB)
+
+    // ── TCP Flags ──
+    public string LocalFlag { get; set; } = "PA";        // network.tcp.local_flag
+    public string RemoteFlag { get; set; } = "PA";       // network.tcp.remote_flag
+
+    // ── SOCKS5 Auth ──
+    public string SocksUsername { get; set; } = "";       // socks5[].username
+    public string SocksPassword { get; set; } = "";       // socks5[].password
+
     public string RawConfig { get; set; } = "";
+
+    // ── Default values for comparison ──
+    public static readonly string DefaultKcpMode = "fast";
+    public static readonly string DefaultKcpBlock = "aes";
+    public static readonly string DefaultLogLevel = "info";
+    public static readonly int DefaultConn = 1;
+    public static readonly int DefaultMtu = 1350;
+    public static readonly int DefaultRcvWnd = 512;
+    public static readonly int DefaultSndWnd = 512;
+    public static readonly int DefaultSmuxBuf = 4194304;
+    public static readonly int DefaultStreamBuf = 2097152;
+    public static readonly int DefaultTcpBuf = 8192;
+    public static readonly int DefaultUdpBuf = 4096;
+    public static readonly int DefaultPcapSockBuf = 4194304;
+
+    public static readonly string[] ValidKcpModes = ["normal", "fast", "fast2", "fast3", "manual"];
+    public static readonly string[] ValidCiphers = ["aes", "aes-128", "aes-128-gcm", "aes-192", "salsa20", "blowfish", "twofish", "cast5", "3des", "tea", "xtea", "xor", "sm4", "none"];
+    public static readonly string[] ValidLogLevels = ["none", "debug", "info", "warn", "error", "fatal"];
+    public static readonly string[] ValidTcpFlags = ["PA", "S", "A", "SA", "FA", "R", "P", "F"];
 
     /// <summary>Get server host (without port) from ServerAddr. Handles IPv6 [::1]:port format.</summary>
     public string ServerHost
@@ -109,10 +163,45 @@ public sealed class PaqetConfig
                 case "socks5.listen": config.SocksListen = value; break;
                 case "transport.protocol": config.Protocol = value; break;
                 case "transport.kcp.mode": config.KcpMode = value; break;
+                // Logging
+                case "log.level": config.LogLevel = value; break;
+                // KCP transport
+                case "transport.kcp.block": config.KcpBlock = value; break;
+                case "transport.conn": if (int.TryParse(value, out var conn)) config.Conn = conn; break;
+                case "transport.kcp.mtu": if (int.TryParse(value, out var mtu)) config.Mtu = mtu; break;
+                case "transport.kcp.rcvwnd": if (int.TryParse(value, out var rw)) config.RcvWnd = rw; break;
+                case "transport.kcp.sndwnd": if (int.TryParse(value, out var sw)) config.SndWnd = sw; break;
+                // KCP manual mode
+                case "transport.kcp.nodelay": if (int.TryParse(value, out var nd)) config.Nodelay = nd; break;
+                case "transport.kcp.interval": if (int.TryParse(value, out var iv)) config.Interval = iv; break;
+                case "transport.kcp.resend": if (int.TryParse(value, out var rs)) config.Resend = rs; break;
+                case "transport.kcp.nocongestion": if (int.TryParse(value, out var nc)) config.NoCongestion = nc; break;
+                case "transport.kcp.wdelay": config.WDelay = value; break;
+                case "transport.kcp.acknodelay": config.AckNodelay = value; break;
+                // Buffers
+                case "transport.kcp.smuxbuf": if (int.TryParse(value, out var sb)) config.SmuxBuf = sb; break;
+                case "transport.kcp.streambuf": if (int.TryParse(value, out var stb)) config.StreamBuf = stb; break;
+                case "transport.tcpbuf": if (int.TryParse(value, out var tb)) config.TcpBuf = tb; break;
+                case "transport.udpbuf": if (int.TryParse(value, out var ub)) config.UdpBuf = ub; break;
+                case "network.pcap.sockbuf": if (int.TryParse(value, out var ps)) config.PcapSockBuf = ps; break;
+                // TCP flags (stored as arrays in YAML, we parse first element)
+                case "network.tcp.local_flag": config.LocalFlag = ParseFlagValue(value); break;
+                case "network.tcp.remote_flag": config.RemoteFlag = ParseFlagValue(value); break;
+                // SOCKS5 auth
+                case "socks5.username": config.SocksUsername = value; break;
+                case "socks5.password": config.SocksPassword = value; break;
             }
         }
 
         return config;
+    }
+
+    /// <summary>Parse a YAML array value like ["PA"] or bare value like PA.</summary>
+    private static string ParseFlagValue(string value)
+    {
+        // Handle ["PA"] or ["PA", "S"] format — take first element
+        var m = Regex.Match(value, "\"([^\"]+)\"");
+        return m.Success ? m.Groups[1].Value : value.Trim('[', ']', ' ');
     }
 
     /// <summary>
@@ -124,13 +213,21 @@ public sealed class PaqetConfig
         if (!string.IsNullOrEmpty(RawConfig))
             return UpdateRawConfig();
 
-        return string.Join("\n",
+        var lines = new List<string>
+        {
             $"role: \"{Role}\"",
             "log:",
-            "  level: \"info\"",
+            $"  level: \"{LogLevel}\"",
             "",
             "socks5:",
-            $"  - listen: \"{SocksListen}\"",
+            $"  - listen: \"{SocksListen}\""
+        };
+        if (!string.IsNullOrEmpty(SocksUsername))
+            lines.Add($"    username: \"{SocksUsername}\"");
+        if (!string.IsNullOrEmpty(SocksPassword))
+            lines.Add($"    password: \"{SocksPassword}\"");
+
+        lines.AddRange([
             "",
             "network:",
             $"  interface: \"{Interface}\"",
@@ -139,33 +236,85 @@ public sealed class PaqetConfig
             $"    addr: \"{Ipv4Addr}\"",
             $"    router_mac: \"{RouterMac}\"",
             "  tcp:",
-            "    local_flag: [\"PA\"]",
-            "    remote_flag: [\"PA\"]",
+            $"    local_flag: [\"{LocalFlag}\"]",
+            $"    remote_flag: [\"{RemoteFlag}\"]"
+        ]);
+        if (PcapSockBuf != DefaultPcapSockBuf)
+        {
+            lines.Add("  pcap:");
+            lines.Add($"    sockbuf: {PcapSockBuf}");
+        }
+
+        lines.AddRange([
             "",
             "server:",
             $"  addr: \"{ServerAddr}\"",
             "",
             "transport:",
-            "  protocol: \"kcp\"",
+            "  protocol: \"kcp\""
+        ]);
+        if (Conn != DefaultConn) lines.Add($"  conn: {Conn}");
+        if (TcpBuf != DefaultTcpBuf) lines.Add($"  tcpbuf: {TcpBuf}");
+        if (UdpBuf != DefaultUdpBuf) lines.Add($"  udpbuf: {UdpBuf}");
+
+        lines.AddRange([
             "  kcp:",
-            "    mode: \"fast\"",
-            "    block: \"aes\"",
-            $"    key: \"{Key}\"",
-            "");
+            $"    mode: \"{KcpMode}\"",
+            $"    block: \"{KcpBlock}\"",
+            $"    key: \"{Key}\""
+        ]);
+        if (Mtu != DefaultMtu) lines.Add($"    mtu: {Mtu}");
+        if (RcvWnd != DefaultRcvWnd) lines.Add($"    rcvwnd: {RcvWnd}");
+        if (SndWnd != DefaultSndWnd) lines.Add($"    sndwnd: {SndWnd}");
+        if (SmuxBuf != DefaultSmuxBuf) lines.Add($"    smuxbuf: {SmuxBuf}");
+        if (StreamBuf != DefaultStreamBuf) lines.Add($"    streambuf: {StreamBuf}");
+        // Manual mode params
+        if (Nodelay >= 0) lines.Add($"    nodelay: {Nodelay}");
+        if (Interval >= 0) lines.Add($"    interval: {Interval}");
+        if (Resend >= 0) lines.Add($"    resend: {Resend}");
+        if (NoCongestion >= 0) lines.Add($"    nocongestion: {NoCongestion}");
+        if (!string.IsNullOrEmpty(WDelay)) lines.Add($"    wdelay: {WDelay}");
+        if (!string.IsNullOrEmpty(AckNodelay)) lines.Add($"    acknodelay: {AckNodelay}");
+
+        lines.Add("");
+        return string.Join("\n", lines);
     }
 
     /// <summary>Update values in the raw config string, preserving unknown fields.</summary>
     private string UpdateRawConfig()
     {
         var result = RawConfig;
+        // Core fields
         result = ReplaceYamlValue(result, "addr", ServerAddr, "server");
         result = ReplaceYamlValue(result, "key", Key, "kcp");
         result = ReplaceYamlValue(result, "interface", Interface, "network");
         result = ReplaceYamlValue(result, "listen", SocksListen, "socks5");
-        // BUG-12 fix: persist guid, ipv4.addr, router_mac too
         result = ReplaceYamlValue(result, "guid", DeviceGuid, "network");
         result = ReplaceYamlValue(result, "addr", Ipv4Addr, "ipv4");
         result = ReplaceYamlValue(result, "router_mac", RouterMac, "ipv4");
+        // KCP settings
+        result = ReplaceOrInsertYamlValue(result, "mode", KcpMode, "kcp");
+        result = ReplaceOrInsertYamlValue(result, "block", KcpBlock, "kcp");
+        result = ReplaceOrInsertYamlValue(result, "level", LogLevel, "log");
+        // Numeric KCP settings
+        if (Conn != DefaultConn) result = ReplaceOrInsertYamlNumeric(result, "conn", Conn, "transport");
+        if (Mtu != DefaultMtu) result = ReplaceOrInsertYamlNumeric(result, "mtu", Mtu, "kcp");
+        if (RcvWnd != DefaultRcvWnd) result = ReplaceOrInsertYamlNumeric(result, "rcvwnd", RcvWnd, "kcp");
+        if (SndWnd != DefaultSndWnd) result = ReplaceOrInsertYamlNumeric(result, "sndwnd", SndWnd, "kcp");
+        // Buffers
+        if (SmuxBuf != DefaultSmuxBuf) result = ReplaceOrInsertYamlNumeric(result, "smuxbuf", SmuxBuf, "kcp");
+        if (StreamBuf != DefaultStreamBuf) result = ReplaceOrInsertYamlNumeric(result, "streambuf", StreamBuf, "kcp");
+        if (TcpBuf != DefaultTcpBuf) result = ReplaceOrInsertYamlNumeric(result, "tcpbuf", TcpBuf, "transport");
+        if (UdpBuf != DefaultUdpBuf) result = ReplaceOrInsertYamlNumeric(result, "udpbuf", UdpBuf, "transport");
+        if (PcapSockBuf != DefaultPcapSockBuf) result = ReplaceOrInsertYamlNumeric(result, "sockbuf", PcapSockBuf, "pcap");
+        // Manual mode params
+        if (Nodelay >= 0) result = ReplaceOrInsertYamlNumeric(result, "nodelay", Nodelay, "kcp");
+        if (Interval >= 0) result = ReplaceOrInsertYamlNumeric(result, "interval", Interval, "kcp");
+        if (Resend >= 0) result = ReplaceOrInsertYamlNumeric(result, "resend", Resend, "kcp");
+        if (NoCongestion >= 0) result = ReplaceOrInsertYamlNumeric(result, "nocongestion", NoCongestion, "kcp");
+        // SOCKS5 auth
+        if (!string.IsNullOrEmpty(SocksUsername)) result = ReplaceOrInsertYamlValue(result, "username", SocksUsername, "socks5");
+        if (!string.IsNullOrEmpty(SocksPassword)) result = ReplaceOrInsertYamlValue(result, "password", SocksPassword, "socks5");
         return result;
     }
 
@@ -176,14 +325,11 @@ public sealed class PaqetConfig
         var sectionIdx = yaml.IndexOf(parentSection + ":", StringComparison.Ordinal);
         if (sectionIdx < 0)
         {
-            // Fallback: replace first occurrence anywhere
             var m = Regex.Match(yaml, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
             if (!m.Success) return yaml;
             return yaml[..m.Index] + Regex.Replace(m.Value, pattern, $"$1\"{newValue}\"", RegexOptions.None, TimeSpan.FromSeconds(1)) + yaml[(m.Index + m.Length)..];
         }
 
-        // NEW-08 fix: find next top-level section to bound the search region
-        // A top-level section is a line starting with a non-space char followed by ':'
         var afterSection = yaml[(sectionIdx + parentSection.Length + 1)..];
         var nextSectionMatch = Regex.Match(afterSection, @"\n[a-zA-Z_][a-zA-Z0-9_]*\s*:", RegexOptions.None, TimeSpan.FromSeconds(1));
         var searchEnd = nextSectionMatch.Success
@@ -198,6 +344,69 @@ public sealed class PaqetConfig
             + Regex.Replace(match.Value, pattern, $"$1\"{newValue}\"", RegexOptions.None, TimeSpan.FromSeconds(1))
             + region[(match.Index + match.Length)..];
         return yaml[..sectionIdx] + replaced + yaml[searchEnd..];
+    }
+
+    /// <summary>Replace a quoted YAML value, or insert if missing.</summary>
+    private static string ReplaceOrInsertYamlValue(string yaml, string key, string newValue, string parentSection)
+    {
+        var pattern = $@"({Regex.Escape(key)}\s*:\s*)" + "\"[^\"]*\"";
+        var sectionIdx = yaml.IndexOf(parentSection + ":", StringComparison.Ordinal);
+        if (sectionIdx < 0) return yaml;
+
+        var afterSection = yaml[(sectionIdx + parentSection.Length + 1)..];
+        var nextSectionMatch = Regex.Match(afterSection, @"\n[a-zA-Z_][a-zA-Z0-9_]*\s*:", RegexOptions.None, TimeSpan.FromSeconds(1));
+        var searchEnd = nextSectionMatch.Success
+            ? sectionIdx + parentSection.Length + 1 + nextSectionMatch.Index
+            : yaml.Length;
+
+        var region = yaml[sectionIdx..searchEnd];
+        var match = Regex.Match(region, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+        if (match.Success)
+        {
+            var replaced = region[..match.Index]
+                + Regex.Replace(match.Value, pattern, $"$1\"{newValue}\"", RegexOptions.None, TimeSpan.FromSeconds(1))
+                + region[(match.Index + match.Length)..];
+            return yaml[..sectionIdx] + replaced + yaml[searchEnd..];
+        }
+
+        // Insert after the parent section header line
+        var headerEnd = yaml.IndexOf('\n', sectionIdx);
+        if (headerEnd < 0) headerEnd = yaml.Length;
+        // Detect indent from existing children
+        var childMatch = Regex.Match(yaml[(headerEnd)..searchEnd], @"\n(\s+)\w");
+        var indent = childMatch.Success ? childMatch.Groups[1].Value : "    ";
+        var insertion = $"\n{indent}{key}: \"{newValue}\"";
+        return yaml[..(headerEnd)] + insertion + yaml[headerEnd..];
+    }
+
+    /// <summary>Replace or insert a numeric YAML value.</summary>
+    private static string ReplaceOrInsertYamlNumeric(string yaml, string key, int newValue, string parentSection)
+    {
+        var pattern = $@"({Regex.Escape(key)}\s*:\s*)\d+";
+        var sectionIdx = yaml.IndexOf(parentSection + ":", StringComparison.Ordinal);
+        if (sectionIdx < 0) return yaml;
+
+        var afterSection = yaml[(sectionIdx + parentSection.Length + 1)..];
+        var nextSectionMatch = Regex.Match(afterSection, @"\n[a-zA-Z_][a-zA-Z0-9_]*\s*:", RegexOptions.None, TimeSpan.FromSeconds(1));
+        var searchEnd = nextSectionMatch.Success
+            ? sectionIdx + parentSection.Length + 1 + nextSectionMatch.Index
+            : yaml.Length;
+
+        var region = yaml[sectionIdx..searchEnd];
+        var match = Regex.Match(region, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+        if (match.Success)
+        {
+            var replaced = region[..match.Index]
+                + Regex.Replace(match.Value, pattern, $"$1{newValue}", RegexOptions.None, TimeSpan.FromSeconds(1))
+                + region[(match.Index + match.Length)..];
+            return yaml[..sectionIdx] + replaced + yaml[searchEnd..];
+        }
+
+        var headerEnd = yaml.IndexOf('\n', sectionIdx);
+        if (headerEnd < 0) headerEnd = yaml.Length;
+        var childMatch = Regex.Match(yaml[(headerEnd)..searchEnd], @"\n(\s+)\w");
+        var indent = childMatch.Success ? childMatch.Groups[1].Value : "    ";
+        return yaml[..(headerEnd)] + $"\n{indent}{key}: {newValue}" + yaml[headerEnd..];
     }
 }
 
