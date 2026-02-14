@@ -177,7 +177,7 @@
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                                     Visibility="{Binding IsUpdating, Converter={StaticResource InvBoolToVis}}">
                             <Button Content="Install" Style="{DynamicResource PrimaryButton}"
-                                    Command="{Binding InstallUpdateAsyncCommand}"
+                                    Command="{Binding InstallUpdateCommand}"
                                     Padding="14,5" FontSize="10.5" Margin="0,0,4,0" />
                             <Button Content="✕" Style="{DynamicResource GhostButton}"
                                     Command="{Binding DismissUpdateCommand}"
@@ -1406,10 +1406,10 @@
                                         <ColumnDefinition />
                                     </Grid.ColumnDefinitions>
                                     <Button Content="Check Updates" Style="{DynamicResource SecondaryButton}"
-                                            Command="{Binding CheckForUpdatesAsyncCommand}"
+                                            Command="{Binding CheckForUpdatesCommand}"
                                             HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5" />
                                     <Button Grid.Column="2" Style="{DynamicResource SecondaryButton}"
-                                            Command="{Binding InstallUpdateAsyncCommand}"
+                                            Command="{Binding InstallUpdateCommand}"
                                             IsEnabled="{Binding IsUpdateAvailable}"
                                             HorizontalAlignment="Stretch" Padding="8,6" FontSize="10.5">
                                         <Button.Content>

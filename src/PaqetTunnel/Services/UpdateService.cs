@@ -104,7 +104,7 @@ public sealed class UpdateService
             // This is necessary because Verb="runas" prevents stdout capture
             wrapperScript = Path.Combine(Path.GetTempPath(), $"pt-wrapper-{Environment.ProcessId}.ps1");
             var wrapperContent = $@"
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $logPath = '{logFile.Replace("'", "''")}'
 function Log($msg) {{ $msg | Out-File $logPath -Append -Encoding utf8 }}
 try {{
@@ -112,9 +112,9 @@ try {{
     $output = & powershell -ExecutionPolicy Bypass -File '{setupScript.Replace("'", "''")}' update -y -Silent -Launch 2>&1
     foreach ($line in $output) {{
         $s = $line.ToString()
-        Log $s
+        if ($s -and $s.Trim()) {{ Log $s }}
     }}
-    if ($LASTEXITCODE -ne 0) {{
+    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {{
         Log ""[ERR] Update script exited with code $LASTEXITCODE""
         exit $LASTEXITCODE
     }}

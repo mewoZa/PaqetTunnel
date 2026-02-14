@@ -1316,10 +1316,13 @@ function Start-App {
     $exe = "$Script:InstallDir\$Script:ExeName"
     if (-not (Test-Path $exe)) { Err "Not installed"; return }
     Step "Starting $Script:AppName..."
-    # Use scheduled task for admin elevation
-    & schtasks /create /tn 'PaqetLaunch' /tr "`"$exe`"" /sc once /st 00:00 /rl HIGHEST /f 2>&1 | Out-Null
-    & schtasks /run /tn 'PaqetLaunch' 2>&1 | Out-Null
-    & schtasks /delete /tn 'PaqetLaunch' /f 2>&1 | Out-Null
+    # Use scheduled task for interactive session launch
+    $taskAction = New-ScheduledTaskAction -Execute $exe
+    $taskTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(2)
+    $taskPrincipal = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType Interactive -RunLevel Highest
+    Register-ScheduledTask -TaskName 'PaqetLaunch' -Action $taskAction -Trigger $taskTrigger -Principal $taskPrincipal -Force -ErrorAction SilentlyContinue | Out-Null
+    Start-Sleep -Seconds 3
+    Unregister-ScheduledTask -TaskName 'PaqetLaunch' -Confirm:$false -ErrorAction SilentlyContinue
     OK "Started"
 }
 
