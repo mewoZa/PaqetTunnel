@@ -1274,7 +1274,13 @@
 
                                 <Button Content="Save Configuration" Style="{DynamicResource PrimaryButton}"
                                         Command="{Binding SaveConfigCommand}"
-                                        HorizontalAlignment="Stretch" Padding="12,7" FontSize="11.5" />
+                                        HorizontalAlignment="Stretch" Padding="12,7" FontSize="11.5"
+                                        IsEnabled="{Binding IsSyncing, Converter={StaticResource InvBoolConv}}" />
+
+                                <!-- Sync status indicator -->
+                                <TextBlock Text="{Binding SyncStatus}" FontSize="10" Margin="0,4,0,0"
+                                           Foreground="#f0883e" TextAlignment="Center"
+                                           Visibility="{Binding IsSyncing, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -1401,6 +1407,12 @@
                                             HorizontalAlignment="Stretch" Padding="6,5" FontSize="10"
                                             Foreground="{DynamicResource DangerBrush}" />
                                 </Grid>
+                                <Button Content="↺ Reset Server Config to Defaults" FontSize="10" Opacity="0.6"
+                                        Command="{Binding ResetServerToDefaultsCommand}"
+                                        IsEnabled="{Binding IsServerBusy, Converter={StaticResource InvBoolConv}}"
+                                        HorizontalAlignment="Left" Padding="8,3" Margin="0,0,0,0"
+                                        Background="Transparent" BorderThickness="0"
+                                        Foreground="{DynamicResource TextDimBrush}" Cursor="Hand" />
 
                                 <!-- Server Output -->
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,4"

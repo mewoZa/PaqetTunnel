@@ -212,6 +212,23 @@ Paqet Tunnel has two modes: **SOCKS5 Proxy** (browser/app-level) and **Full Syst
 | DNS on **all** adapters | Prevents apps from using ISP DNS if they bind to the wrong adapter |
 | Portproxy for LAN sharing | Uses built-in Windows `netsh` — no extra software needed |
 
+### Config Sync (Client ↔ Server)
+
+Paqet has no handshake protocol — crypto parameters must match exactly on both sides. PaqetTunnel automatically detects when a config change requires server-side sync and orchestrates the update safely.
+
+**Breaking fields** (must match): `key`, `block` (cipher), `mode`, `mtu`
+**Performance fields** (recommended to match): `rcvwnd`, `sndwnd`, `smuxbuf`, `streambuf`
+**Client-only fields** (no sync needed): SOCKS5 settings, log level, TCP flags, buffers
+
+**Sync flow** (when breaking fields change):
+1. Pre-flight: verify SSH connection works
+2. Backup: `server.yaml` → `server.yaml.bak`
+3. Patch: update changed fields via SSH
+4. Schedule delayed server restart (`nohup sleep 2 && systemctl restart paqet`)
+5. Save local config immediately (while old tunnel still alive)
+6. Disconnect → wait for server restart → reconnect with new config
+7. **Rollback** on failure: restore backup via direct SSH (bypassing tunnel)
+
 ---
 
 ## 🎨 Themes
@@ -755,6 +772,9 @@ Manages the paqet server on your VPS over SSH. Requires SSH credentials configur
 |-----------|-------------|
 | `--server test` | Test SSH connection — verifies host, port, auth |
 | `--server status` | Show systemd service status (`systemctl status paqet`) |
+| `--server config` | Read and display current server config (YAML) |
+| `--server sync` | Compare local config with server, patch differences interactively |
+| `--server reset` | Reset server config to defaults (encryption key preserved) |
 | `--server install` | Install paqet server on the VPS |
 | `--server update` | Download latest paqet binary and restart service |
 | `--server uninstall` | Stop service, remove all files, clean iptables |
@@ -771,10 +791,26 @@ PaqetTunnel.exe --server test
 
 # Check server status
 PaqetTunnel.exe --server status
-#   Host: root@203.0.113.50:22
-#   Command: status
-#   ● paqet.service - Paqet Tunnel Server
-#     Active: active (running) since ...
+
+# Read server config
+PaqetTunnel.exe --server config
+#   role: "server"
+#   transport:
+#     kcp:
+#       mode: "fast"
+#       block: "aes"
+#       ...
+
+# Sync local changes to server (interactive — prompts before applying)
+PaqetTunnel.exe --server sync
+#   Changes to sync (2):
+#     block: salsa20
+#     mode: normal
+#   Apply changes to server? [y/N] y
+#   Restart server now? [y/N] y
+
+# Reset server config to defaults (key preserved)
+PaqetTunnel.exe --server reset
 
 # View live server logs
 PaqetTunnel.exe --server logs

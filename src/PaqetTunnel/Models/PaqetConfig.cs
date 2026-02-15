@@ -58,6 +58,60 @@ public sealed class PaqetConfig
 
     public string RawConfig { get; set; } = "";
 
+    // ── Breaking fields: if changed, server config MUST be synced ──
+    // Key, Block (cipher), Mode, MTU — mismatches cause connection failure
+    private static readonly HashSet<string> BreakingFields = ["Key", "KcpBlock", "KcpMode", "Mtu"];
+
+    /// <summary>
+    /// Compare this config with another and return only the fields that
+    /// differ AND require server-side synchronization (breaking changes).
+    /// Returns empty dict if no server sync needed.
+    /// </summary>
+    public Dictionary<string, string> GetBreakingChanges(PaqetConfig other)
+    {
+        var changes = new Dictionary<string, string>();
+        if (!string.Equals(Key, other.Key, StringComparison.Ordinal))
+            changes["key"] = Key;
+        if (!string.Equals(KcpBlock, other.KcpBlock, StringComparison.OrdinalIgnoreCase))
+            changes["block"] = KcpBlock;
+        if (!string.Equals(KcpMode, other.KcpMode, StringComparison.OrdinalIgnoreCase))
+            changes["mode"] = KcpMode;
+        if (Mtu != other.Mtu)
+            changes["mtu"] = Mtu.ToString();
+        return changes;
+    }
+
+    /// <summary>
+    /// Return all fields that differ between this config and another,
+    /// including non-breaking performance fields (rcvwnd, sndwnd, etc.).
+    /// </summary>
+    public Dictionary<string, string> GetAllServerChanges(PaqetConfig other)
+    {
+        var changes = GetBreakingChanges(other);
+        if (RcvWnd != other.RcvWnd) changes["rcvwnd"] = RcvWnd.ToString();
+        if (SndWnd != other.SndWnd) changes["sndwnd"] = SndWnd.ToString();
+        if (SmuxBuf != other.SmuxBuf) changes["smuxbuf"] = SmuxBuf.ToString();
+        if (StreamBuf != other.StreamBuf) changes["streambuf"] = StreamBuf.ToString();
+        return changes;
+    }
+
+    /// <summary>Create a snapshot of the config for later comparison.</summary>
+    public PaqetConfig Snapshot()
+    {
+        return new PaqetConfig
+        {
+            Role = Role, Key = Key, KcpBlock = KcpBlock, KcpMode = KcpMode, Mtu = Mtu,
+            RcvWnd = RcvWnd, SndWnd = SndWnd, SmuxBuf = SmuxBuf, StreamBuf = StreamBuf,
+            Conn = Conn, LogLevel = LogLevel, LocalFlag = LocalFlag, RemoteFlag = RemoteFlag,
+            ServerAddr = ServerAddr, Interface = Interface, Protocol = Protocol,
+            DeviceGuid = DeviceGuid, Ipv4Addr = Ipv4Addr, RouterMac = RouterMac,
+            SocksListen = SocksListen, SocksUsername = SocksUsername, SocksPassword = SocksPassword,
+            TcpBuf = TcpBuf, UdpBuf = UdpBuf, PcapSockBuf = PcapSockBuf,
+            Nodelay = Nodelay, Interval = Interval, Resend = Resend, NoCongestion = NoCongestion,
+            WDelay = WDelay, AckNodelay = AckNodelay
+        };
+    }
+
     // ── Default values for comparison ──
     public static readonly string DefaultKcpMode = "fast";
     public static readonly string DefaultKcpBlock = "aes";

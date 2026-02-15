@@ -29,6 +29,7 @@ public sealed class TunService
 
     private Process? _tun2socksProcess;
     private readonly object _tunProcessLock = new(); // NEW-06: synchronize _tun2socksProcess access
+    private readonly SemaphoreSlim _startStopLock = new(1, 1); // Serialize Start/Stop operations
     private string? _originalGateway;
     private string? _originalInterface;
     private string? _serverIp;
@@ -73,12 +74,63 @@ public sealed class TunService
     }
 
     /// <summary>
+    /// Wait for at least one physical network adapter to be Up with an IP address.
+    /// Returns true if network is ready, false on timeout.
+    /// </summary>
+    public static async Task<bool> WaitForNetworkReadyAsync(int timeoutMs = 30000)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            try
+            {
+                var adapters = NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(n => n.OperationalStatus == OperationalStatus.Up
+                        && n.NetworkInterfaceType != NetworkInterfaceType.Loopback
+                        && n.NetworkInterfaceType != NetworkInterfaceType.Tunnel
+                        && !n.Name.Contains("Wintun", StringComparison.OrdinalIgnoreCase)
+                        && !n.Name.Contains(TUN_ADAPTER_NAME, StringComparison.OrdinalIgnoreCase));
+
+                foreach (var adapter in adapters)
+                {
+                    var ipProps = adapter.GetIPProperties();
+                    var hasIpv4 = ipProps.UnicastAddresses
+                        .Any(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                            && !IPAddress.IsLoopback(a.Address));
+                    var hasGateway = ipProps.GatewayAddresses.Count > 0;
+                    if (hasIpv4 && hasGateway)
+                    {
+                        Logger.Info($"Network ready: {adapter.Name} ({adapter.Description}) after {sw.ElapsedMilliseconds}ms");
+                        return true;
+                    }
+                }
+            }
+            catch { /* ignore transient errors during boot */ }
+            await Task.Delay(1000);
+        }
+        Logger.Warn($"Network not ready after {timeoutMs}ms");
+        return false;
+    }
+
+    /// <summary>
     /// Start the full system tunnel. Requires paqet SOCKS5 to be running on port 10800.
     /// Steps: 1) Start tun2socks  2) Configure TUN adapter IP  3) Set routes  4) Set DNS
     /// </summary>
-    public async Task<(bool Success, string Message)> StartAsync(string paqetServerIp, AppSettings? settings = null)
+    /// <param name="paqetServerIp">VPN server IP for route exclusion.</param>
+    /// <param name="settings">App settings for DNS resolution.</param>
+    /// <param name="adapterTimeoutMs">How long to wait for the WinTun adapter to come up (default 10s, use 30s at boot).</param>
+    public async Task<(bool Success, string Message)> StartAsync(string paqetServerIp, AppSettings? settings = null, int adapterTimeoutMs = 10000)
     {
-        Logger.Info("TunService.StartAsync called");
+        // Serialize concurrent Start calls (boot retry + health check recovery could overlap)
+        if (!await _startStopLock.WaitAsync(0))
+        {
+            Logger.Info("TunService.StartAsync: another Start/Stop in progress, skipping");
+            return (false, "Another TUN operation in progress.");
+        }
+        try
+        {
+        if (adapterTimeoutMs < 2000) adapterTimeoutMs = 10000;
+        Logger.Info($"TunService.StartAsync called (adapterTimeout={adapterTimeoutMs}ms)");
 
         if (!AllBinariesExist())
         {
@@ -123,9 +175,10 @@ public sealed class TunService
             if (!startResult.Success)
                 return startResult;
 
-            // Wait for TUN adapter to appear
-            Logger.Info("Waiting for TUN adapter...");
-            for (int i = 0; i < 20; i++)
+            // Wait for TUN adapter to appear (configurable timeout for boot vs manual)
+            var iterations = Math.Max(adapterTimeoutMs / 500, 4);
+            Logger.Info($"Waiting for TUN adapter (timeout={adapterTimeoutMs}ms, {iterations} checks)...");
+            for (int i = 0; i < iterations; i++)
             {
                 await Task.Delay(500);
                 if (IsTunAdapterUp())
@@ -133,9 +186,9 @@ public sealed class TunService
                     Logger.Info($"TUN adapter up after {(i + 1) * 500}ms");
                     break;
                 }
-                if (i == 19)
+                if (i == iterations - 1)
                 {
-                    Logger.Warn("TUN adapter did not come up in 10s");
+                    Logger.Warn($"TUN adapter did not come up in {adapterTimeoutMs}ms");
                     StopTun2Socks();
                     return (false, "TUN adapter failed to initialize.");
                 }
@@ -170,15 +223,27 @@ public sealed class TunService
         catch (Exception ex)
         {
             Logger.Error("TUN start exception", ex);
-            await StopAsync();
+            await StopInternalAsync();
             return (false, $"TUN start failed: {ex.Message}");
         }
+        }
+        finally { _startStopLock.Release(); }
     }
 
     /// <summary>Stop the TUN tunnel, restore routes and DNS.</summary>
     public async Task<(bool Success, string Message)> StopAsync()
     {
         Logger.Info("TunService.StopAsync called");
+        await _startStopLock.WaitAsync();
+        try
+        {
+            return await StopInternalAsync();
+        }
+        finally { _startStopLock.Release(); }
+    }
+
+    private async Task<(bool Success, string Message)> StopInternalAsync()
+    {
         var errors = new StringBuilder();
 
         try

@@ -429,6 +429,105 @@ public static class Program
             return;
         }
 
+        // Read server config
+        if (subCmd == "config")
+        {
+            Console.WriteLine("  Reading server config...\n");
+            var (ok, yaml) = await sshService.ReadServerConfigAsync(settings);
+            if (ok)
+            {
+                foreach (var line in yaml.Split('\n'))
+                    Console.WriteLine($"  {line.TrimEnd('\r')}");
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write("  [ERR] ");
+                Console.ResetColor();
+                Console.WriteLine(yaml);
+            }
+            return;
+        }
+
+        // Sync local breaking changes to server
+        if (subCmd == "sync")
+        {
+            Console.WriteLine("  Comparing local config with server...\n");
+            var localConfig = configService.ReadPaqetConfig();
+            var (srvOk, srvYaml) = await sshService.ReadServerConfigAsync(settings);
+            if (!srvOk)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write("  [ERR] ");
+                Console.ResetColor();
+                Console.WriteLine($"Could not read server config: {srvYaml}");
+                return;
+            }
+            var serverConfig = Models.PaqetConfig.FromYaml(srvYaml);
+            var changes = localConfig.GetAllServerChanges(serverConfig);
+            if (changes.Count == 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.Write("  [OK] ");
+                Console.ResetColor();
+                Console.WriteLine("Server config matches local — no sync needed.");
+                return;
+            }
+            Console.WriteLine($"  Changes to sync ({changes.Count}):");
+            foreach (var (field, value) in changes)
+                Console.WriteLine($"    {field}: {value}");
+            Console.WriteLine();
+            Console.Write("  Apply changes to server? [y/N] ");
+            var answer = Console.ReadLine()?.Trim().ToLower();
+            if (answer != "y" && answer != "yes")
+            {
+                Console.WriteLine("  Cancelled.");
+                return;
+            }
+            var (patchOk, patchMsg) = await sshService.PatchServerConfigAsync(settings, changes,
+                p => Console.WriteLine($"  {p}"));
+            if (patchOk)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.Write("\n  [OK] ");
+                Console.ResetColor();
+                Console.WriteLine(patchMsg);
+                Console.Write("  Restart server now? [y/N] ");
+                var restartAnswer = Console.ReadLine()?.Trim().ToLower();
+                if (restartAnswer == "y" || restartAnswer == "yes")
+                {
+                    var (rOk, rMsg) = await sshService.ScheduleServerRestartAsync(settings, 2);
+                    Console.WriteLine($"  {(rOk ? rMsg : "Restart failed: " + rMsg)}");
+                }
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.Write("\n  [ERR] ");
+                Console.ResetColor();
+                Console.WriteLine($"Sync failed: {patchMsg}");
+            }
+            return;
+        }
+
+        // Reset server config to defaults
+        if (subCmd == "reset")
+        {
+            Console.Write("  Reset server config to defaults (key preserved)? [y/N] ");
+            var answer = Console.ReadLine()?.Trim().ToLower();
+            if (answer != "y" && answer != "yes")
+            {
+                Console.WriteLine("  Cancelled.");
+                return;
+            }
+            var (ok, msg) = await sshService.ResetServerConfigAsync(settings);
+            Console.ForegroundColor = ok ? ConsoleColor.Green : ConsoleColor.Red;
+            Console.Write(ok ? "\n  [OK] " : "\n  [ERR] ");
+            Console.ResetColor();
+            Console.WriteLine(msg);
+            return;
+        }
+
         Console.WriteLine($"  Command: {subCmd}\n");
 
         var (success, output) = await sshService.RunServerCommandAsync(settings, subCmd, p =>
@@ -477,6 +576,9 @@ Client Commands:
 Server Commands:
   --server test        Test SSH connection
   --server status      Show server status
+  --server config      Show server config (YAML)
+  --server sync        Sync local config changes to server
+  --server reset       Reset server config to defaults (key preserved)
   --server install     Install paqet server
   --server update      Update paqet server
   --server uninstall   Uninstall paqet server
@@ -489,7 +591,8 @@ Examples:
   PaqetTunnel.exe --check
   PaqetTunnel.exe --update
   PaqetTunnel.exe --server status
-  PaqetTunnel.exe --server install
+  PaqetTunnel.exe --server sync
+  PaqetTunnel.exe --server config
 ");
     }
 }

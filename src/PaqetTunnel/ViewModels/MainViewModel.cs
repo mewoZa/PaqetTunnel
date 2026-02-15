@@ -45,6 +45,16 @@ public partial class MainViewModel : ObservableObject
     private const int HEALTH_FAIL_THRESHOLD = 2;  // require 2 consecutive failures before warning
     private List<(string Name, string? OriginalDns)>? _savedAdapterDns; // BUG-05: saved DNS for restore
 
+    // TUN retry logic for boot race condition
+    private const int TUN_BOOT_MAX_RETRIES = 3;
+    private const int TUN_BOOT_ADAPTER_TIMEOUT_MS = 30000; // 30s at boot (vs 10s default)
+    private static readonly int[] TUN_RETRY_DELAYS_MS = { 5000, 10000, 20000 };
+    private bool _tunDegradedNotified; // avoid spamming degradation logs
+    private const int TUN_RECOVERY_INTERVAL = 10; // every 10 health ticks (~30s)
+    private const int TUN_RECOVERY_MAX_ATTEMPTS = 10; // stop retrying after this many recovery attempts
+    private int _tunRecoveryCounter;
+    private int _tunRecoveryAttempts;
+
     // ── Speed ─────────────────────────────────────────────────────
 
     [ObservableProperty] private string _downloadSpeed = "0 B/s";
@@ -200,6 +210,13 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _showServerPanel;
     private readonly SshService _sshService = new();
 
+    // ── Config Sync ──────────────────────────────────────────────
+
+    private PaqetConfig? _previousConfig; // snapshot at load for change detection
+    [ObservableProperty] private bool _hasSyncableChanges;  // true when breaking fields differ
+    [ObservableProperty] private string _syncStatus = "";
+    [ObservableProperty] private bool _isSyncing;
+
     public MainViewModel(
         PaqetService paqetService,
         ProxyService proxyService,
@@ -273,6 +290,7 @@ public partial class MainViewModel : ObservableObject
         RemoteFlag = config.RemoteFlag;
         SocksUsername = config.SocksUsername;
         SocksPassword = config.SocksPassword;
+        _previousConfig = config.Snapshot();
         Logger.Info($"Config loaded: server={config.ServerAddr}, interface={config.Interface}, socks={config.SocksListen}");
 
         // Get local IP
@@ -313,26 +331,59 @@ public partial class MainViewModel : ObservableObject
             _connectedSince = DateTime.Now;
             var tunActive = _tunService.IsRunning();
 
-            // If settings want TUN but tun2socks died (e.g. reboot), restart it
+            // If settings want TUN but tun2socks died (e.g. reboot), restart it with retries
             if (IsFullSystemTunnel && !tunActive && _tunService.AllBinariesExist())
             {
-                Logger.Info("Paqet running but TUN not active — restarting TUN tunnel...");
-                try
+                Logger.Info("Paqet running but TUN not active — starting TUN with boot retry logic...");
+
+                // Wait for network readiness before attempting TUN (boot race fix)
+                Logger.Info("Waiting for network readiness...");
+                var netReady = await TunService.WaitForNetworkReadyAsync(60000);
+                if (!netReady)
+                    Logger.Warn("Network not ready after 60s — attempting TUN anyway");
+
+                for (int attempt = 1; attempt <= TUN_BOOT_MAX_RETRIES; attempt++)
                 {
-                    EnsureProxyDisabledForTun();
-                    var paqetCfg = _configService.ReadPaqetConfig();
-                    var tunResult = await _tunService.StartAsync(paqetCfg.ServerHost, _configService.ReadAppSettings());
-                    Logger.Info($"TUN restart: success={tunResult.Success}, message={tunResult.Message}");
-                    tunActive = tunResult.Success;
+                    try
+                    {
+                        Logger.Info($"TUN boot attempt {attempt}/{TUN_BOOT_MAX_RETRIES}");
+                        ConnectionStatus = $"Starting TUN (attempt {attempt}/{TUN_BOOT_MAX_RETRIES})...";
+                        EnsureProxyDisabledForTun();
+                        var paqetCfg = _configService.ReadPaqetConfig();
+                        var tunResult = await _tunService.StartAsync(paqetCfg.ServerHost, _configService.ReadAppSettings(),
+                            adapterTimeoutMs: TUN_BOOT_ADAPTER_TIMEOUT_MS);
+                        Logger.Info($"TUN boot attempt {attempt}: success={tunResult.Success}, message={tunResult.Message}");
+                        if (tunResult.Success)
+                        {
+                            tunActive = true;
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"TUN boot attempt {attempt} failed: {ex.Message}");
+                    }
+
+                    if (attempt < TUN_BOOT_MAX_RETRIES)
+                    {
+                        var delay = TUN_RETRY_DELAYS_MS[Math.Min(attempt - 1, TUN_RETRY_DELAYS_MS.Length - 1)];
+                        Logger.Info($"TUN retry in {delay}ms...");
+                        ConnectionStatus = $"TUN failed, retrying in {delay / 1000}s...";
+                        await Task.Delay(delay);
+                    }
                 }
-                catch (Exception ex)
+
+                if (!tunActive)
                 {
-                    Logger.Warn($"TUN restart failed: {ex.Message}");
+                    Logger.Warn("TUN boot retries exhausted — falling back to SOCKS5 (will keep retrying via health check)");
+                    _tunDegradedNotified = true; // Prevent redundant degradation notification in health check
                 }
             }
 
             TunnelMode = tunActive ? "TUNNEL" : "SOCKS5";
-            ConnectionStatus = tunActive ? "Connected (Full System)" : "Connected";
+            ConnectionStatus = tunActive
+                ? "Connected (Full System)"
+                : (IsFullSystemTunnel ? "Connected (SOCKS5 only — TUN failed)" : "Connected");
             _networkMonitor.Start();
             // Trigger initial internet health check
             InternetStatus = "Checking...";
@@ -439,6 +490,9 @@ public partial class MainViewModel : ObservableObject
         _userRequestedConnect = true;
         _reconnectAttempts = 0;
         _consecutiveHealthFailures = 0;
+        _tunDegradedNotified = false;
+        _tunRecoveryAttempts = 0;
+        _tunRecoveryCounter = 0;
         ConnectionStatus = "Connecting...";
         StatusBarText = "Connecting...";
 
@@ -631,6 +685,9 @@ public partial class MainViewModel : ObservableObject
         _userRequestedConnect = false;
         _reconnectAttempts = 0;
         _consecutiveHealthFailures = 0; // R5-09: reset health failure counter on disconnect
+        _tunDegradedNotified = false;
+        _tunRecoveryAttempts = 0;
+        _tunRecoveryCounter = 0;
         ConnectionStatus = "Disconnecting...";
         Logger.Info("DisconnectAsync started");
 
@@ -967,6 +1024,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveConfigAsync()
     {
+        if (IsBusy || IsSyncing) return;
+
         // Validate port range
         if (ServerPort < 1 || ServerPort > 65535)
         {
@@ -1000,38 +1059,315 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        IsBusy = true;
-        StatusBarText = "Saving config...";
-        await Task.Run(() =>
+        // Build config from current UI state
+        var config = BuildConfigFromUi();
+
+        // Detect breaking changes that need server sync
+        var breakingChanges = _previousConfig != null ? config.GetBreakingChanges(_previousConfig) : new();
+        var perfChanges = _previousConfig != null ? config.GetAllServerChanges(_previousConfig) : new();
+
+        if (breakingChanges.Count > 0 && !string.IsNullOrEmpty(ServerSshHost))
         {
-            var config = _configService.ReadPaqetConfig();
-            config.ServerAddr = $"{ServerAddress}:{ServerPort}";
-            config.Key = Key;
-            config.Interface = NetworkInterface;
-            config.KcpMode = SelectedKcpMode;
-            config.KcpBlock = SelectedCipher;
-            config.LogLevel = SelectedLogLevel;
-            config.Conn = Connections;
-            config.Mtu = Mtu;
-            config.RcvWnd = ReceiveWindow;
-            config.SndWnd = SendWindow;
-            config.Nodelay = Nodelay;
-            config.Interval = Interval;
-            config.Resend = Resend;
-            config.NoCongestion = NoCongestion;
-            config.SmuxBuf = SmuxBuffer;
-            config.StreamBuf = StreamBuffer;
-            config.TcpBuf = TcpBuffer;
-            config.UdpBuf = UdpBuffer;
-            config.PcapSockBuf = PcapSockBuffer;
-            config.LocalFlag = LocalFlag;
-            config.RemoteFlag = RemoteFlag;
-            config.SocksUsername = SocksUsername;
-            config.SocksPassword = SocksPassword;
-            _configService.WritePaqetConfig(config);
+            // Breaking changes detected — need coordinated sync
+            Logger.Info($"Breaking config changes detected: {string.Join(", ", breakingChanges.Keys)}");
+            await SyncConfigToServerAsync(config, perfChanges);
+        }
+        else
+        {
+            // No breaking changes or no SSH configured — save locally only
+            IsBusy = true;
+            StatusBarText = "Saving config...";
+            await Task.Run(() => _configService.WritePaqetConfig(config));
+            _previousConfig = config.Snapshot();
+            HasSyncableChanges = false;
+            StatusBarText = breakingChanges.Count > 0
+                ? "Config saved locally. ⚠ Server SSH not configured — sync skipped."
+                : "Config saved.";
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Build a PaqetConfig from the current UI field values.</summary>
+    private PaqetConfig BuildConfigFromUi()
+    {
+        var config = _configService.ReadPaqetConfig();
+        config.ServerAddr = $"{ServerAddress}:{ServerPort}";
+        config.Key = Key;
+        config.Interface = NetworkInterface;
+        config.KcpMode = SelectedKcpMode;
+        config.KcpBlock = SelectedCipher;
+        config.LogLevel = SelectedLogLevel;
+        config.Conn = Connections;
+        config.Mtu = Mtu;
+        config.RcvWnd = ReceiveWindow;
+        config.SndWnd = SendWindow;
+        config.Nodelay = Nodelay;
+        config.Interval = Interval;
+        config.Resend = Resend;
+        config.NoCongestion = NoCongestion;
+        config.SmuxBuf = SmuxBuffer;
+        config.StreamBuf = StreamBuffer;
+        config.TcpBuf = TcpBuffer;
+        config.UdpBuf = UdpBuffer;
+        config.PcapSockBuf = PcapSockBuffer;
+        config.LocalFlag = LocalFlag;
+        config.RemoteFlag = RemoteFlag;
+        config.SocksUsername = SocksUsername;
+        config.SocksPassword = SocksPassword;
+        return config;
+    }
+
+    /// <summary>
+    /// Coordinated config sync: patch server → restart server → save local → reconnect.
+    /// If sync fails, rolls back server config automatically.
+    /// </summary>
+    private async Task SyncConfigToServerAsync(PaqetConfig newConfig, Dictionary<string, string> changes)
+    {
+        IsSyncing = true;
+        IsBusy = true;
+        var appSettings = GetServerSettings();
+        var wasConnected = IsConnected;
+
+        try
+        {
+            // Step 1: Pre-flight SSH check
+            SyncStatus = "Checking SSH connection...";
+            StatusBarText = "Sync: testing SSH...";
+            var (sshOk, sshMsg) = await _sshService.TestConnectionAsync(appSettings);
+            if (!sshOk)
+            {
+                StatusBarText = $"Sync failed: SSH not available — {sshMsg}";
+                SyncStatus = "";
+                return;
+            }
+
+            // Step 2: Patch server config
+            SyncStatus = "Patching server config...";
+            StatusBarText = "Sync: updating server config...";
+            var (patchOk, patchMsg) = await _sshService.PatchServerConfigAsync(
+                appSettings, changes,
+                msg => Application.Current?.Dispatcher?.BeginInvoke(() => SyncStatus = msg));
+            if (!patchOk)
+            {
+                StatusBarText = $"Sync failed: could not patch server — {patchMsg}";
+                SyncStatus = "";
+                return;
+            }
+
+            // Step 3: Schedule server restart (2s delay — gives SSH time to disconnect)
+            SyncStatus = "Scheduling server restart...";
+            StatusBarText = "Sync: scheduling server restart...";
+            var (restartOk, restartMsg) = await _sshService.ScheduleServerRestartAsync(appSettings, 2);
+            if (!restartOk)
+            {
+                Logger.Warn($"Server restart scheduling failed: {restartMsg}");
+                SyncStatus = "Rolling back server config...";
+                var (rbOkRestart, rbMsgRestart) = await _sshService.RollbackServerConfigAsync(appSettings);
+                StatusBarText = rbOkRestart
+                    ? "Sync failed: restart failed, server config rolled back."
+                    : $"Sync failed: restart failed AND rollback failed: {rbMsgRestart}. Manual intervention needed.";
+                SyncStatus = "";
+                return;
+            }
+
+            // Step 4: If connected, disconnect and reconnect with new config
+            // NOTE: Save local config ONLY after reconnect succeeds (prevents lockout if new config is bad)
+            if (wasConnected)
+            {
+                SyncStatus = "Disconnecting tunnel...";
+                StatusBarText = "Sync: disconnecting...";
+                // Save local config now (before disconnect) so paqet restarts with new config
+                await Task.Run(() => _configService.WritePaqetConfig(newConfig));
+                await DisconnectInternalAsync();
+
+                // Wait for server restart to complete
+                SyncStatus = "Waiting for server restart...";
+                StatusBarText = "Sync: waiting for server...";
+                await Task.Delay(4000); // 2s nohup delay + 2s restart buffer
+
+                // Step 5: Reconnect
+                SyncStatus = "Reconnecting...";
+                StatusBarText = "Sync: reconnecting...";
+                var reconnectOk = await ReconnectWithRetryAsync(maxAttempts: 3, delayMs: 3000);
+
+                if (!reconnectOk)
+                {
+                    // Reconnect failed — try rollback
+                    Logger.Warn("Sync: reconnect failed after 3 attempts, rolling back...");
+                    SyncStatus = "Reconnect failed — rolling back...";
+                    StatusBarText = "Sync: reconnect failed, rolling back server...";
+
+                    var (rbOk, rbMsg) = await _sshService.RollbackServerConfigAsync(appSettings);
+                    if (rbOk)
+                    {
+                        // Restore local config from previous snapshot (ALL fields, not just breaking)
+                        if (_previousConfig != null)
+                        {
+                            await Task.Run(() => _configService.WritePaqetConfig(_previousConfig));
+                            RestoreUiFromConfig(_previousConfig);
+                        }
+                        await Task.Delay(3000);
+                        await ReconnectWithRetryAsync(maxAttempts: 2, delayMs: 2000);
+                        StatusBarText = "Sync rolled back — connection restored with previous config.";
+                    }
+                    else
+                    {
+                        // Rollback failed — restore local config to previous anyway to prevent lockout
+                        if (_previousConfig != null)
+                        {
+                            await Task.Run(() => _configService.WritePaqetConfig(_previousConfig));
+                            RestoreUiFromConfig(_previousConfig);
+                        }
+                        StatusBarText = $"Sync failed and server rollback failed: {rbMsg}. Local config restored. Manual server fix needed.";
+                    }
+                    SyncStatus = "";
+                    return;
+                }
+            }
+            else
+            {
+                // Not connected — just save local config
+                await Task.Run(() => _configService.WritePaqetConfig(newConfig));
+            }
+
+            // Success
+            _previousConfig = newConfig.Snapshot();
+            HasSyncableChanges = false;
+            SyncStatus = "";
+            StatusBarText = $"Config synced to server ({changes.Count} field(s)) and saved.";
+            Logger.Info($"Config sync complete: {string.Join(", ", changes.Keys)}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Config sync failed", ex);
+            StatusBarText = $"Sync error: {ex.Message}";
+            SyncStatus = "";
+        }
+        finally
+        {
+            IsSyncing = false;
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Disconnect paqet without full UI toggle flow.</summary>
+    private async Task DisconnectInternalAsync()
+    {
+        try
+        {
+            _userRequestedConnect = false;
+            if (IsFullSystemTunnel)
+                await Task.Run(() => _tunService.StopAsync());
+            await Task.Run(() => _paqetService.Stop());
+            IsConnected = false;
+            ConnectionStatus = "Disconnected (sync)";
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"DisconnectInternal error: {ex.Message}");
+        }
+    }
+
+    /// <summary>Try to reconnect paqet with retry logic.</summary>
+    private async Task<bool> ReconnectWithRetryAsync(int maxAttempts, int delayMs)
+    {
+        for (int i = 1; i <= maxAttempts; i++)
+        {
+            try
+            {
+                SyncStatus = $"Reconnecting (attempt {i}/{maxAttempts})...";
+                var result = await Task.Run(() => _paqetService.Start());
+                if (result.Success)
+                {
+                    // Wait for SOCKS port to be ready
+                    for (int w = 0; w < 10; w++)
+                    {
+                        await Task.Delay(500);
+                        if (PaqetService.IsPortListening())
+                        {
+                            IsConnected = true;
+                            ConnectionStatus = "Connected";
+                            _connectedSince = DateTime.Now;
+                            _userRequestedConnect = true;
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Reconnect attempt {i} failed: {ex.Message}");
+            }
+            if (i < maxAttempts) await Task.Delay(delayMs);
+        }
+        return false;
+    }
+
+    /// <summary>Restore UI fields from a config snapshot (used during rollback).</summary>
+    private void RestoreUiFromConfig(PaqetConfig config)
+    {
+        Application.Current?.Dispatcher?.BeginInvoke(() =>
+        {
+            Key = config.Key;
+            SelectedCipher = config.KcpBlock;
+            SelectedKcpMode = config.KcpMode;
+            Mtu = config.Mtu;
+            ReceiveWindow = config.RcvWnd;
+            SendWindow = config.SndWnd;
         });
-        StatusBarText = "Config saved.";
-        IsBusy = false;
+    }
+
+    [RelayCommand]
+    private async Task ResetServerToDefaultsAsync()
+    {
+        if (IsServerBusy || IsSyncing) return;
+        if (string.IsNullOrEmpty(ServerSshHost))
+        {
+            StatusBarText = "Server SSH not configured.";
+            return;
+        }
+
+        IsServerBusy = true;
+        SyncStatus = "Resetting server to defaults...";
+        StatusBarText = "Resetting server config...";
+        try
+        {
+            var (ok, msg) = await _sshService.ResetServerConfigAsync(GetServerSettings());
+            if (ok)
+            {
+                // Also reset local breaking fields to match server defaults
+                SelectedCipher = "aes";
+                SelectedKcpMode = "fast";
+                Mtu = 1350;
+                ReceiveWindow = 1024; // match server default
+                SendWindow = 1024;    // match server default
+                await SaveConfigLocalOnlyAsync();
+                StatusBarText = "Server and client reset to defaults.";
+            }
+            else
+            {
+                StatusBarText = $"Reset failed: {msg}";
+            }
+            ServerOutput = msg;
+        }
+        catch (Exception ex)
+        {
+            StatusBarText = $"Reset error: {ex.Message}";
+        }
+        finally
+        {
+            IsServerBusy = false;
+            SyncStatus = "";
+        }
+    }
+
+    /// <summary>Save config locally without triggering sync.</summary>
+    private async Task SaveConfigLocalOnlyAsync()
+    {
+        var config = BuildConfigFromUi();
+        await Task.Run(() => _configService.WritePaqetConfig(config));
+        _previousConfig = config.Snapshot();
+        HasSyncableChanges = false;
     }
 
     [RelayCommand]
@@ -1878,6 +2214,63 @@ public partial class MainViewModel : ObservableObject
                     }
                 }
 
+                // TUN degradation detection and periodic recovery
+                // If user wants full system tunnel but TUN is not running, try to recover
+                if (IsConnected && IsFullSystemTunnel && !_tunService.IsRunning() && !IsConnecting && !IsBusy)
+                {
+                    if (!_tunDegradedNotified)
+                    {
+                        _tunDegradedNotified = true;
+                        TunnelMode = "SOCKS5";
+                        if (!ConnectionStatus.Contains("SOCKS5 only"))
+                            ConnectionStatus = "Connected (SOCKS5 only — TUN failed)";
+                        Logger.Warn("TUN degradation detected: FullSystemTunnel=true but tun2socks not running");
+                    }
+
+                    _tunRecoveryCounter++;
+                    if (_tunRecoveryCounter >= TUN_RECOVERY_INTERVAL && _tunRecoveryAttempts < TUN_RECOVERY_MAX_ATTEMPTS)
+                    {
+                        _tunRecoveryCounter = 0;
+                        _tunRecoveryAttempts++;
+                        Logger.Info($"TUN recovery attempt {_tunRecoveryAttempts}/{TUN_RECOVERY_MAX_ATTEMPTS}...");
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                var config = _configService.ReadPaqetConfig();
+                                var tunResult = await _tunService.StartAsync(config.ServerHost, _configService.ReadAppSettings());
+                                if (tunResult.Success)
+                                {
+                                    Logger.Info($"TUN recovered after {_tunRecoveryAttempts} attempt(s)!");
+                                    Application.Current?.Dispatcher?.BeginInvoke(() =>
+                                    {
+                                        TunnelMode = "TUNNEL";
+                                        ConnectionStatus = "Connected (Full System)";
+                                        _tunDegradedNotified = false;
+                                        _tunRecoveryAttempts = 0;
+                                        _tunRecoveryCounter = 0;
+                                    });
+                                }
+                                else
+                                {
+                                    Logger.Info($"TUN recovery attempt {_tunRecoveryAttempts} failed: {tunResult.Message}");
+                                }
+                            }
+                            catch (Exception ex) { Logger.Error("TUN recovery failed", ex); }
+                        });
+                    }
+                }
+                else if (IsConnected && IsFullSystemTunnel && _tunService.IsRunning() && _tunDegradedNotified)
+                {
+                    // TUN recovered (e.g. user toggled it manually)
+                    _tunDegradedNotified = false;
+                    _tunRecoveryAttempts = 0;
+                    _tunRecoveryCounter = 0;
+                    TunnelMode = "TUNNEL";
+                    ConnectionStatus = "Connected (Full System)";
+                    Logger.Info("TUN degradation cleared — adapter is running again");
+                }
+
                 // Update connection time
                 if (IsConnected)
                 {
@@ -1991,7 +2384,10 @@ public partial class MainViewModel : ObservableObject
                 var config = _configService.ReadPaqetConfig();
                 var tunResult = await _tunService.StartAsync(config.ServerHost, _configService.ReadAppSettings());
                 if (!tunResult.Success)
-                    Logger.Warn($"TUN reconnect failed: {tunResult.Message}");
+                {
+                    Logger.Warn($"TUN reconnect failed: {tunResult.Message} — health check will retry");
+                    // Don't block reconnect — health check TUN recovery will handle retry
+                }
             }
 
             // R4-18: Force DNS for SOCKS5 mode to prevent DNS leaks after reconnect
@@ -2012,7 +2408,9 @@ public partial class MainViewModel : ObservableObject
                 _reconnectAttempts = 0;
                 var tunActive = _tunService.IsRunning();
                 TunnelMode = tunActive ? "TUNNEL" : "SOCKS5";
-                ConnectionStatus = tunActive ? "Reconnected (Full System)" : "Reconnected";
+                ConnectionStatus = tunActive
+                    ? "Reconnected (Full System)"
+                    : (IsFullSystemTunnel ? "Reconnected (SOCKS5 only — TUN failed)" : "Reconnected");
                 StatusBarText = "Reconnected";
                 _networkMonitor.Start();
                 IsConnecting = false;
