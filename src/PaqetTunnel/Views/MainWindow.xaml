@@ -1098,7 +1098,8 @@
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="ToggleButton">
                                                         <TextBlock x:Name="Tb" Foreground="{DynamicResource AccentBrush}"
-                                                                   FontSize="10.5" Cursor="Hand" Opacity="0.7">
+                                                                   FontSize="10.5" Cursor="Hand" Opacity="0.7"
+                                                                   Background="Transparent">
                                                             <TextBlock.Style>
                                                                 <Style TargetType="TextBlock">
                                                                     <Setter Property="Text" Value="▸ Advanced Settings" />
@@ -1264,6 +1265,11 @@
                                             <TextBox Text="{Binding PcapSockBuffer, UpdateSourceTrigger=PropertyChanged}" />
                                         </StackPanel>
                                     </Grid>
+                                    <Button Content="↺ Reset to Defaults" FontSize="10" Opacity="0.6"
+                                            Command="{Binding ResetAdvancedSettingsCommand}"
+                                            HorizontalAlignment="Left" Padding="8,3" Margin="0,4,0,0"
+                                            Background="Transparent" BorderThickness="0"
+                                            Foreground="{DynamicResource TextDimBrush}" Cursor="Hand" />
                                 </StackPanel>
 
                                 <Button Content="Save Configuration" Style="{DynamicResource PrimaryButton}"

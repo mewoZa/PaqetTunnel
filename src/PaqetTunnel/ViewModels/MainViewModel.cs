@@ -967,10 +967,36 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveConfigAsync()
     {
-        // R5 svc-08: validate port range
+        // Validate port range
         if (ServerPort < 1 || ServerPort > 65535)
         {
             StatusBarText = "Invalid port (1-65535).";
+            return;
+        }
+        // Validate advanced settings
+        if (Connections < 1 || Connections > 256)
+        {
+            StatusBarText = "Invalid connections (1-256).";
+            return;
+        }
+        if (Mtu < 50 || Mtu > 1500)
+        {
+            StatusBarText = "Invalid MTU (50-1500).";
+            return;
+        }
+        if (ReceiveWindow < 1 || ReceiveWindow > 65535)
+        {
+            StatusBarText = "Invalid receive window (1-65535).";
+            return;
+        }
+        if (SendWindow < 1 || SendWindow > 65535)
+        {
+            StatusBarText = "Invalid send window (1-65535).";
+            return;
+        }
+        if (SmuxBuffer < 1024 || StreamBuffer < 1024 || TcpBuffer < 1024 || UdpBuffer < 1024 || PcapSockBuffer < 1024)
+        {
+            StatusBarText = "Buffer sizes must be at least 1024 bytes.";
             return;
         }
 
@@ -1006,6 +1032,32 @@ public partial class MainViewModel : ObservableObject
         });
         StatusBarText = "Config saved.";
         IsBusy = false;
+    }
+
+    [RelayCommand]
+    private void ResetAdvancedSettings()
+    {
+        SelectedKcpMode = PaqetConfig.DefaultKcpMode;
+        SelectedCipher = PaqetConfig.DefaultKcpBlock;
+        SelectedLogLevel = PaqetConfig.DefaultLogLevel;
+        Connections = PaqetConfig.DefaultConn;
+        Mtu = PaqetConfig.DefaultMtu;
+        ReceiveWindow = PaqetConfig.DefaultRcvWnd;
+        SendWindow = PaqetConfig.DefaultSndWnd;
+        Nodelay = -1;
+        Interval = -1;
+        Resend = -1;
+        NoCongestion = -1;
+        SmuxBuffer = PaqetConfig.DefaultSmuxBuf;
+        StreamBuffer = PaqetConfig.DefaultStreamBuf;
+        TcpBuffer = PaqetConfig.DefaultTcpBuf;
+        UdpBuffer = PaqetConfig.DefaultUdpBuf;
+        PcapSockBuffer = PaqetConfig.DefaultPcapSockBuf;
+        LocalFlag = "PA";
+        RemoteFlag = "PA";
+        SocksUsername = "";
+        SocksPassword = "";
+        StatusBarText = "Advanced settings reset to defaults.";
     }
 
     [RelayCommand]

@@ -82,7 +82,7 @@ public sealed class PaqetConfig
     {
         get
         {
-            if (string.IsNullOrEmpty(ServerAddr)) return ServerAddr;
+            if (string.IsNullOrEmpty(ServerAddr)) return "";
             // R3-20 fix: handle bracketed IPv6 like "[::1]:8443"
             if (ServerAddr.StartsWith('['))
             {
@@ -251,7 +251,7 @@ public sealed class PaqetConfig
             $"  addr: \"{ServerAddr}\"",
             "",
             "transport:",
-            "  protocol: \"kcp\""
+            $"  protocol: \"{(string.IsNullOrEmpty(Protocol) ? "kcp" : Protocol)}\""
         ]);
         if (Conn != DefaultConn) lines.Add($"  conn: {Conn}");
         if (TcpBuf != DefaultTcpBuf) lines.Add($"  tcpbuf: {TcpBuf}");
@@ -296,6 +296,7 @@ public sealed class PaqetConfig
         result = ReplaceOrInsertYamlValue(result, "mode", KcpMode, "kcp");
         result = ReplaceOrInsertYamlValue(result, "block", KcpBlock, "kcp");
         result = ReplaceOrInsertYamlValue(result, "level", LogLevel, "log");
+        result = ReplaceOrInsertYamlValue(result, "protocol", string.IsNullOrEmpty(Protocol) ? "kcp" : Protocol, "transport");
         // Numeric KCP settings
         if (Conn != DefaultConn) result = ReplaceOrInsertYamlNumeric(result, "conn", Conn, "transport");
         if (Mtu != DefaultMtu) result = ReplaceOrInsertYamlNumeric(result, "mtu", Mtu, "kcp");
@@ -312,6 +313,12 @@ public sealed class PaqetConfig
         if (Interval >= 0) result = ReplaceOrInsertYamlNumeric(result, "interval", Interval, "kcp");
         if (Resend >= 0) result = ReplaceOrInsertYamlNumeric(result, "resend", Resend, "kcp");
         if (NoCongestion >= 0) result = ReplaceOrInsertYamlNumeric(result, "nocongestion", NoCongestion, "kcp");
+        // WDelay/AckNodelay — unquoted booleans
+        if (!string.IsNullOrEmpty(WDelay)) result = ReplaceOrInsertYamlBool(result, "wdelay", WDelay, "kcp");
+        if (!string.IsNullOrEmpty(AckNodelay)) result = ReplaceOrInsertYamlBool(result, "acknodelay", AckNodelay, "kcp");
+        // TCP flags — array format ["PA"]
+        if (!string.IsNullOrEmpty(LocalFlag)) result = ReplaceOrInsertYamlArray(result, "local_flag", LocalFlag, "tcp");
+        if (!string.IsNullOrEmpty(RemoteFlag)) result = ReplaceOrInsertYamlArray(result, "remote_flag", RemoteFlag, "tcp");
         // SOCKS5 auth
         if (!string.IsNullOrEmpty(SocksUsername)) result = ReplaceOrInsertYamlValue(result, "username", SocksUsername, "socks5");
         if (!string.IsNullOrEmpty(SocksPassword)) result = ReplaceOrInsertYamlValue(result, "password", SocksPassword, "socks5");
@@ -379,10 +386,11 @@ public sealed class PaqetConfig
         return yaml[..(headerEnd)] + insertion + yaml[headerEnd..];
     }
 
-    /// <summary>Replace or insert a numeric YAML value.</summary>
+    /// <summary>Replace or insert a numeric YAML value. Handles both bare (123) and quoted ("123") formats.</summary>
     private static string ReplaceOrInsertYamlNumeric(string yaml, string key, int newValue, string parentSection)
     {
-        var pattern = $@"({Regex.Escape(key)}\s*:\s*)\d+";
+        // Match bare numeric OR quoted numeric
+        var pattern = $@"({Regex.Escape(key)}\s*:\s*)""?\d+""?";
         var sectionIdx = yaml.IndexOf(parentSection + ":", StringComparison.Ordinal);
         if (sectionIdx < 0) return yaml;
 
@@ -407,6 +415,68 @@ public sealed class PaqetConfig
         var childMatch = Regex.Match(yaml[(headerEnd)..searchEnd], @"\n(\s+)\w");
         var indent = childMatch.Success ? childMatch.Groups[1].Value : "    ";
         return yaml[..(headerEnd)] + $"\n{indent}{key}: {newValue}" + yaml[headerEnd..];
+    }
+
+    /// <summary>Replace or insert an unquoted boolean YAML value (true/false).</summary>
+    private static string ReplaceOrInsertYamlBool(string yaml, string key, string newValue, string parentSection)
+    {
+        // Match both quoted ("true") and unquoted (true) booleans
+        var pattern = $@"({Regex.Escape(key)}\s*:\s*)""?(?:true|false)""?";
+        var sectionIdx = yaml.IndexOf(parentSection + ":", StringComparison.Ordinal);
+        if (sectionIdx < 0) return yaml;
+
+        var afterSection = yaml[(sectionIdx + parentSection.Length + 1)..];
+        var nextSectionMatch = Regex.Match(afterSection, @"\n[a-zA-Z_][a-zA-Z0-9_]*\s*:", RegexOptions.None, TimeSpan.FromSeconds(1));
+        var searchEnd = nextSectionMatch.Success
+            ? sectionIdx + parentSection.Length + 1 + nextSectionMatch.Index
+            : yaml.Length;
+
+        var region = yaml[sectionIdx..searchEnd];
+        var match = Regex.Match(region, pattern, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+        if (match.Success)
+        {
+            var replaced = region[..match.Index]
+                + Regex.Replace(match.Value, pattern, $"$1{newValue.ToLowerInvariant()}", RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1))
+                + region[(match.Index + match.Length)..];
+            return yaml[..sectionIdx] + replaced + yaml[searchEnd..];
+        }
+
+        var headerEnd = yaml.IndexOf('\n', sectionIdx);
+        if (headerEnd < 0) headerEnd = yaml.Length;
+        var childMatch = Regex.Match(yaml[(headerEnd)..searchEnd], @"\n(\s+)\w");
+        var indent = childMatch.Success ? childMatch.Groups[1].Value : "    ";
+        return yaml[..(headerEnd)] + $"\n{indent}{key}: {newValue.ToLowerInvariant()}" + yaml[headerEnd..];
+    }
+
+    /// <summary>Replace or insert a YAML array value like ["PA"].</summary>
+    private static string ReplaceOrInsertYamlArray(string yaml, string key, string newValue, string parentSection)
+    {
+        // Match array format: key: ["value"] or key: ["value", "other"]
+        var pattern = $@"({Regex.Escape(key)}\s*:\s*)\[.*?\]";
+        var sectionIdx = yaml.IndexOf(parentSection + ":", StringComparison.Ordinal);
+        if (sectionIdx < 0) return yaml;
+
+        var afterSection = yaml[(sectionIdx + parentSection.Length + 1)..];
+        var nextSectionMatch = Regex.Match(afterSection, @"\n[a-zA-Z_][a-zA-Z0-9_]*\s*:", RegexOptions.None, TimeSpan.FromSeconds(1));
+        var searchEnd = nextSectionMatch.Success
+            ? sectionIdx + parentSection.Length + 1 + nextSectionMatch.Index
+            : yaml.Length;
+
+        var region = yaml[sectionIdx..searchEnd];
+        var match = Regex.Match(region, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
+        if (match.Success)
+        {
+            var replaced = region[..match.Index]
+                + Regex.Replace(match.Value, pattern, $"$1[\"{newValue}\"]", RegexOptions.None, TimeSpan.FromSeconds(1))
+                + region[(match.Index + match.Length)..];
+            return yaml[..sectionIdx] + replaced + yaml[searchEnd..];
+        }
+
+        var headerEnd = yaml.IndexOf('\n', sectionIdx);
+        if (headerEnd < 0) headerEnd = yaml.Length;
+        var childMatch = Regex.Match(yaml[(headerEnd)..searchEnd], @"\n(\s+)\w");
+        var indent = childMatch.Success ? childMatch.Groups[1].Value : "    ";
+        return yaml[..(headerEnd)] + $"\n{indent}{key}: [\"{newValue}\"]" + yaml[headerEnd..];
     }
 }
 
