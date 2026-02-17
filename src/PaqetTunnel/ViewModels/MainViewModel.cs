@@ -1376,10 +1376,10 @@ public partial class MainViewModel : ObservableObject
         SelectedKcpMode = PaqetConfig.DefaultKcpMode;
         SelectedCipher = PaqetConfig.DefaultKcpBlock;
         SelectedLogLevel = PaqetConfig.DefaultLogLevel;
-        Connections = PaqetConfig.DefaultConn;
+        Connections = PaqetConfig.RecommendedConn;
         Mtu = PaqetConfig.DefaultMtu;
-        ReceiveWindow = PaqetConfig.DefaultRcvWnd;
-        SendWindow = PaqetConfig.DefaultSndWnd;
+        ReceiveWindow = PaqetConfig.RecommendedRcvWnd;
+        SendWindow = PaqetConfig.RecommendedSndWnd;
         Nodelay = -1;
         Interval = -1;
         Resend = -1;

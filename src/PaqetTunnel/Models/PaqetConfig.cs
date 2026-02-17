@@ -28,10 +28,10 @@ public sealed class PaqetConfig
     // ── KCP Transport ──
     public string KcpMode { get; set; } = "fast";        // transport.kcp.mode
     public string KcpBlock { get; set; } = "aes";        // transport.kcp.block
-    public int Conn { get; set; } = 1;                    // transport.conn
+    public int Conn { get; set; } = RecommendedConn;      // transport.conn
     public int Mtu { get; set; } = 1350;                  // transport.kcp.mtu
-    public int RcvWnd { get; set; } = 512;                // transport.kcp.rcvwnd
-    public int SndWnd { get; set; } = 512;                // transport.kcp.sndwnd
+    public int RcvWnd { get; set; } = RecommendedRcvWnd;  // transport.kcp.rcvwnd
+    public int SndWnd { get; set; } = RecommendedSndWnd;  // transport.kcp.sndwnd
 
     // ── KCP Manual Mode (only when mode="manual") ──
     public int Nodelay { get; set; } = -1;                // transport.kcp.nodelay (-1 = not set)
@@ -125,6 +125,11 @@ public sealed class PaqetConfig
     public static readonly int DefaultTcpBuf = 8192;
     public static readonly int DefaultUdpBuf = 4096;
     public static readonly int DefaultPcapSockBuf = 4194304;
+
+    // ── Recommended tuned defaults (written into YAML on new installs) ──
+    public static readonly int RecommendedConn = 4;
+    public static readonly int RecommendedRcvWnd = 2048;
+    public static readonly int RecommendedSndWnd = 2048;
 
     public static readonly string[] ValidKcpModes = ["normal", "fast", "fast2", "fast3", "manual"];
     public static readonly string[] ValidCiphers = ["aes", "aes-128", "aes-128-gcm", "aes-192", "salsa20", "blowfish", "twofish", "cast5", "3des", "tea", "xtea", "xor", "sm4", "none"];

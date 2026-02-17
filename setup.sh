@@ -483,6 +483,9 @@ transport:
     mode: "fast"
     block: "aes"
     key: "$safe_secret"
+    mtu: 1350
+    rcvwnd: 2048
+    sndwnd: 2048
 EOF
     chmod 600 "$CONFIG_DIR/server.yaml"
     ok "Config created"

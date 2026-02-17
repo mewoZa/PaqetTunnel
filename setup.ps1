@@ -1159,6 +1159,8 @@ transport:
     mode: "fast"
     block: "aes"
     key: "$secret"
+    rcvwnd: 2048
+    sndwnd: 2048
 "@
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText("$cfgDir\server.yaml", $serverCfg, $utf8NoBom)
@@ -1244,10 +1246,13 @@ network:
     remote_flag: ["PA"]
 transport:
   protocol: "kcp"
+  conn: 4
   kcp:
     mode: "fast"
     block: "aes"
     key: "$serverKey"
+    rcvwnd: 2048
+    sndwnd: 2048
 "@
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText("$cfgDir\client.yaml", $cfg, $utf8NoBom)
