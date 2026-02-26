@@ -271,8 +271,8 @@ network:
     addr: "192.168.1.100:0"
     router_mac: "aa:bb:cc:dd:ee:ff"
   tcp:
-    local_flag: ["PA"]
-    remote_flag: ["PA"]
+    local_flag: ["S"]
+    remote_flag: ["S"]
 transport:
   protocol: "kcp"
   kcp:

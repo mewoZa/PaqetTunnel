@@ -146,33 +146,92 @@ public sealed class PaqetService
         "https://icanhazip.com",
         "https://checkip.amazonaws.com",
     };
-
-    public static async Task<string?> CheckTunnelConnectivityAsync(int timeoutMs = 5000)
+    private static readonly string[] TunnelReachabilityEndpoints = new[]
     {
-        var perEndpointTimeoutMs = Math.Max(1500, timeoutMs / Math.Max(1, IpCheckEndpoints.Length));
+        "http://example.com",
+        "http://www.gstatic.com/generate_204",
+        "https://www.google.com/generate_204",
+    };
+
+    private static System.Net.Http.HttpClient CreateSocksHttpClient()
+    {
         var proxy = new WebProxy($"socks5://127.0.0.1:{SOCKS_PORT}");
-        using var handler = new System.Net.Http.HttpClientHandler { Proxy = proxy, UseProxy = true };
-        using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(perEndpointTimeoutMs) };
+        var handler = new System.Net.Http.HttpClientHandler { Proxy = proxy, UseProxy = true };
+        var http = new System.Net.Http.HttpClient(handler, disposeHandler: true)
+        {
+            Timeout = Timeout.InfiniteTimeSpan
+        };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
+        return http;
+    }
+
+    public static async Task<string?> CheckTunnelConnectivityAsync(int timeoutMs = 12000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(2000, timeoutMs));
+        using var http = CreateSocksHttpClient();
 
         foreach (var endpoint in IpCheckEndpoints)
         {
+            var remainingMs = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+            if (remainingMs <= 0) break;
+
             try
             {
-                var ip = await http.GetStringAsync(endpoint);
+                using var cts = new CancellationTokenSource(remainingMs);
+                var ip = await http.GetStringAsync(endpoint, cts.Token);
                 var trimmed = ip?.Trim();
-                if (!string.IsNullOrEmpty(trimmed) && trimmed.Length <= 45)
+                if (!string.IsNullOrEmpty(trimmed) && IPAddress.TryParse(trimmed, out _))
                 {
                     Logger.Debug($"CheckTunnelConnectivity OK via {endpoint}: {trimmed}");
                     return trimmed;
                 }
+                Logger.Debug($"CheckTunnelConnectivity ({endpoint}): unexpected payload");
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Debug($"CheckTunnelConnectivity ({endpoint}): timeout after {remainingMs}ms");
             }
             catch (Exception ex)
             {
                 Logger.Debug($"CheckTunnelConnectivity ({endpoint}): {ex.Message}");
             }
         }
+
         return null;
+    }
+
+    public static async Task<bool> CheckTunnelReachabilityAsync(int timeoutMs = 12000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(2000, timeoutMs));
+        using var http = CreateSocksHttpClient();
+
+        foreach (var endpoint in TunnelReachabilityEndpoints)
+        {
+            var remainingMs = (int)(deadline - DateTime.UtcNow).TotalMilliseconds;
+            if (remainingMs <= 0) break;
+
+            try
+            {
+                using var cts = new CancellationTokenSource(remainingMs);
+                using var response = await http.GetAsync(endpoint, cts.Token);
+                if (response.IsSuccessStatusCode || (int)response.StatusCode == 204)
+                {
+                    Logger.Debug($"CheckTunnelReachability OK via {endpoint}: {(int)response.StatusCode}");
+                    return true;
+                }
+                Logger.Debug($"CheckTunnelReachability ({endpoint}): status {(int)response.StatusCode}");
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Debug($"CheckTunnelReachability ({endpoint}): timeout after {remainingMs}ms");
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug($"CheckTunnelReachability ({endpoint}): {ex.Message}");
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Start the paqet tunnel using the 'run' subcommand. Retries on port bind failure.</summary>

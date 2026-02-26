@@ -1242,8 +1242,8 @@ network:
     addr: "${localIP}:0"
     router_mac: "$routerMAC"
   tcp:
-    local_flag: ["PA"]
-    remote_flag: ["PA"]
+    local_flag: ["S"]
+    remote_flag: ["S"]
 transport:
   protocol: "kcp"
   conn: 4

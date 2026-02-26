@@ -462,8 +462,8 @@ network:
     addr: "192.168.1.100:0"             # Local IP (for raw pcap)
     router_mac: "aa:bb:cc:dd:ee:ff"     # Gateway MAC address
   tcp:
-    local_flag: ["PA"]
-    remote_flag: ["PA"]
+    local_flag: ["S"]
+    remote_flag: ["S"]
 transport:
   protocol: "kcp"
   kcp:

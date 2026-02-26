@@ -49,8 +49,8 @@ public sealed class PaqetConfig
     public int PcapSockBuf { get; set; } = 4194304;      // network.pcap.sockbuf (4MB)
 
     // ── TCP Flags ──
-    public string LocalFlag { get; set; } = "PA";        // network.tcp.local_flag
-    public string RemoteFlag { get; set; } = "PA";       // network.tcp.remote_flag
+    public string LocalFlag { get; set; } = "S";         // network.tcp.local_flag
+    public string RemoteFlag { get; set; } = "S";        // network.tcp.remote_flag
 
     // ── SOCKS5 Auth ──
     public string SocksUsername { get; set; } = "";       // socks5[].username

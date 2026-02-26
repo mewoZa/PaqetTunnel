@@ -43,6 +43,8 @@ public partial class MainViewModel : ObservableObject
     private int _consecutiveHealthFailures;
     private int _healthCheckInFlight;
     private const int HEALTH_CHECK_INTERVAL = 10; // every 10 ticks (30s at 3s/tick)
+    private const int TUNNEL_REACHABILITY_TIMEOUT_MS = 15000;
+    private const int TUNNEL_IP_CHECK_TIMEOUT_MS = 8000;
     private const int HEALTH_FAIL_THRESHOLD = 2;  // require 2 consecutive failures before warning
     private const int AUTO_REPAIR_TRIGGER_FAILURES = 3;
     private const int AUTO_REPAIR_MAX_ATTEMPTS = 8;
@@ -391,8 +393,11 @@ public partial class MainViewModel : ObservableObject
 
             // Startup verification: process/port can be alive while tunnel path is dead.
             // In that case, fail-open immediately so the machine keeps direct internet.
-            var startupTunnelIp = await PaqetService.CheckTunnelConnectivityAsync(6000);
-            if (startupTunnelIp == null)
+            var startupTunnelReachable = await PaqetService.CheckTunnelReachabilityAsync(TUNNEL_REACHABILITY_TIMEOUT_MS);
+            var startupTunnelIp = startupTunnelReachable
+                ? await PaqetService.CheckTunnelConnectivityAsync(TUNNEL_IP_CHECK_TIMEOUT_MS)
+                : null;
+            if (!startupTunnelReachable)
             {
                 Logger.Warn("Startup tunnel verification failed — entering fail-open mode");
                 if (tunActive)
@@ -425,8 +430,15 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                PublicIp = startupTunnelIp;
-                Logger.Info($"Startup tunnel verified — exit IP: {startupTunnelIp}");
+                if (startupTunnelIp != null)
+                {
+                    PublicIp = startupTunnelIp;
+                    Logger.Info($"Startup tunnel verified — exit IP: {startupTunnelIp}");
+                }
+                else
+                {
+                    Logger.Info("Startup tunnel verified — public IP lookup timed out");
+                }
             }
 
             TunnelMode = tunActive ? "TUNNEL" : "SOCKS5";
@@ -619,10 +631,13 @@ public partial class MainViewModel : ObservableObject
 
             // Step 1b: Verify actual tunnel connectivity (not just port binding)
             Application.Current?.Dispatcher?.BeginInvoke(() => ConnectionStatus = "Verifying tunnel...");
-            var tunnelIp = await PaqetService.CheckTunnelConnectivityAsync(8000);
-            var tunnelVerified = tunnelIp != null;
+            var tunnelReachable = await PaqetService.CheckTunnelReachabilityAsync(TUNNEL_REACHABILITY_TIMEOUT_MS);
+            var tunnelIp = tunnelReachable
+                ? await PaqetService.CheckTunnelConnectivityAsync(TUNNEL_IP_CHECK_TIMEOUT_MS)
+                : null;
+            var tunnelVerified = tunnelReachable;
             var failOpenMode = false;
-            if (tunnelIp == null)
+            if (!tunnelReachable)
             {
                 Logger.Warn("Tunnel connectivity check failed — SOCKS5 port open but tunnel not working");
                 Logger.Info("Proceeding with connection despite connectivity check failure");
@@ -637,8 +652,15 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                Logger.Info($"Tunnel verified — exit IP: {tunnelIp}");
-                Application.Current?.Dispatcher?.BeginInvoke(() => PublicIp = tunnelIp);
+                if (tunnelIp != null)
+                {
+                    Logger.Info($"Tunnel verified — exit IP: {tunnelIp}");
+                    Application.Current?.Dispatcher?.BeginInvoke(() => PublicIp = tunnelIp);
+                }
+                else
+                {
+                    Logger.Info("Tunnel verified — public IP lookup timed out");
+                }
             }
 
             // Step 2: If TUN mode, start tun2socks
@@ -997,7 +1019,7 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
+            var ip = await PaqetService.CheckTunnelConnectivityAsync(TUNNEL_IP_CHECK_TIMEOUT_MS);
             Application.Current?.Dispatcher?.BeginInvoke(() => PublicIp = ip ?? "—");
         }
         catch { Application.Current?.Dispatcher?.BeginInvoke(() => PublicIp = "unavailable"); }
@@ -1462,8 +1484,8 @@ public partial class MainViewModel : ObservableObject
         TcpBuffer = PaqetConfig.DefaultTcpBuf;
         UdpBuffer = PaqetConfig.DefaultUdpBuf;
         PcapSockBuffer = PaqetConfig.DefaultPcapSockBuf;
-        LocalFlag = "PA";
-        RemoteFlag = "PA";
+        LocalFlag = "S";
+        RemoteFlag = "S";
         SocksUsername = "";
         SocksPassword = "";
         StatusBarText = "Advanced settings reset to defaults.";
@@ -1653,9 +1675,10 @@ public partial class MainViewModel : ObservableObject
 
         await Task.Run(async () =>
         {
-            // 1. Check tunnel connectivity + measure latency
+            // 1. Check tunnel reachability + measure latency
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
+            var tunnelOk = await PaqetService.CheckTunnelReachabilityAsync(TUNNEL_REACHABILITY_TIMEOUT_MS);
+            var ip = tunnelOk ? await PaqetService.CheckTunnelConnectivityAsync(TUNNEL_IP_CHECK_TIMEOUT_MS) : null;
             sw.Stop();
             var latencyMs = (int)sw.ElapsedMilliseconds;
 
@@ -1672,14 +1695,14 @@ public partial class MainViewModel : ObservableObject
 
             Application.Current?.Dispatcher?.BeginInvoke(() =>
             {
-                if (ip != null)
+                if (tunnelOk)
                 {
                     ServerLatency = $"{latencyMs}ms";
                     InternetStatus = "Internet OK";
                     InternetStatusColor = "#3fb950";
                     IsInternetOk = true;
                     StatusBarText = $"Internet OK — latency {latencyMs}ms";
-                    if (string.IsNullOrEmpty(PublicIp) || PublicIp == "—") PublicIp = ip;
+                    if (ip != null && (string.IsNullOrEmpty(PublicIp) || PublicIp == "—")) PublicIp = ip;
                 }
                 else if (directOk)
                 {
@@ -1726,6 +1749,36 @@ public partial class MainViewModel : ObservableObject
         {
             _autoRepairAttempts = 0;
             _lastAutoRepairAt = DateTime.MinValue;
+        }
+    }
+
+    private async Task<bool> TryApplyTcpFlagFallbackAsync()
+    {
+        try
+        {
+            var current = _configService.ReadPaqetConfig();
+            if (!string.Equals(current.LocalFlag, "PA", StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(current.RemoteFlag, "PA", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            current.LocalFlag = "S";
+            current.RemoteFlag = "S";
+            await Task.Run(() => _configService.WritePaqetConfig(current));
+
+            LocalFlag = "S";
+            RemoteFlag = "S";
+            _previousConfig = current.Snapshot();
+            HasSyncableChanges = false;
+
+            Logger.Warn("Applied TCP flag fallback profile: local=S, remote=S");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"TCP flag fallback apply failed: {ex.Message}");
+            return false;
         }
     }
 
@@ -1797,7 +1850,23 @@ public partial class MainViewModel : ObservableObject
             await Task.Delay(3000);
             await CheckInternetAsync();
 
-            // Step 5: If still down, try server-side restart (when SSH is configured)
+            // Step 5: If still down, apply client-side TCP flag fallback profile (PA/PA -> S/S)
+            if (!IsInternetOk)
+            {
+                var fallbackApplied = await TryApplyTcpFlagFallbackAsync();
+                if (fallbackApplied)
+                {
+                    Logger.Warn("Repair fallback: reconnecting with TCP flag profile S/S");
+                    StatusBarText = "Applying TCP flag fallback profile...";
+                    await DisconnectAsync();
+                    await Task.Delay(1000);
+                    await ConnectAsync();
+                    await Task.Delay(3500);
+                    await CheckInternetAsync();
+                }
+            }
+
+            // Step 6: If still down, try server-side restart (when SSH is configured)
             if (!IsInternetOk)
             {
                 var serverRestarted = await TryServerSideRepairAsync();
@@ -1812,7 +1881,7 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
-            // Step 6: Last-resort fail-open for full-tunnel mode
+            // Step 7: Last-resort fail-open for full-tunnel mode
             if (!IsInternetOk && IsFullSystemTunnel && _tunService.IsRunning())
             {
                 Logger.Warn("Repair fallback: suspending TUN for direct internet fail-open");
@@ -2312,9 +2381,10 @@ public partial class MainViewModel : ObservableObject
                             {
                                 try
                                 {
-                                    // Measure tunnel latency (time to get IP through SOCKS5)
+                                    // Measure tunnel latency using reachability through SOCKS5.
                                     var sw = System.Diagnostics.Stopwatch.StartNew();
-                                    var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
+                                    var tunnelOk = await PaqetService.CheckTunnelReachabilityAsync(TUNNEL_REACHABILITY_TIMEOUT_MS);
+                                    var ip = tunnelOk ? await PaqetService.CheckTunnelConnectivityAsync(TUNNEL_IP_CHECK_TIMEOUT_MS) : null;
                                     sw.Stop();
                                     var latencyMs = (int)sw.ElapsedMilliseconds;
 
@@ -2330,7 +2400,7 @@ public partial class MainViewModel : ObservableObject
                                     }
                                     catch { directOk = false; }
 
-                                    if (ip == null && IsConnected)
+                                    if (!tunnelOk && IsConnected)
                                     {
                                         var failures = System.Threading.Interlocked.Increment(ref _consecutiveHealthFailures);
                                         Logger.Warn($"Health check failed ({failures}/{HEALTH_FAIL_THRESHOLD}), direct={directOk}");
@@ -2363,7 +2433,7 @@ public partial class MainViewModel : ObservableObject
                                             }));
                                         }
                                     }
-                                    else if (ip != null)
+                                    else if (tunnelOk)
                                     {
                                         var prevFailures = System.Threading.Interlocked.Exchange(ref _consecutiveHealthFailures, 0);
                                         if (prevFailures > 0)
@@ -2373,14 +2443,14 @@ public partial class MainViewModel : ObservableObject
                                         {
                                             if (ConnectionStatus.Contains("tunnel check failed"))
                                                 ConnectionStatus = IsFullSystemTunnel ? "Connected (Full System)" : "Connected";
-                                            if (string.IsNullOrEmpty(PublicIp) || PublicIp == "—")
+                                            if (ip != null && (string.IsNullOrEmpty(PublicIp) || PublicIp == "—"))
                                                 PublicIp = ip;
                                             ServerLatency = $"{latencyMs}ms";
                                             InternetStatus = "Internet OK";
                                             InternetStatusColor = "#3fb950";
                                             IsInternetOk = true;
                                         });
-                                        Logger.Debug($"Health check OK — exit IP: {ip}, latency={latencyMs}ms");
+                                        Logger.Debug($"Health check OK — exit IP: {ip ?? "unavailable"}, latency={latencyMs}ms");
                                     }
                                 }
                                 catch (Exception ex) { Logger.Error("Health check failed", ex); }
