@@ -19,6 +19,7 @@ public sealed class SshService
     private const string SETUP_URL = "https://raw.githubusercontent.com/mewoZa/PaqetTunnel/master/setup.sh";
     private const string SOCKS_HOST = "127.0.0.1";
     private const int SOCKS_PORT = 10800;
+    private const int CONNECT_TIMEOUT_SECONDS = 12;
 
     private static bool IsSocksRunning()
     {
@@ -35,7 +36,7 @@ public sealed class SshService
         return false;
     }
 
-    private static ConnectionInfo BuildConnection(AppSettings settings)
+    private static ConnectionInfo BuildConnection(AppSettings settings, bool useSocks)
     {
         var host = settings.ServerSshHost;
         var port = settings.ServerSshPort > 0 ? settings.ServerSshPort : 22;
@@ -58,8 +59,6 @@ public sealed class SshService
             throw new InvalidOperationException("No SSH key or password configured. Set ServerSshKeyPath or ServerSshPassword.");
         }
 
-        // Route through SOCKS5 proxy when tunnel is active to avoid routing loops
-        var useSocks = IsSocksRunning();
         Logger.Info($"SSH: target={host}:{port} user={user} proxy={useSocks}");
 
         ConnectionInfo connInfo;
@@ -74,13 +73,13 @@ public sealed class SshService
             connInfo = new ConnectionInfo(host, port, user, auth);
         }
 
-        connInfo.Timeout = TimeSpan.FromSeconds(30);
+        connInfo.Timeout = TimeSpan.FromSeconds(CONNECT_TIMEOUT_SECONDS);
         return connInfo;
     }
 
-    private static SshClient CreateClient(AppSettings settings)
+    private static SshClient CreateClient(AppSettings settings, bool useSocks)
     {
-        var connInfo = BuildConnection(settings);
+        var connInfo = BuildConnection(settings, useSocks);
         var client = new SshClient(connInfo);
         // BUG-02 fix: verify host key against known fingerprints
         var knownHostsPath = System.IO.Path.Combine(AppPaths.DataDir, "known_hosts");
@@ -122,6 +121,42 @@ public sealed class SshService
     }
 
     /// <summary>
+    /// Connect SSH with automatic SOCKS->direct fallback when SOCKS is listening
+    /// but not actually forwarding (common during tunnel outages).
+    /// </summary>
+    private static SshClient ConnectClient(AppSettings settings)
+    {
+        Exception? lastError = null;
+        var socksRunning = IsSocksRunning();
+        var attempts = socksRunning ? new[] { true, false } : new[] { false };
+
+        foreach (var useSocks in attempts)
+        {
+            SshClient? client = null;
+            var mode = useSocks ? "socks5" : "direct";
+            try
+            {
+                client = CreateClient(settings, useSocks);
+                client.Connect();
+                if (client.IsConnected)
+                {
+                    Logger.Info($"SSH connected via {mode}");
+                    return client;
+                }
+                client.Dispose();
+            }
+            catch (Exception ex)
+            {
+                try { client?.Dispose(); } catch { }
+                lastError = ex;
+                Logger.Warn($"SSH connect via {mode} failed: {ex.Message}");
+            }
+        }
+
+        throw new InvalidOperationException($"SSH connection failed in all modes: {lastError?.Message ?? "unknown error"}", lastError);
+    }
+
+    /// <summary>
     /// Run a server management command via SSH.
     /// Valid commands: status, install, update, uninstall, logs, restart
     /// </summary>
@@ -137,8 +172,7 @@ public sealed class SshService
 
                 onProgress?.Invoke($"Connecting to {settings.ServerSshUser}@{settings.ServerSshHost}...");
 
-                using var client = CreateClient(settings);
-                client.Connect();
+                using var client = ConnectClient(settings);
 
                 if (!client.IsConnected)
                     return (false, "SSH connection failed — check host, port, and credentials.");
@@ -236,8 +270,7 @@ public sealed class SshService
                 if (string.IsNullOrEmpty(settings.ServerSshHost))
                     return (false, "Host not configured");
 
-                using var client = CreateClient(settings);
-                client.Connect();
+                using var client = ConnectClient(settings);
 
                 if (!client.IsConnected)
                     return (false, "Connection failed");
@@ -271,8 +304,7 @@ public sealed class SshService
                 if (string.IsNullOrEmpty(settings.ServerSshHost))
                     return (false, "Server SSH host not configured.");
 
-                using var client = CreateClient(settings);
-                client.Connect();
+                using var client = ConnectClient(settings);
                 if (!client.IsConnected) return (false, "SSH connection failed.");
 
                 var cmd = client.RunCommand("cat /etc/paqet/server.yaml");
@@ -307,8 +339,7 @@ public sealed class SshService
                 if (changes.Count == 0)
                     return (true, "No changes to apply.");
 
-                using var client = CreateClient(settings);
-                client.Connect();
+                using var client = ConnectClient(settings);
                 if (!client.IsConnected) return (false, "SSH connection failed.");
 
                 // Backup current config
@@ -378,8 +409,7 @@ public sealed class SshService
         {
             try
             {
-                using var client = CreateClient(settings);
-                client.Connect();
+                using var client = ConnectClient(settings);
                 if (!client.IsConnected) return (false, "SSH connection failed.");
 
                 var cmd = client.RunCommand(
@@ -406,8 +436,7 @@ public sealed class SshService
         {
             try
             {
-                using var client = CreateClient(settings);
-                client.Connect();
+                using var client = ConnectClient(settings);
                 if (!client.IsConnected) return (false, "SSH connection failed for rollback.");
 
                 var cmd = client.RunCommand(
@@ -436,8 +465,7 @@ public sealed class SshService
         {
             try
             {
-                using var client = CreateClient(settings);
-                client.Connect();
+                using var client = ConnectClient(settings);
                 if (!client.IsConnected) return (false, "SSH connection failed.");
 
                 // Read current key to preserve it

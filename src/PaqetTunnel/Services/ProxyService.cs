@@ -529,6 +529,48 @@ public sealed class ProxyService
         catch { return false; }
     }
 
+    /// <summary>
+    /// Some older builds created a malformed task command with an unclosed --config quote.
+    /// Detect and recreate that task automatically to avoid boot-time tunnel failures.
+    /// </summary>
+    public void RepairStartBeforeLogonTaskIfMalformed()
+    {
+        try
+        {
+            var output = PaqetService.RunCommand("schtasks", $"/query /tn \"{BOOT_TASK_NAME}\" /v /fo LIST");
+            if (string.IsNullOrWhiteSpace(output) || !output.Contains("Task To Run:", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            string? taskToRunLine = null;
+            foreach (var raw in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var line = raw.Trim();
+                if (line.StartsWith("Task To Run:", StringComparison.OrdinalIgnoreCase))
+                {
+                    taskToRunLine = line;
+                    break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(taskToRunLine))
+                return;
+
+            var hasConfigQuote = taskToRunLine.Contains("--config \"", StringComparison.Ordinal);
+            var hasClosingQuote = taskToRunLine.EndsWith("\"", StringComparison.Ordinal);
+            if (hasConfigQuote && !hasClosingQuote)
+            {
+                Logger.Warn("Detected malformed PaqetTunnelService task command — recreating task");
+                var (ok, message) = SetStartBeforeLogon(true);
+                if (ok) Logger.Info("PaqetTunnelService task repaired successfully");
+                else Logger.Warn($"Failed to repair PaqetTunnelService task: {message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"RepairStartBeforeLogonTaskIfMalformed failed: {ex.Message}");
+        }
+    }
+
     public (bool Success, string Message) SetStartBeforeLogon(bool enable)
     {
         try
@@ -543,11 +585,18 @@ public sealed class ProxyService
                 if (!File.Exists(configPath))
                     return (false, "Paqet config not found. Connect at least once first.");
 
+                var safeBinary = binaryPath.Replace("'", "''");
+                var safeConfig = configPath.Replace("'", "''");
+                var safeBinDir = AppPaths.BinDir.Replace("'", "''");
                 var psScript =
-                    $"$a = New-ScheduledTaskAction -Execute '{binaryPath}' -Argument 'run --config \"\"{configPath}\"\"' -WorkingDirectory '{AppPaths.BinDir}';" +
-                    $"$t = New-ScheduledTaskTrigger -AtStartup;" +
-                    $"$p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;" +
-                    $"$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1);" +
+                    $"$bin = '{safeBinary}';" +
+                    $"$cfg = '{safeConfig}';" +
+                    $"$wd = '{safeBinDir}';" +
+                    "$arg = 'run --config ' + '\"' + $cfg + '\"';" +
+                    "$a = New-ScheduledTaskAction -Execute $bin -Argument $arg -WorkingDirectory $wd;" +
+                    "$t = New-ScheduledTaskTrigger -AtStartup;" +
+                    "$p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;" +
+                    "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1);" +
                     $"Register-ScheduledTask -TaskName '{BOOT_TASK_NAME}' -Action $a -Trigger $t -Principal $p -Settings $s -Force | Out-Null";
                 PaqetService.RunCommand("powershell", $"-NoProfile -Command \"{psScript}\"");
             }

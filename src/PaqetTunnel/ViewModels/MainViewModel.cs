@@ -41,8 +41,15 @@ public partial class MainViewModel : ObservableObject
     private int _healthCheckCounter;
     private int _healthRefreshCounter;
     private int _consecutiveHealthFailures;
+    private int _healthCheckInFlight;
     private const int HEALTH_CHECK_INTERVAL = 10; // every 10 ticks (30s at 3s/tick)
     private const int HEALTH_FAIL_THRESHOLD = 2;  // require 2 consecutive failures before warning
+    private const int AUTO_REPAIR_TRIGGER_FAILURES = 3;
+    private const int AUTO_REPAIR_MAX_ATTEMPTS = 8;
+    private const int AUTO_REPAIR_COOLDOWN_SECONDS = 45;
+    private int _autoRepairAttempts;
+    private DateTime _lastAutoRepairAt = DateTime.MinValue;
+    private readonly object _autoRepairLock = new();
     private List<(string Name, string? OriginalDns)>? _savedAdapterDns; // BUG-05: saved DNS for restore
 
     // TUN retry logic for boot race condition
@@ -301,6 +308,8 @@ public partial class MainViewModel : ObservableObject
         IsProxySharingEnabled = appSettings.ProxySharingEnabled;
         IsAutoStartEnabled = _proxyService.IsAutoStartEnabled();
         IsStartBeforeLogonEnabled = _proxyService.IsStartBeforeLogonEnabled();
+        if (IsStartBeforeLogonEnabled)
+            _proxyService.RepairStartBeforeLogonTaskIfMalformed();
 
         // Load DNS settings
         SelectedDnsProvider = appSettings.DnsProvider ?? "auto";
@@ -326,10 +335,10 @@ public partial class MainViewModel : ObservableObject
         var ready = running && PaqetService.IsPortListening();
         Logger.Info($"Initial state: running={running}, portReady={ready}");
         IsConnected = ready;
-        if (IsConnected)
-        {
-            _connectedSince = DateTime.Now;
-            var tunActive = _tunService.IsRunning();
+            if (IsConnected)
+            {
+                _connectedSince = DateTime.Now;
+                var tunActive = _tunService.IsRunning();
 
             // If settings want TUN but tun2socks died (e.g. reboot), restart it with retries
             if (IsFullSystemTunnel && !tunActive && _tunService.AllBinariesExist())
@@ -378,6 +387,46 @@ public partial class MainViewModel : ObservableObject
                     Logger.Warn("TUN boot retries exhausted — falling back to SOCKS5 (will keep retrying via health check)");
                     _tunDegradedNotified = true; // Prevent redundant degradation notification in health check
                 }
+            }
+
+            // Startup verification: process/port can be alive while tunnel path is dead.
+            // In that case, fail-open immediately so the machine keeps direct internet.
+            var startupTunnelIp = await PaqetService.CheckTunnelConnectivityAsync(6000);
+            if (startupTunnelIp == null)
+            {
+                Logger.Warn("Startup tunnel verification failed — entering fail-open mode");
+                if (tunActive)
+                {
+                    Logger.Warn("Stopping TUN on startup due to failed tunnel verification");
+                    await _tunService.StopAsync();
+                    tunActive = false;
+                    _tunDegradedNotified = true;
+                }
+
+                if (IsFullSystemTunnel)
+                {
+                    try
+                    {
+                        var output = PaqetService.RunCommand("powershell", "-NoProfile -Command \"Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -ExpandProperty Name\"");
+                        foreach (var adapter in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                        {
+                            var name = adapter.Trim();
+                            if (!string.IsNullOrEmpty(name) && name != "PaqetTun")
+                                DnsService.RestoreAdapterDns(name, null);
+                        }
+                        DnsService.FlushCache();
+                        Logger.Info("Startup fail-open: restored adapter DNS to DHCP");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warn($"Startup fail-open DNS restore failed: {ex.Message}");
+                    }
+                }
+            }
+            else
+            {
+                PublicIp = startupTunnelIp;
+                Logger.Info($"Startup tunnel verified — exit IP: {startupTunnelIp}");
             }
 
             TunnelMode = tunActive ? "TUNNEL" : "SOCKS5";
@@ -490,9 +539,12 @@ public partial class MainViewModel : ObservableObject
         _userRequestedConnect = true;
         _reconnectAttempts = 0;
         _consecutiveHealthFailures = 0;
+        _healthCheckInFlight = 0;
         _tunDegradedNotified = false;
         _tunRecoveryAttempts = 0;
         _tunRecoveryCounter = 0;
+        _autoRepairAttempts = 0;
+        _lastAutoRepairAt = DateTime.MinValue;
         ConnectionStatus = "Connecting...";
         StatusBarText = "Connecting...";
 
@@ -568,10 +620,20 @@ public partial class MainViewModel : ObservableObject
             // Step 1b: Verify actual tunnel connectivity (not just port binding)
             Application.Current?.Dispatcher?.BeginInvoke(() => ConnectionStatus = "Verifying tunnel...");
             var tunnelIp = await PaqetService.CheckTunnelConnectivityAsync(8000);
+            var tunnelVerified = tunnelIp != null;
+            var failOpenMode = false;
             if (tunnelIp == null)
             {
                 Logger.Warn("Tunnel connectivity check failed — SOCKS5 port open but tunnel not working");
                 Logger.Info("Proceeding with connection despite connectivity check failure");
+                if (wantFullSystem)
+                {
+                    // Fail-open: don't install TUN routes when tunnel itself is unhealthy.
+                    // This preserves direct internet instead of trapping traffic in a dead tunnel.
+                    wantFullSystem = false;
+                    failOpenMode = true;
+                    Logger.Warn("Fail-open: skipping TUN startup because tunnel verification failed");
+                }
             }
             else
             {
@@ -631,12 +693,16 @@ public partial class MainViewModel : ObservableObject
 
             // R4-08: flush DNS and force leak prevention BEFORE marking connected
             DnsService.FlushCache();
-            if (!wantFullSystem)
+            if (!wantFullSystem && tunnelVerified)
             {
                 var appSett = _configService.ReadAppSettings();
                 var (p, s) = DnsService.Resolve(appSett);
                 Logger.Info($"SOCKS5 mode: forcing DNS to {p}, {s} for leak prevention");
                 _savedAdapterDns = DnsService.ForceAllAdaptersDns(p, s);
+            }
+            else if (!wantFullSystem)
+            {
+                Logger.Warn("Skipping DNS force because tunnel verification failed (fail-open mode)");
             }
 
             Application.Current?.Dispatcher?.BeginInvoke(() =>
@@ -644,8 +710,12 @@ public partial class MainViewModel : ObservableObject
                 IsConnected = true;
                 _connectedSince = DateTime.Now;
                 TunnelMode = wantFullSystem ? "TUNNEL" : "SOCKS5";
-                ConnectionStatus = wantFullSystem ? "Connected (Full System)" : "Connected";
-                StatusBarText = wantFullSystem ? "Full system tunnel active" : "Connected";
+                ConnectionStatus = wantFullSystem
+                    ? "Connected (Full System)"
+                    : (failOpenMode ? "Connected (SOCKS5 fail-open)" : "Connected");
+                StatusBarText = wantFullSystem
+                    ? "Full system tunnel active"
+                    : (failOpenMode ? "Tunnel unhealthy — direct internet fail-open active" : "Connected");
                 _networkMonitor.Start();
                 IsConnecting = false;
                 // Trigger initial internet health check
@@ -685,9 +755,12 @@ public partial class MainViewModel : ObservableObject
         _userRequestedConnect = false;
         _reconnectAttempts = 0;
         _consecutiveHealthFailures = 0; // R5-09: reset health failure counter on disconnect
+        _healthCheckInFlight = 0;
         _tunDegradedNotified = false;
         _tunRecoveryAttempts = 0;
         _tunRecoveryCounter = 0;
+        _autoRepairAttempts = 0;
+        _lastAutoRepairAt = DateTime.MinValue;
         ConnectionStatus = "Disconnecting...";
         Logger.Info("DisconnectAsync started");
 
@@ -1630,19 +1703,66 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task RepairConnectionAsync()
+    private async Task RepairConnectionAsync() => await RepairConnectionCoreAsync(autoTriggered: false);
+
+    private bool TryReserveAutoRepairSlot(int failures)
+    {
+        lock (_autoRepairLock)
+        {
+            if (IsRepairing || IsConnecting || !IsConnected || _disposed) return false;
+            if (failures < AUTO_REPAIR_TRIGGER_FAILURES) return false;
+            if (_autoRepairAttempts >= AUTO_REPAIR_MAX_ATTEMPTS) return false;
+            var now = DateTime.UtcNow;
+            if ((now - _lastAutoRepairAt).TotalSeconds < AUTO_REPAIR_COOLDOWN_SECONDS) return false;
+            _autoRepairAttempts++;
+            _lastAutoRepairAt = now;
+            return true;
+        }
+    }
+
+    private void ResetAutoRepairBudget()
+    {
+        lock (_autoRepairLock)
+        {
+            _autoRepairAttempts = 0;
+            _lastAutoRepairAt = DateTime.MinValue;
+        }
+    }
+
+    private async Task<bool> TryServerSideRepairAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerSshHost)) return false;
+        try
+        {
+            var (ok, output) = await _sshService.RunServerCommandAsync(
+                GetServerSettings(),
+                "restart",
+                msg => Application.Current?.Dispatcher?.BeginInvoke(() => StatusBarText = $"Server repair: {msg}"));
+            Logger.Info($"Server repair attempt: success={ok}, output={output}");
+            if (!ok) return false;
+            await Task.Delay(5000);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Server repair attempt failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private async Task RepairConnectionCoreAsync(bool autoTriggered)
     {
         if (IsRepairing || !IsConnected) return;
         IsRepairing = true;
-        InternetStatus = "Repairing...";
+        InternetStatus = autoTriggered ? "Auto-repairing..." : "Repairing...";
         InternetStatusColor = "#d29922";
-        StatusBarText = "Repairing connection...";
-        Logger.Info("Connection repair started");
+        StatusBarText = autoTriggered ? "Auto-repair started..." : "Repairing connection...";
+        Logger.Info($"Connection repair started (auto={autoTriggered})");
 
         try
         {
-            // Step 1: Flush DNS
-            StatusBarText = "Flushing DNS cache...";
+            // Step 1: Flush DNS cache
+            StatusBarText = autoTriggered ? "Auto-repair: flushing DNS..." : "Flushing DNS cache...";
             await Task.Run(() =>
             {
                 try
@@ -1659,19 +1779,54 @@ public partial class MainViewModel : ObservableObject
                 catch (Exception ex) { Logger.Debug($"DNS flush: {ex.Message}"); }
             });
 
-            // Step 2: Restart paqet process
-            StatusBarText = "Restarting tunnel...";
+            // Step 2: In full-tunnel mode, clear split routes first (fail-open to direct path)
+            if (IsFullSystemTunnel && _tunService.IsRunning())
+            {
+                StatusBarText = autoTriggered ? "Auto-repair: resetting TUN routes..." : "Resetting TUN routes...";
+                await _tunService.StopAsync();
+            }
+
+            // Step 3: Restart local tunnel stack
+            StatusBarText = autoTriggered ? "Auto-repair: restarting tunnel..." : "Restarting tunnel...";
             await DisconnectAsync();
             await Task.Delay(1000);
             await ConnectAsync();
 
-            // Step 3: Wait for connection to stabilize
+            // Step 4: Verify local repair
             StatusBarText = "Verifying connection...";
             await Task.Delay(3000);
-
-            // Step 4: Verify
             await CheckInternetAsync();
-            Logger.Info($"Repair complete — status: {InternetStatus}");
+
+            // Step 5: If still down, try server-side restart (when SSH is configured)
+            if (!IsInternetOk)
+            {
+                var serverRestarted = await TryServerSideRepairAsync();
+                if (serverRestarted)
+                {
+                    StatusBarText = "Server restarted, reconnecting...";
+                    await DisconnectAsync();
+                    await Task.Delay(1500);
+                    await ConnectAsync();
+                    await Task.Delay(3500);
+                    await CheckInternetAsync();
+                }
+            }
+
+            // Step 6: Last-resort fail-open for full-tunnel mode
+            if (!IsInternetOk && IsFullSystemTunnel && _tunService.IsRunning())
+            {
+                Logger.Warn("Repair fallback: suspending TUN for direct internet fail-open");
+                StatusBarText = "Tunnel unhealthy — switched to fail-open mode";
+                await _tunService.StopAsync();
+                TunnelMode = "SOCKS5";
+                ConnectionStatus = "Connected (SOCKS5 only — auto failover)";
+            }
+
+            if (IsInternetOk)
+            {
+                ResetAutoRepairBudget();
+                Logger.Info($"Repair complete — status: {InternetStatus}");
+            }
         }
         catch (Exception ex)
         {
@@ -2098,6 +2253,9 @@ public partial class MainViewModel : ObservableObject
                     {
                         _connectedSince = DateTime.Now;
                         _reconnectAttempts = 0;
+                        _healthCheckInFlight = 0;
+                        _consecutiveHealthFailures = 0;
+                        ResetAutoRepairBudget();
                         _networkMonitor.Start();
                     }
                     else
@@ -2144,73 +2302,94 @@ public partial class MainViewModel : ObservableObject
                     if (_healthCheckCounter >= HEALTH_CHECK_INTERVAL)
                     {
                         _healthCheckCounter = 0;
-                        _ = Task.Run(async () =>
+                        if (System.Threading.Interlocked.CompareExchange(ref _healthCheckInFlight, 1, 0) != 0)
                         {
-                            try
+                            Logger.Debug("Health check skipped: previous check still running");
+                        }
+                        else
+                        {
+                            _ = Task.Run(async () =>
                             {
-                            // Measure tunnel latency (time to get IP through SOCKS5)
-                            var sw = System.Diagnostics.Stopwatch.StartNew();
-                            var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
-                            sw.Stop();
-                            var latencyMs = (int)sw.ElapsedMilliseconds;
-
-                            // Also check direct internet (without tunnel) to distinguish
-                            // "tunnel down" from "internet down"
-                            bool directOk = false;
-                            try
-                            {
-                                using var directHttp = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-                                directHttp.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
-                                var resp = await directHttp.GetAsync("http://www.gstatic.com/generate_204");
-                                directOk = resp.IsSuccessStatusCode || (int)resp.StatusCode == 204;
-                            }
-                            catch { directOk = false; }
-
-                            if (ip == null && IsConnected)
-                            {
-                                var failures = System.Threading.Interlocked.Increment(ref _consecutiveHealthFailures);
-                                Logger.Warn($"Health check failed ({failures}/{HEALTH_FAIL_THRESHOLD}), direct={directOk}");
-                                Application.Current?.Dispatcher?.BeginInvoke(() =>
+                                try
                                 {
-                                    if (!directOk)
+                                    // Measure tunnel latency (time to get IP through SOCKS5)
+                                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                                    var ip = await PaqetService.CheckTunnelConnectivityAsync(8000);
+                                    sw.Stop();
+                                    var latencyMs = (int)sw.ElapsedMilliseconds;
+
+                                    // Also check direct internet (without tunnel) to distinguish
+                                    // "tunnel down" from "internet down"
+                                    bool directOk = false;
+                                    try
                                     {
-                                        InternetStatus = "No Internet";
-                                        InternetStatusColor = "#f85149";
-                                        IsInternetOk = false;
-                                        ServerLatency = "—";
+                                        using var directHttp = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                                        directHttp.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
+                                        var resp = await directHttp.GetAsync("http://www.gstatic.com/generate_204");
+                                        directOk = resp.IsSuccessStatusCode || (int)resp.StatusCode == 204;
                                     }
-                                    else
+                                    catch { directOk = false; }
+
+                                    if (ip == null && IsConnected)
                                     {
-                                        InternetStatus = "Tunnel Down";
-                                        InternetStatusColor = "#d29922";
-                                        IsInternetOk = false;
-                                        ServerLatency = "—";
+                                        var failures = System.Threading.Interlocked.Increment(ref _consecutiveHealthFailures);
+                                        Logger.Warn($"Health check failed ({failures}/{HEALTH_FAIL_THRESHOLD}), direct={directOk}");
+                                        Application.Current?.Dispatcher?.BeginInvoke(() =>
+                                        {
+                                            if (!directOk)
+                                            {
+                                                InternetStatus = "No Internet";
+                                                InternetStatusColor = "#f85149";
+                                                IsInternetOk = false;
+                                                ServerLatency = "—";
+                                            }
+                                            else
+                                            {
+                                                InternetStatus = "Tunnel Down";
+                                                InternetStatusColor = "#d29922";
+                                                IsInternetOk = false;
+                                                ServerLatency = "—";
+                                            }
+                                            if (failures >= HEALTH_FAIL_THRESHOLD)
+                                                ConnectionStatus = "Connected (tunnel check failed)";
+                                        });
+
+                                        if (TryReserveAutoRepairSlot(failures))
+                                        {
+                                            Logger.Warn($"Auto-repair triggered after {failures} consecutive health failures");
+                                            Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
+                                            {
+                                                _ = RepairConnectionCoreAsync(autoTriggered: true);
+                                            }));
+                                        }
                                     }
-                                    if (failures >= HEALTH_FAIL_THRESHOLD)
-                                        ConnectionStatus = "Connected (tunnel check failed)";
-                                });
-                            }
-                            else if (ip != null)
-                            {
-                                var prevFailures = System.Threading.Interlocked.Exchange(ref _consecutiveHealthFailures, 0);
-                                if (prevFailures > 0)
-                                    Logger.Info($"Health check recovered after {prevFailures} failure(s)");
-                                Application.Current?.Dispatcher?.BeginInvoke(() =>
+                                    else if (ip != null)
+                                    {
+                                        var prevFailures = System.Threading.Interlocked.Exchange(ref _consecutiveHealthFailures, 0);
+                                        if (prevFailures > 0)
+                                            Logger.Info($"Health check recovered after {prevFailures} failure(s)");
+                                        ResetAutoRepairBudget();
+                                        Application.Current?.Dispatcher?.BeginInvoke(() =>
+                                        {
+                                            if (ConnectionStatus.Contains("tunnel check failed"))
+                                                ConnectionStatus = IsFullSystemTunnel ? "Connected (Full System)" : "Connected";
+                                            if (string.IsNullOrEmpty(PublicIp) || PublicIp == "—")
+                                                PublicIp = ip;
+                                            ServerLatency = $"{latencyMs}ms";
+                                            InternetStatus = "Internet OK";
+                                            InternetStatusColor = "#3fb950";
+                                            IsInternetOk = true;
+                                        });
+                                        Logger.Debug($"Health check OK — exit IP: {ip}, latency={latencyMs}ms");
+                                    }
+                                }
+                                catch (Exception ex) { Logger.Error("Health check failed", ex); }
+                                finally
                                 {
-                                    if (ConnectionStatus.Contains("tunnel check failed"))
-                                        ConnectionStatus = IsFullSystemTunnel ? "Connected (Full System)" : "Connected";
-                                    if (string.IsNullOrEmpty(PublicIp) || PublicIp == "—")
-                                        PublicIp = ip;
-                                    ServerLatency = $"{latencyMs}ms";
-                                    InternetStatus = "Internet OK";
-                                    InternetStatusColor = "#3fb950";
-                                    IsInternetOk = true;
-                                });
-                                Logger.Debug($"Health check OK — exit IP: {ip}, latency={latencyMs}ms");
-                            }
-                            }
-                            catch (Exception ex) { Logger.Error("Health check failed", ex); }
-                        });
+                                    System.Threading.Interlocked.Exchange(ref _healthCheckInFlight, 0);
+                                }
+                            });
+                        }
                     }
                 }
 

@@ -479,8 +479,12 @@ public sealed class TunService
             // causing connections to hang when IPv6 is enabled but has no routes through the tunnel.
             try
             {
-                RunPowerShell($"Disable-NetAdapterBinding -Name '{TUN_ADAPTER_NAME}' -ComponentId ms_tcpip6");
-                Logger.Info("Disabled IPv6 on TUN adapter");
+                var disableIpv6Task = Task.Run(() =>
+                    RunPowerShell($"Disable-NetAdapterBinding -Name '{TUN_ADAPTER_NAME}' -ComponentId ms_tcpip6 -ErrorAction SilentlyContinue"));
+                if (disableIpv6Task.Wait(3000))
+                    Logger.Info("Disabled IPv6 on TUN adapter");
+                else
+                    Logger.Warn("Skipping IPv6 disable on TUN: command timed out");
             }
             catch (Exception ex)
             {

@@ -149,9 +149,10 @@ public sealed class PaqetService
 
     public static async Task<string?> CheckTunnelConnectivityAsync(int timeoutMs = 5000)
     {
+        var perEndpointTimeoutMs = Math.Max(1500, timeoutMs / Math.Max(1, IpCheckEndpoints.Length));
         var proxy = new WebProxy($"socks5://127.0.0.1:{SOCKS_PORT}");
         using var handler = new System.Net.Http.HttpClientHandler { Proxy = proxy, UseProxy = true };
-        using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(timeoutMs) };
+        using var http = new System.Net.Http.HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(perEndpointTimeoutMs) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("PaqetTunnel/1.0");
 
         foreach (var endpoint in IpCheckEndpoints)
