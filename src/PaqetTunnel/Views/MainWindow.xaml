@@ -241,6 +241,24 @@
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── HERO: Connect Button + Status ─────────── -->
                     <!-- ══════════════════════════════════════════════ -->
+                    <Button Command="{Binding ToggleHeroSectionCommand}"
+                            Style="{DynamicResource GhostButton}"
+                            HorizontalAlignment="Stretch" Margin="0,6,0,4"
+                            Padding="8,4" FontSize="10.5">
+                        <TextBlock TextAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="▼ Connection Control" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowHeroSection}" Value="False">
+                                            <Setter Property="Text" Value="▶ Connection Control" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+                    <StackPanel Visibility="{Binding ShowHeroSection, Converter={StaticResource BoolToVis}}">
                     <Grid HorizontalAlignment="Center" Margin="0,10,0,0">
                         <Button Command="{Binding ToggleConnectionCommand}" Cursor="Hand"
                                 IsEnabled="{Binding IsConnecting, Converter={StaticResource InvBoolConv}}">
@@ -448,10 +466,29 @@
                                    Foreground="{DynamicResource TextDimBrush}"
                                    Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
+                    </StackPanel>
 
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── INTERNET HEALTH STRIP ──────────────────── -->
                     <!-- ══════════════════════════════════════════════ -->
+                    <Button Command="{Binding ToggleInternetHealthSectionCommand}"
+                            Style="{DynamicResource GhostButton}"
+                            HorizontalAlignment="Stretch" Margin="0,0,0,4"
+                            Padding="8,4" FontSize="10.5">
+                        <TextBlock TextAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="▼ Internet Health" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowInternetHealthSection}" Value="False">
+                                            <Setter Property="Text" Value="▶ Internet Health" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+                    <StackPanel Visibility="{Binding ShowInternetHealthSection, Converter={StaticResource BoolToVis}}">
                     <Border CornerRadius="8" Padding="10,5" Margin="0,0,0,4"
                             Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
                         <Border.Background>
@@ -518,10 +555,29 @@
                             </Button>
                         </Grid>
                     </Border>
+                    </StackPanel>
 
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── LIVE STATS PANEL ──────────────────────── -->
                     <!-- ══════════════════════════════════════════════ -->
+                    <Button Command="{Binding ToggleLiveStatsSectionCommand}"
+                            Style="{DynamicResource GhostButton}"
+                            HorizontalAlignment="Stretch" Margin="0,0,0,4"
+                            Padding="8,4" FontSize="10.5">
+                        <TextBlock TextAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="▼ Live Stats" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowLiveStatsSection}" Value="False">
+                                            <Setter Property="Text" Value="▶ Live Stats" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+                    <StackPanel Visibility="{Binding ShowLiveStatsSection, Converter={StaticResource BoolToVis}}">
                     <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4"
                             Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
@@ -734,10 +790,29 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+                    </StackPanel>
 
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── QUICK TOGGLES ─────────────────────────── -->
                     <!-- ══════════════════════════════════════════════ -->
+                    <Button Command="{Binding ToggleQuickTogglesSectionCommand}"
+                            Style="{DynamicResource GhostButton}"
+                            HorizontalAlignment="Stretch" Margin="0,0,0,4"
+                            Padding="8,4" FontSize="10.5">
+                        <TextBlock TextAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="▼ Quick Toggles" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowQuickTogglesSection}" Value="False">
+                                            <Setter Property="Text" Value="▶ Quick Toggles" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+                    <StackPanel Visibility="{Binding ShowQuickTogglesSection, Converter={StaticResource BoolToVis}}">
                     <Border Style="{DynamicResource Card}" Padding="14,10" Margin="0,0,0,4">
                         <StackPanel>
                             <!-- Full System Tunnel -->
@@ -954,10 +1029,29 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+                    </StackPanel>
 
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── SYSTEM HEALTH (visible when connected) ─── -->
                     <!-- ══════════════════════════════════════════════ -->
+                    <Button Command="{Binding ToggleSystemHealthSectionCommand}"
+                            Style="{DynamicResource GhostButton}"
+                            HorizontalAlignment="Stretch" Margin="0,0,0,4"
+                            Padding="8,4" FontSize="10.5">
+                        <TextBlock TextAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="▼ System Health" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowSystemHealthSection}" Value="False">
+                                            <Setter Property="Text" Value="▶ System Health" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+                    <StackPanel Visibility="{Binding ShowSystemHealthSection, Converter={StaticResource BoolToVis}}">
                     <Border Style="{DynamicResource Card}" Padding="0" Margin="0,0,0,4"
                             Visibility="{Binding IsConnected, Converter={StaticResource BoolToVis}}">
                         <StackPanel Margin="14,10,14,10">
@@ -1027,6 +1121,7 @@
                             </Border>
                         </StackPanel>
                     </Border>
+                    </StackPanel>
 
                     <!-- ══════════════════════════════════════════════ -->
                     <!-- ── SERVER CONFIG (collapsible) ────────────── -->

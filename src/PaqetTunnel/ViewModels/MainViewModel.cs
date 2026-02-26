@@ -129,6 +129,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _statusBarText = "Initializing...";
     [ObservableProperty] private bool _showSettings;
     [ObservableProperty] private bool _showTools;
+    [ObservableProperty] private bool _showHeroSection = true;
+    [ObservableProperty] private bool _showInternetHealthSection = true;
+    [ObservableProperty] private bool _showLiveStatsSection = true;
+    [ObservableProperty] private bool _showQuickTogglesSection = true;
+    [ObservableProperty] private bool _showSystemHealthSection = true;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private bool _debugMode;
     [ObservableProperty] private bool _isFullSystemTunnel;
@@ -266,6 +271,17 @@ public partial class MainViewModel : ObservableObject
         TunnelMode = IsFullSystemTunnel ? "TUNNEL" : "SOCKS5";
         IsAutoConnect = appSettings.AutoConnectOnLaunch;
         IsStartMinimized = appSettings.StartMinimized;
+        ShowHeroSection = appSettings.SectionHeroExpanded;
+        ShowInternetHealthSection = appSettings.SectionInternetHealthExpanded;
+        ShowLiveStatsSection = appSettings.SectionLiveStatsExpanded;
+        ShowInfoPanel = appSettings.SectionInfoExpanded;
+        ShowQuickTogglesSection = appSettings.SectionQuickTogglesExpanded;
+        ShowSystemHealthSection = appSettings.SectionSystemHealthExpanded;
+        ShowSettings = appSettings.SectionServerConfigExpanded;
+        ShowAdvancedSettings = appSettings.SectionAdvancedSettingsExpanded;
+        ShowServerPanel = appSettings.SectionServerManagementExpanded;
+        ShowTools = appSettings.SectionToolsExpanded;
+        ShowLogViewer = appSettings.SectionLogViewerExpanded;
 
         // Check if paqet binary exists
         NeedsSetup = !_paqetService.BinaryExists();
@@ -331,6 +347,8 @@ public partial class MainViewModel : ObservableObject
         ServerSshPort = appSettings.ServerSshPort > 0 ? appSettings.ServerSshPort : 22;
         ServerSshKeyPath = appSettings.ServerSshKeyPath ?? "";
         ServerSshPassword = appSettings.ServerSshPassword ?? "";
+        if (ShowLogViewer)
+            RefreshLogViewer();
 
         // ── Check running state (use IsReady for port-verified status)
         var running = _paqetService.IsRunning();
@@ -989,30 +1007,81 @@ public partial class MainViewModel : ObservableObject
         });
     }
 
+    private void SaveSectionState(Action<AppSettings> update)
+    {
+        var settings = _configService.ReadAppSettings();
+        update(settings);
+        _configService.WriteAppSettings(settings);
+    }
+
+    [RelayCommand]
+    private void ToggleHeroSection()
+    {
+        ShowHeroSection = !ShowHeroSection;
+        SaveSectionState(s => s.SectionHeroExpanded = ShowHeroSection);
+    }
+
+    [RelayCommand]
+    private void ToggleInternetHealthSection()
+    {
+        ShowInternetHealthSection = !ShowInternetHealthSection;
+        SaveSectionState(s => s.SectionInternetHealthExpanded = ShowInternetHealthSection);
+    }
+
+    [RelayCommand]
+    private void ToggleLiveStatsSection()
+    {
+        ShowLiveStatsSection = !ShowLiveStatsSection;
+        SaveSectionState(s => s.SectionLiveStatsExpanded = ShowLiveStatsSection);
+    }
+
+    [RelayCommand]
+    private void ToggleQuickTogglesSection()
+    {
+        ShowQuickTogglesSection = !ShowQuickTogglesSection;
+        SaveSectionState(s => s.SectionQuickTogglesExpanded = ShowQuickTogglesSection);
+    }
+
+    [RelayCommand]
+    private void ToggleSystemHealthSection()
+    {
+        ShowSystemHealthSection = !ShowSystemHealthSection;
+        SaveSectionState(s => s.SectionSystemHealthExpanded = ShowSystemHealthSection);
+    }
+
     [RelayCommand]
     private void ToggleSettings()
     {
         ShowSettings = !ShowSettings;
+        SaveSectionState(s => s.SectionServerConfigExpanded = ShowSettings);
     }
 
     [RelayCommand]
     private void ToggleTools()
     {
         ShowTools = !ShowTools;
+        SaveSectionState(s => s.SectionToolsExpanded = ShowTools);
     }
 
     [RelayCommand]
     private void ToggleServerPanel()
     {
         ShowServerPanel = !ShowServerPanel;
+        SaveSectionState(s => s.SectionServerManagementExpanded = ShowServerPanel);
     }
 
     [RelayCommand]
     private void ToggleInfoPanel()
     {
         ShowInfoPanel = !ShowInfoPanel;
+        SaveSectionState(s => s.SectionInfoExpanded = ShowInfoPanel);
         if (ShowInfoPanel && IsConnected && PublicIp == "—")
             _ = FetchPublicIpAsync();
+    }
+
+    partial void OnShowAdvancedSettingsChanged(bool value)
+    {
+        SaveSectionState(s => s.SectionAdvancedSettingsExpanded = value);
     }
 
     private async Task FetchPublicIpAsync()
@@ -2125,6 +2194,7 @@ public partial class MainViewModel : ObservableObject
     private void ToggleLogViewer()
     {
         ShowLogViewer = !ShowLogViewer;
+        SaveSectionState(s => s.SectionLogViewerExpanded = ShowLogViewer);
         if (ShowLogViewer) RefreshLogViewer();
     }
 

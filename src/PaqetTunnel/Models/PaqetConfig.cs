@@ -577,4 +577,17 @@ public sealed class AppSettings
     public string ServerSshPassword { get; set; } = "";
     /// <summary>DPAPI-encrypted form of ServerSshPassword for safe on-disk storage.</summary>
     public string ServerSshPasswordProtected { get; set; } = "";
+
+    // UI section fold state
+    public bool SectionHeroExpanded { get; set; } = true;
+    public bool SectionInternetHealthExpanded { get; set; } = true;
+    public bool SectionLiveStatsExpanded { get; set; } = true;
+    public bool SectionInfoExpanded { get; set; }
+    public bool SectionQuickTogglesExpanded { get; set; } = true;
+    public bool SectionSystemHealthExpanded { get; set; } = true;
+    public bool SectionServerConfigExpanded { get; set; }
+    public bool SectionAdvancedSettingsExpanded { get; set; }
+    public bool SectionServerManagementExpanded { get; set; }
+    public bool SectionToolsExpanded { get; set; }
+    public bool SectionLogViewerExpanded { get; set; }
 }
