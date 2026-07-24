@@ -1080,8 +1080,24 @@
                                         <ColumnDefinition Width="80" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
-                                        <TextBlock Text="INTERFACE" Style="{DynamicResource FieldLabel}" />
-                                        <TextBox Text="{Binding NetworkInterface, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock Text="LOCAL INTERFACE (Windows NIC)" Style="{DynamicResource FieldLabel}" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="6" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0"
+                                                     Text="{Binding NetworkInterface, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="Your Windows network adapter name (e.g. Ethernet, Wi-Fi). NOT the remote server's eth0." />
+                                            <Button Grid.Column="2" Content="Detect" FontSize="10" Padding="8,4"
+                                                    Command="{Binding AutoDetectNetworkCommand}"
+                                                    ToolTip="Auto-detect local Windows interface, GUID, IP, and router MAC"
+                                                    Style="{DynamicResource GhostButton}" />
+                                        </Grid>
+                                        <TextBlock Text="Local NIC only — not the remote server (eth0/ens3)"
+                                                   FontSize="9" Opacity="0.55" Margin="0,2,0,0"
+                                                   Foreground="{DynamicResource TextDimBrush}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="2">
                                         <TextBlock Text="PORT" Style="{DynamicResource FieldLabel}" />

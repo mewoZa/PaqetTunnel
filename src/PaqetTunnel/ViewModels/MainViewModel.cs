@@ -288,8 +288,13 @@ public partial class MainViewModel : ObservableObject
         IsNpcapInstalled = SetupService.IsNpcapInstalled();
         Logger.Info($"NeedsSetup={NeedsSetup}, NpcapInstalled={IsNpcapInstalled}");
 
-        // Load config
+        // Load config — auto-fill missing local network fields (issue #1)
         var config = _configService.ReadPaqetConfig();
+        if (NetworkDetectionService.ApplyToConfig(config))
+        {
+            try { _configService.WritePaqetConfig(config); }
+            catch (Exception ex) { Logger.Warn($"Failed to persist auto-detected network: {ex.Message}"); }
+        }
         ServerAddress = config.ServerHost;
         ServerPort = config.ServerPort;
         Key = config.Key;
@@ -603,6 +608,34 @@ public partial class MainViewModel : ObservableObject
                     IsConnecting = false;
                 });
                 return;
+            }
+
+            // Persist UI server settings + auto-detect local network before start (issue #1)
+            // Without this, empty guid/interface/ipv4/router_mac cause paqet validation failures.
+            try
+            {
+                PaqetConfig preConfig = null!;
+                Application.Current?.Dispatcher?.Invoke(() =>
+                {
+                    preConfig = BuildConfigFromUi();
+                });
+                NetworkDetectionService.ApplyToConfig(preConfig);
+                // Replace mistaken Linux server NIC names (eth0 etc.) with local Windows NIC
+                if (NetworkDetectionService.IsLikelyWrongServerIface(preConfig.Interface))
+                {
+                    Logger.Warn($"Connect: rejecting server NIC name '{preConfig.Interface}' — using local Windows interface");
+                    NetworkDetectionService.ApplyToConfig(preConfig, force: true);
+                }
+                _configService.WritePaqetConfig(preConfig);
+                Application.Current?.Dispatcher?.BeginInvoke(() =>
+                {
+                    NetworkInterface = preConfig.Interface;
+                    _previousConfig = preConfig.Snapshot();
+                });
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Connect: pre-start config save failed: {ex.Message}");
             }
 
             // Step 1: Start paqet SOCKS5
@@ -1223,8 +1256,11 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        // Build config from current UI state
+        // Build config from current UI state (also auto-fills local network fields)
         var config = BuildConfigFromUi();
+        // Reflect corrected interface name in UI (e.g. eth0 → Ethernet)
+        if (!string.Equals(NetworkInterface, config.Interface, StringComparison.Ordinal))
+            NetworkInterface = config.Interface;
 
         // Detect breaking changes that need server sync
         var breakingChanges = _previousConfig != null ? config.GetBreakingChanges(_previousConfig) : new();
@@ -1278,6 +1314,10 @@ public partial class MainViewModel : ObservableObject
         config.RemoteFlag = RemoteFlag;
         config.SocksUsername = SocksUsername;
         config.SocksPassword = SocksPassword;
+        // Fill missing local network fields (guid, ipv4, router_mac) — never the remote server
+        NetworkDetectionService.ApplyToConfig(config);
+        if (NetworkDetectionService.IsLikelyWrongServerIface(config.Interface))
+            NetworkDetectionService.ApplyToConfig(config, force: true);
         return config;
     }
 
@@ -1596,6 +1636,41 @@ public partial class MainViewModel : ObservableObject
             {
                 InterfaceList = output;
                 StatusBarText = success ? "Interfaces listed." : output;
+                IsBusy = false;
+            });
+        });
+    }
+
+    /// <summary>
+    /// Auto-detect local Windows NIC (name, GUID, IP, gateway MAC) and apply to config.
+    /// Use when INTERFACE is empty or mistakenly set to the remote server's eth0.
+    /// </summary>
+    [RelayCommand]
+    private async Task AutoDetectNetworkAsync()
+    {
+        IsBusy = true;
+        StatusBarText = "Detecting local network...";
+        await Task.Run(() =>
+        {
+            var net = NetworkDetectionService.Detect();
+            Application.Current?.Dispatcher?.BeginInvoke(() =>
+            {
+                if (!net.HasInterface)
+                {
+                    StatusBarText = "Could not detect network interface.";
+                    IsBusy = false;
+                    return;
+                }
+
+                var config = BuildConfigFromUi();
+                NetworkDetectionService.ApplyToConfig(config, force: true);
+                _configService.WritePaqetConfig(config);
+                NetworkInterface = config.Interface;
+                _previousConfig = config.Snapshot();
+                StatusBarText = $"Detected: {config.Interface} ({config.Ipv4Addr})" +
+                    (net.HasGuid ? "" : " — warning: Npcap GUID missing");
+                Logger.Info($"AutoDetectNetwork: iface={config.Interface}, guid={config.DeviceGuid}, " +
+                            $"ip={config.Ipv4Addr}, mac={config.RouterMac}");
                 IsBusy = false;
             });
         });

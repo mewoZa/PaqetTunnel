@@ -421,31 +421,87 @@ function Ensure-Git {
     return $false
 }
 
+function Test-DotnetSdkOk {
+    param([string]$DotnetExe = 'dotnet')
+    # Accept any installed SDK with major version >= 8 (project targets net8.0; SDK 8/9/10+ can build it)
+    try {
+        $sdks = & $DotnetExe --list-sdks 2>$null
+        if ($sdks) {
+            foreach ($line in @($sdks)) {
+                if ($line -match '^(\d+)\.') {
+                    if ([int]$Matches[1] -ge 8) { return $true }
+                }
+            }
+        }
+    } catch {}
+    # Fallback: --version (active SDK) — also accept 8+
+    try {
+        $ver = & $DotnetExe --version 2>$null
+        if ($ver -match '^(\d+)\.' -and [int]$Matches[1] -ge 8) { return $true }
+    } catch {}
+    return $false
+}
+
+function Get-DotnetVersionLabel {
+    param([string]$DotnetExe = 'dotnet')
+    try {
+        $sdks = & $DotnetExe --list-sdks 2>$null
+        if ($sdks) {
+            $best = $null
+            foreach ($line in @($sdks)) {
+                if ($line -match '^(\d+\.\d+\.\d+)') {
+                    $v = $Matches[1]
+                    if ($v -match '^(\d+)\.' -and [int]$Matches[1] -ge 8) {
+                        if (-not $best -or [version]$v -gt [version]$best) { $best = $v }
+                    }
+                }
+            }
+            if ($best) { return $best }
+        }
+    } catch {}
+    try {
+        $ver = & $DotnetExe --version 2>$null
+        if ($ver) { return $ver.Trim() }
+    } catch {}
+    return 'unknown'
+}
+
 function Ensure-Dotnet {
     # Check existing install (both Program Files and user-local)
+    # BUGFIX (issue #1): accept .NET SDK 8+ — previously only matched ^8\. so machines
+    # with .NET 9 as the default SDK failed even when a usable SDK was present.
     $dotnetPaths = @("$env:ProgramFiles\dotnet", "$env:LOCALAPPDATA\Microsoft\dotnet")
     foreach ($p in $dotnetPaths) {
         $exe = "$p\dotnet.exe"
         if (Test-Path $exe) {
-            $ver = & $exe --version 2>$null
-            if ($ver -match '^8\.') {
+            if (Test-DotnetSdkOk $exe) {
                 if ($env:PATH -notlike "*$p*") { $env:PATH = "$p;$env:PATH" }
-                OK ".NET 8 SDK ($ver)"
+                $ver = Get-DotnetVersionLabel $exe
+                OK ".NET SDK ($ver)"
                 return $true
             }
         }
     }
+    # Also check PATH if dotnet is already available
+    if (Has-Command 'dotnet') {
+        if (Test-DotnetSdkOk 'dotnet') {
+            $ver = Get-DotnetVersionLabel 'dotnet'
+            OK ".NET SDK ($ver)"
+            return $true
+        }
+    }
 
-    # Try winget first
+    # Try winget first — prefer SDK 8 (matches TargetFramework), fall back to latest
     if (Has-Command 'winget') {
-        Step "Installing .NET 8 SDK via winget..."
+        Step "Installing .NET SDK via winget..."
         try {
             & winget install --id Microsoft.DotNet.SDK.8 --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
             $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
                         [System.Environment]::GetEnvironmentVariable('PATH', 'User')
-            if (Has-Command 'dotnet') {
-                $ver = & dotnet --version 2>$null
-                if ($ver -match '^8\.') { OK ".NET 8 SDK ($ver)"; return $true }
+            if (Has-Command 'dotnet' -and (Test-DotnetSdkOk 'dotnet')) {
+                $ver = Get-DotnetVersionLabel 'dotnet'
+                OK ".NET SDK ($ver)"
+                return $true
             }
         } catch {}
     }
@@ -462,9 +518,13 @@ function Ensure-Dotnet {
     if ($machinePath -notlike "*$installDir*") {
         [System.Environment]::SetEnvironmentVariable('PATH', "$installDir;$machinePath", 'Machine')
     }
-    $ver = & "$installDir\dotnet.exe" --version 2>$null
-    if ($ver -match '^8\.') { OK ".NET 8 SDK ($ver)"; return $true }
-    Err ".NET 8 SDK installation failed"
+    $exe = "$installDir\dotnet.exe"
+    if ((Test-Path $exe) -and (Test-DotnetSdkOk $exe)) {
+        $ver = Get-DotnetVersionLabel $exe
+        OK ".NET SDK ($ver)"
+        return $true
+    }
+    Err ".NET SDK installation failed (need SDK 8 or newer)"
     return $false
 }
 
@@ -826,7 +886,7 @@ function Do-Install {
     Step "Checking dependencies..."
     WL ""
     if (-not (Ensure-Git))    { Err "Git is required"; return }
-    if (-not (Ensure-Dotnet)) { Err ".NET 8 SDK is required"; return }
+    if (-not (Ensure-Dotnet)) { Err ".NET SDK 8 or newer is required"; return }
     # Go + MinGW + Npcap only needed when building paqet from source
     if ($Build) {
         $hasGo = Ensure-Go
@@ -873,8 +933,11 @@ function Do-Install {
     & netsh int ipv4 add excludedportrange protocol=tcp startport=$SocksPort numberofports=1 2>&1 | Out-Null
     & netsh int ipv4 add excludedportrange protocol=udp startport=$SocksPort numberofports=1 2>&1 | Out-Null
 
-    # Configure if args provided
-    if ($Addr -or $Key) { Do-Configure }
+    # Always write client config with auto-detected local network (interface/GUID/IP/MAC).
+    # Addr/Key optional — placeholders used until user fills them in the GUI.
+    # BUGFIX (issue #1): previously config was only written when -Addr/-Key were passed,
+    # leaving empty network fields and causing "network interface is required" on connect.
+    Do-Configure
 
     WL ""
     Line
@@ -1203,12 +1266,27 @@ transport:
 function Do-Configure {
     $cfgDir = "$Script:DataDir\config"
     New-Item -Path $cfgDir -ItemType Directory -Force | Out-Null
+    $cfgPath = "$cfgDir\client.yaml"
 
-    $serverAddr = if ($Addr) { $Addr } else { "your-server-ip:8443" }
-    $serverKey = if ($Key) { $Key } else { "your-key-here" }
+    # Preserve existing server addr/key when re-running without -Addr/-Key
+    $existingAddr = ''
+    $existingKey = ''
+    if (Test-Path $cfgPath) {
+        try {
+            $existingYaml = Get-Content $cfgPath -Raw
+            # server.addr is the addr under the top-level "server:" section (not network.ipv4.addr)
+            if ($existingYaml -match '(?ms)server:\s*\r?\n(?:[ \t]+[^\r\n]*\r?\n)*?[ \t]+addr:\s*"([^"]+)"') {
+                $existingAddr = $Matches[1]
+            }
+            if ($existingYaml -match '(?m)^\s*key:\s*"([^"]+)"') { $existingKey = $Matches[1] }
+        } catch {}
+    }
+
+    $serverAddr = if ($Addr) { $Addr } elseif ($existingAddr -and $existingAddr -notmatch 'your-server') { $existingAddr } else { "your-server-ip:8443" }
+    $serverKey = if ($Key) { $Key } elseif ($existingKey -and $existingKey -notmatch 'your-key') { $existingKey } else { "your-key-here" }
     $socks = "127.0.0.1:$SocksPort"
 
-    # Auto-detect network
+    # Auto-detect LOCAL Windows network (NOT the remote server's eth0/ens3)
     $net = Detect-Network
     $ifaceName = if ($Iface) { $Iface } else { $net.Interface }
     $localIP = $net.IP
@@ -1219,10 +1297,13 @@ function Do-Configure {
     if (-not $localIP) { $localIP = "0.0.0.0" }
     if (-not $routerMAC) { $routerMAC = "00:00:00:00:00:00" }
 
-    Dim "Interface: $ifaceName"
+    Dim "Local interface: $ifaceName  (Windows NIC — not the remote server)"
     Dim "Local IP:  $localIP"
     Dim "Router MAC: $routerMAC"
     if ($guid) { Dim "GUID: $guid" }
+    if (-not $guid) {
+        Warn "Npcap device GUID not detected — install Npcap and re-run configure if connect fails"
+    }
 
     # Escape backslashes for YAML double-quoted strings
     $yamlGuid = if ($guid) { $guid.Replace('\', '\\') } else { '' }
@@ -1255,8 +1336,8 @@ transport:
     sndwnd: 2048
 "@
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-    [System.IO.File]::WriteAllText("$cfgDir\client.yaml", $cfg, $utf8NoBom)
-    OK "Client config saved"
+    [System.IO.File]::WriteAllText($cfgPath, $cfg, $utf8NoBom)
+    OK "Client config saved (local network auto-detected)"
 }
 
 function Add-DefenderExclusions {

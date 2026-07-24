@@ -561,14 +561,17 @@ public sealed class PaqetService
         }
     }
 
-    /// <summary>Check if config exists, create default if not.</summary>
+    /// <summary>Check if config exists, create default if not (with auto-detected local network).</summary>
     public void EnsureConfigExists()
     {
         if (File.Exists(AppPaths.PaqetConfigPath)) return;
 
         AppPaths.EnsureDirectories();
         var defaultConfig = new Models.PaqetConfig();
+        // Populate local NIC / GUID / IP / router MAC so first connect doesn't fail validation
+        NetworkDetectionService.ApplyToConfig(defaultConfig, force: true);
         File.WriteAllText(AppPaths.PaqetConfigPath, defaultConfig.ToYaml());
+        Logger.Info($"Created default config with iface={defaultConfig.Interface}, ip={defaultConfig.Ipv4Addr}");
     }
 
     // ── Paqet CLI Commands ────────────────────────────────────────
